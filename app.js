@@ -11,6 +11,10 @@ const canjesRoutes    = require('./src/routes/canjes.routes');
 
 const app = express();
 
+app.get('/', (req, res) => {
+    res.send('🚀 Luisardito Shop Backend en funcionamiento');
+});
+
 // Middleware global
 app.use(cors());
 app.use(express.json());
