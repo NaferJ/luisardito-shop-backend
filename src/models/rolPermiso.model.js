@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('./index');
+const { sequelize } = require('./database');
 const Rol = require('./rol.model');
 const Permiso = require('./permiso.model');
 
