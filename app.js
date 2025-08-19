@@ -8,6 +8,7 @@ const authRoutes      = require('./src/routes/auth.routes');
 const usuariosRoutes  = require('./src/routes/usuarios.routes');
 const productosRoutes = require('./src/routes/productos.routes');
 const canjesRoutes    = require('./src/routes/canjes.routes');
+const historialPuntosRoutes = require('./src/routes/historialPuntos.routes');
 
 const app = express();
 
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/productos', productosRoutes);
 app.use('/api/canjes', canjesRoutes);
+app.use('/api/historial-puntos', historialPuntosRoutes);
 
 // Sincronizar modelos y arrancar servidor
 sequelize.sync()
