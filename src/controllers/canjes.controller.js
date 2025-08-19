@@ -19,7 +19,7 @@ exports.crear = async (req, res) => {
         await HistorialPunto.create({
             usuario_id: user.id,
             cambio:     -producto.precio,
-            motivo:     `Canje producto ${producto_id}`
+            motivo:     `Canje producto ${producto.nombre}`
         });
         res.status(201).json(canje);
     } catch (err) {

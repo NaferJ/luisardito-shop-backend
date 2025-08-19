@@ -1,7 +1,7 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('./database');
 
-const Canje = sequelize.define('Canje', {
+const HistorialPunto = sequelize.define('HistorialPunto', {
     id: {
         type: DataTypes.INTEGER,
         primaryKey: true,
@@ -11,19 +11,19 @@ const Canje = sequelize.define('Canje', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
-    producto_id: {
+    cambio: {
         type: DataTypes.INTEGER,
         allowNull: false
     },
-    estado: {
-        type: DataTypes.ENUM('pendiente', 'entregado', 'cancelado'),
-        defaultValue: 'pendiente'
+    motivo: {
+        type: DataTypes.STRING,
+        allowNull: false
     }
 }, {
-    tableName: 'canjes',
+    tableName: 'historial_puntos',
     timestamps: true,
     createdAt: 'fecha',
     updatedAt: false
 });
 
-module.exports = Canje;
+module.exports = HistorialPunto;
