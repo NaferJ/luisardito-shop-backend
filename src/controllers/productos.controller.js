@@ -1,14 +1,30 @@
 const { Producto } = require('../models');
 
-// Listar todos (solo publicados para usuarios)
+// Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
 exports.listar = async (req, res) => {
     const where = {};
     if (!req.user || req.user.rol_id > 2) {
-        // streamer/developer ve todo
+        // streamer/developer ve todo (dejamos la lógica existente sin cambios)
     } else {
         where.estado = 'publicado';
     }
-    const productos = await Producto.findAll({ where });
+
+    // Soporte de orden: ?sort=price_desc | price_asc | precio_desc | precio_asc
+    const sortParam = (req.query.sort || '').toString().toLowerCase();
+    let order;
+    switch (sortParam) {
+        case 'price_asc':
+        case 'precio_asc':
+            order = [['precio', 'ASC']];
+            break;
+        case 'price_desc':
+        case 'precio_desc':
+        default:
+            order = [['precio', 'DESC']];
+            break;
+    }
+
+    const productos = await Producto.findAll({ where, order });
     res.json(productos);
 };
 
