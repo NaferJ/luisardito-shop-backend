@@ -34,18 +34,91 @@ exports.listar = async (req, res) => {
     }
     const canjes = await Canje.findAll({
         where: filtros,
-        include: ['Usuario','Producto']
+        include: [Usuario, Producto]
     });
     res.json(canjes);
 };
 
 exports.actualizarEstado = async (req, res) => {
     try {
-        const canje = await Canje.findByPk(req.params.id);
+        const { id } = req.params;
+        const { estado } = req.body;
+        const estadosPermitidos = ['pendiente', 'entregado', 'cancelado'];
+        if (!estadosPermitidos.includes(estado)) {
+            return res.status(400).json({ error: `Estado inválido. Permitidos: ${estadosPermitidos.join(', ')}. Para devolver use PUT /api/canjes/:id/devolver.` });
+        }
+        const canje = await Canje.findByPk(id);
         if (!canje) return res.status(404).json({ error: 'No encontrado' });
-        await canje.update({ estado: req.body.estado });
-        res.json(canje);
+        await canje.update({ estado });
+        res.json({ message: 'Estado actualizado', id: canje.id, estado: canje.estado });
     } catch (err) {
         res.status(400).json({ error: err.message });
+    }
+};
+
+// Devolver un canje: marca 'devuelto', devuelve puntos y repone stock
+exports.devolverCanje = async (req, res) => {
+    const t = await Canje.sequelize.transaction();
+    try {
+        const { id } = req.params;
+        const { motivo } = req.body;
+        const adminNickname = req.user.nickname;
+
+        if (!motivo || String(motivo).trim() === '') {
+            await t.rollback();
+            return res.status(400).json({ error: 'Motivo de devolución es requerido' });
+        }
+
+        const canje = await Canje.findByPk(id, { include: [Usuario, Producto], transaction: t, lock: t.LOCK.UPDATE });
+        if (!canje) {
+            await t.rollback();
+            return res.status(404).json({ error: 'Canje no encontrado' });
+        }
+
+        if (canje.estado === 'devuelto') {
+            await t.rollback();
+            return res.status(400).json({ error: 'El canje ya está devuelto' });
+        }
+
+        if (!['pendiente', 'entregado'].includes(canje.estado)) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Solo se pueden devolver canjes pendientes o entregados' });
+        }
+
+        const usuario = canje.Usuario;
+        const producto = canje.Producto;
+        const puntosADevolver = producto.precio;
+        const puntosAnteriores = usuario.puntos;
+
+        // 1. Marcar canje como devuelto
+        await canje.update({ estado: 'devuelto' }, { transaction: t });
+
+        // 2. Devolver puntos al usuario
+        const puntosNuevos = puntosAnteriores + puntosADevolver;
+        await usuario.update({ puntos: puntosNuevos }, { transaction: t });
+
+        // 3. Registrar historial
+        await HistorialPunto.create({
+            usuario_id: usuario.id,
+            cambio: puntosADevolver,
+            motivo: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`
+        }, { transaction: t });
+
+        // 4. Reponer stock del producto (si corresponde)
+        const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
+        await producto.update({ stock: stockActual + 1 }, { transaction: t });
+
+        await t.commit();
+
+        res.json({
+            message: 'Canje devuelto correctamente',
+            canje: { id: canje.id, estado: 'devuelto' },
+            usuario: { id: usuario.id, nickname: usuario.nickname, puntosAnteriores, puntosNuevos },
+            producto: { id: producto.id, nombre: producto.nombre, stockNuevo: stockActual + 1 }
+        });
+    } catch (error) {
+        await t.rollback();
+        console.error('Error al devolver canje:', error);
+        res.status(500).json({ error: 'Error interno del servidor', message: error.message });
     }
 };
