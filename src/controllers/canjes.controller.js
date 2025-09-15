@@ -59,7 +59,18 @@ exports.listar = async (req, res) => {
     }
     const canjes = await Canje.findAll({
         where: filtros,
-        include: [Usuario, Producto]
+        include: [Usuario, Producto],
+        order: [['fecha', 'DESC']]
+    });
+    res.json(canjes);
+};
+
+// Listar únicamente los canjes del usuario autenticado (para "Mis Canjes")
+exports.listarMios = async (req, res) => {
+    const canjes = await Canje.findAll({
+        where: { usuario_id: req.user.id },
+        include: [Usuario, Producto],
+        order: [['fecha', 'DESC']]
     });
     res.json(canjes);
 };
