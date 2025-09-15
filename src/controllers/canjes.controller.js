@@ -1,28 +1,53 @@
 const { Canje, Producto, Usuario, HistorialPunto } = require('../models');
 
 exports.crear = async (req, res) => {
+    const t = await Canje.sequelize.transaction();
     try {
-        const user = req.user;
         const { producto_id } = req.body;
-        const producto = await Producto.findByPk(producto_id);
+        const usuarioId = req.user.id;
+
+        const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
         if (!producto || producto.estado !== 'publicado') {
+            await t.rollback();
             return res.status(404).json({ error: 'Producto no disponible' });
         }
-        if (user.puntos < producto.precio) {
+        const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
+        if (stockActual <= 0) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Sin stock disponible para este producto' });
+        }
+
+        const usuario = await Usuario.findByPk(usuarioId, { transaction: t, lock: t.LOCK.UPDATE });
+        if (!usuario) {
+            await t.rollback();
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+        if (usuario.puntos < producto.precio) {
+            await t.rollback();
             return res.status(400).json({ error: 'Puntos insuficientes' });
         }
-        // Crear canje
-        const canje = await Canje.create({ usuario_id: user.id, producto_id });
-        // Restar puntos y registrar historial
-        user.puntos -= producto.precio;
-        await user.save();
+
+        // 2) Crear canje
+        const canje = await Canje.create({ usuario_id: usuario.id, producto_id }, { transaction: t });
+
+        // 3) Descontar stock del producto
+        await producto.update({ stock: stockActual - 1 }, { transaction: t });
+
+        // 4) Restar puntos al usuario
+        const puntosNuevos = usuario.puntos - producto.precio;
+        await usuario.update({ puntos: puntosNuevos }, { transaction: t });
+
+        // 5) Registrar historial de puntos
         await HistorialPunto.create({
-            usuario_id: user.id,
-            cambio:     -producto.precio,
-            motivo:     `Canje producto ${producto.nombre}`
-        });
+            usuario_id: usuario.id,
+            cambio: -producto.precio,
+            motivo: `Canje producto ${producto.nombre}`
+        }, { transaction: t });
+
+        await t.commit();
         res.status(201).json(canje);
     } catch (err) {
+        await t.rollback();
         res.status(500).json({ error: err.message });
     }
 };
