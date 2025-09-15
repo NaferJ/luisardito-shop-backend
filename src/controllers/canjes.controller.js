@@ -53,12 +53,9 @@ exports.crear = async (req, res) => {
 };
 
 exports.listar = async (req, res) => {
-    const filtros = {};
-    if (req.user.rol_id > 2) {
-        filtros.usuario_id = req.user.id;
-    }
+    // Ruta protegida por permiso('gestionar_canjes'): devolver todos los canjes
     const canjes = await Canje.findAll({
-        where: filtros,
+        where: {},
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });
@@ -69,6 +66,21 @@ exports.listar = async (req, res) => {
 exports.listarMios = async (req, res) => {
     const canjes = await Canje.findAll({
         where: { usuario_id: req.user.id },
+        include: [Usuario, Producto],
+        order: [['fecha', 'DESC']]
+    });
+    res.json(canjes);
+};
+
+// Listar canjes de un usuario específico (vista de gestión/admin)
+exports.listarPorUsuario = async (req, res) => {
+    const { usuarioId } = req.params;
+    const id = Number(usuarioId);
+    if (!Number.isInteger(id) || id <= 0) {
+        return res.status(400).json({ error: 'usuarioId inválido' });
+    }
+    const canjes = await Canje.findAll({
+        where: { usuario_id: id },
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });
