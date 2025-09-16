@@ -16,7 +16,7 @@ const Canje = sequelize.define('Canje', {
         allowNull: false
     },
     estado: {
-        type: DataTypes.ENUM('pendiente', 'entregado', 'cancelado'),
+        type: DataTypes.ENUM('pendiente', 'entregado', 'cancelado', 'devuelto'),
         defaultValue: 'pendiente'
     }
 }, {
