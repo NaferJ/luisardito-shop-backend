@@ -1,0 +1,48 @@
+name: CD - Production (Backend)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build --tag backend:${{ github.sha }} .
+
+      - name: Save image to tar
+        run: docker save backend:${{ github.sha }} -o app-image.tar
+
+      - name: Copy image to production droplet
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          source: "app-image.tar"
+          target: "~/"
+
+      - name: Deploy on production via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          script: |
+            set -e
+            docker load -i ~/app-image.tar
+            rm -f ~/app-image.tar
+            # Run migrations in a one-off container (env from file on droplet)
+            docker run --rm --env-file $HOME/.env.backend.production backend:${{ github.sha }} npm run migrate || true
+            # Restart app container
+            docker rm -f backend-prod || true
+            docker run -d --name backend-prod --restart unless-stopped \
+              --env-file $HOME/.env.backend.production -p 3000:3000 backend:${{ github.sha }}
