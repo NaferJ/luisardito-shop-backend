@@ -6,7 +6,7 @@ services:
     container_name: luisardito-mysql
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: luisardito
+      MYSQL_DATABASE: luisardito_shop
       MYSQL_USER: app
       MYSQL_PASSWORD: app
     ports:
@@ -29,6 +29,9 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: 3306
+      DB_NAME: luisardito_shop
+      DB_USER: app
+      DB_PASS: app
     depends_on:
       db:
         condition: service_healthy
