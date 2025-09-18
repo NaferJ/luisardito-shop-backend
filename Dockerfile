@@ -5,9 +5,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install dependencies first (only production deps)
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+COPY package.json package-lock.json* ./
+RUN npm install --production
 
 # Copy source
 COPY . .
