@@ -4,4 +4,5 @@ Use:
 
 npm run migrate
 
+
 Ensure environment variables are set for DB connection.
