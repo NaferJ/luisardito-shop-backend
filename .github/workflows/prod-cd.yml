@@ -65,6 +65,37 @@ jobs:
           source: "app-image.tar"
           target: "~/"
 
+      - name: Ensure production .env file exists
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          script: |
+            set -e
+            ENV_PATH="$HOME/.env.backend.production"
+            # Create or overwrite .env with production secrets
+            cat > "$ENV_PATH" << 'EOF'
+            NODE_ENV=production
+            PORT=${{ secrets.PROD_APP_PORT }}
+            DB_HOST=${{ secrets.PROD_DB_HOST }}
+            DB_PORT=${{ secrets.PROD_DB_PORT }}
+            DB_USER=${{ secrets.PROD_DB_USER }}
+            DB_PASS=${{ secrets.PROD_DB_PASS }}
+            DB_NAME=${{ secrets.PROD_DB_NAME }}
+            DB_SSL=${{ secrets.PROD_DB_SSL }}
+            DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.PROD_DB_SSL_REJECT_UNAUTHORIZED }}
+            JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}
+            KICK_CLIENT_ID=${{ secrets.PROD_KICK_CLIENT_ID }}
+            KICK_CLIENT_SECRET=${{ secrets.PROD_KICK_CLIENT_SECRET }}
+            KICK_REDIRECT_URI=${{ secrets.PROD_KICK_REDIRECT_URI }}
+            EOF
+            chmod 600 "$ENV_PATH"
+            echo "Wrote $ENV_PATH"
+            ls -l "$ENV_PATH"
+
       - name: Deploy on production via SSH
         uses: appleboy/ssh-action@v1.2.0
         with:
