@@ -51,6 +51,9 @@ jobs:
       - name: Save image to tar
         run: docker save backend:${{ github.sha }} -o app-image.tar
 
+      - name: Adjust permissions for app-image.tar
+        run: chmod 644 app-image.tar
+
       - name: Copy image to production droplet
         uses: appleboy/scp-action@v0.1.7
         with:
