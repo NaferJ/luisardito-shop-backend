@@ -76,7 +76,7 @@ jobs:
           script: |
             set -e
             ENV_PATH="$HOME/.env.backend.staging"
-            cat > "$ENV_PATH" << 'EOF'
+            cat > "$ENV_PATH" << EOF
             NODE_ENV=staging
             PORT=${{ secrets.STG_APP_PORT }}
             DB_HOST=${{ secrets.STG_DB_HOST }}

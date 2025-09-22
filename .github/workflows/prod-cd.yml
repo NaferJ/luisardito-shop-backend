@@ -77,7 +77,7 @@ jobs:
             set -e
             ENV_PATH="$HOME/.env.backend.production"
             # Create or overwrite .env with production secrets
-            cat > "$ENV_PATH" << 'EOF'
+            cat > "$ENV_PATH" << EOF
             NODE_ENV=production
             PORT=${{ secrets.PROD_APP_PORT }}
             DB_HOST=${{ secrets.PROD_DB_HOST }}
