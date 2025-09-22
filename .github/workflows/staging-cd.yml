@@ -76,23 +76,24 @@ jobs:
           script: |
             set -e
             ENV_PATH="$HOME/.env.backend.staging"
-            cat > "$ENV_PATH" << EOF
-            NODE_ENV=staging
-            PORT=${{ secrets.STG_APP_PORT }}
-            DB_HOST=${{ secrets.STG_DB_HOST }}
-            DB_PORT=${{ secrets.STG_DB_PORT }}
-            DB_USER=${{ secrets.STG_DB_USER }}
-            DB_PASS=${{ secrets.STG_DB_PASS }}
-            DB_NAME=${{ secrets.STG_DB_NAME }}
-            DB_SSL=${{ secrets.STG_DB_SSL }}
-            DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.STG_DB_SSL_REJECT_UNAUTHORIZED }}
-            JWT_SECRET=${{ secrets.STG_JWT_SECRET }}
-            KICK_CLIENT_ID=${{ secrets.STG_KICK_CLIENT_ID }}
-            KICK_CLIENT_SECRET=${{ secrets.STG_KICK_CLIENT_SECRET }}
-            KICK_REDIRECT_URI=${{ secrets.STG_KICK_REDIRECT_URI }}
-            EOF
+            # Create or overwrite .env with staging secrets (safe line-by-line to avoid indentation issues)
+            rm -f "$ENV_PATH"
+            echo "NODE_ENV=staging" >> "$ENV_PATH"
+            echo "PORT=${{ secrets.STG_APP_PORT }}" >> "$ENV_PATH"
+            echo "DB_HOST=${{ secrets.STG_DB_HOST }}" >> "$ENV_PATH"
+            echo "DB_PORT=${{ secrets.STG_DB_PORT }}" >> "$ENV_PATH"
+            echo "DB_USER=${{ secrets.STG_DB_USER }}" >> "$ENV_PATH"
+            echo "DB_PASS=${{ secrets.STG_DB_PASS }}" >> "$ENV_PATH"
+            echo "DB_NAME=${{ secrets.STG_DB_NAME }}" >> "$ENV_PATH"
+            echo "DB_SSL=${{ secrets.STG_DB_SSL }}" >> "$ENV_PATH"
+            echo "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.STG_DB_SSL_REJECT_UNAUTHORIZED }}" >> "$ENV_PATH"
+            echo "JWT_SECRET=${{ secrets.STG_JWT_SECRET }}" >> "$ENV_PATH"
+            echo "KICK_CLIENT_ID=${{ secrets.STG_KICK_CLIENT_ID }}" >> "$ENV_PATH"
+            echo "KICK_CLIENT_SECRET=${{ secrets.STG_KICK_CLIENT_SECRET }}" >> "$ENV_PATH"
+            echo "KICK_REDIRECT_URI=${{ secrets.STG_KICK_REDIRECT_URI }}" >> "$ENV_PATH"
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
+            sed -e 's/=.*/=***/' "$ENV_PATH"
             ls -l "$ENV_PATH"
 
       - name: Deploy on staging via SSH
