@@ -11,6 +11,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check PROD secrets presence
+        run: |
+          echo "HAS_HOST=$HAS_HOST"
+          echo "HAS_USER=$HAS_USER"
+          echo "HAS_PORT=$HAS_PORT"
+          echo "HAS_KEY=$HAS_KEY"
+        env:
+          HAS_HOST: ${{ secrets.PROD_SSH_HOST != '' }}
+          HAS_USER: ${{ secrets.PROD_SSH_USER != '' }}
+          HAS_PORT: ${{ secrets.PROD_SSH_PORT != '' }}
+          HAS_KEY: ${{ secrets.PROD_SSH_KEY != '' }}
+
+      - name: Validate PROD SSH inputs
+        shell: bash
+        run: |
+          [ "${{ secrets.PROD_SSH_HOST }}" != "" ] || { echo "PROD_SSH_HOST missing"; exit 1; }
+          [ "${{ secrets.PROD_SSH_USER }}" != "" ] || { echo "PROD_SSH_USER missing"; exit 1; }
+          [ "${{ secrets.PROD_SSH_PORT }}" != "" ] || { echo "PROD_SSH_PORT missing"; exit 1; }
+          [ "${{ secrets.PROD_SSH_KEY }}" != "" ] || { echo "PROD_SSH_KEY missing"; exit 1; }
+          echo "All required PROD SSH secrets are present."
+
+      - name: Test PROD SSH connection
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          passphrase: ${{ secrets.PROD_SSH_PASSPHRASE }}
+          port: ${{ secrets.PROD_SSH_PORT }}
+          script: |
+            whoami
+            pwd
+            echo "SSH OK"
+
       - name: Build image
         run: docker build --tag backend:${{ github.sha }} .
 
