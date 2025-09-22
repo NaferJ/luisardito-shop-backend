@@ -105,11 +105,21 @@ jobs:
           port: ${{ secrets.STG_SSH_PORT }}
           script: |
             set -e
+            CONTAINER_NAME=backend-stg
+            IMAGE_TAG=backend:${{ github.sha }}
+            ENV_FILE="$HOME/.env.backend.staging"
+
             docker load -i ~/app-image.tar
             rm -f ~/app-image.tar
+
+            # Stop and remove previous container if it exists to free the port
+            if docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}$"; then
+              docker rm -f "${CONTAINER_NAME}"
+            fi
+
             # Run migrations in a one-off container (env from file on droplet)
-            docker run --rm --env-file $HOME/.env.backend.staging backend:${{ github.sha }} npm run migrate || true
-            # Restart app container
-            docker rm -f backend-stg || true
-            docker run -d --name backend-stg --restart unless-stopped \
-              --env-file $HOME/.env.backend.staging -p 3000:3000 backend:${{ github.sha }}
+            docker run --rm --env-file "${ENV_FILE}" ${IMAGE_TAG} npm run migrate
+
+            # Start new container
+            docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
+              --env-file "${ENV_FILE}" -p 3000:3000 ${IMAGE_TAG}
