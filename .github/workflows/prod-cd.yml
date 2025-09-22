@@ -119,7 +119,7 @@ jobs:
             fi
 
             # Run migrations in a one-off container (env from file on droplet)
-            docker run --rm --env-file "${ENV_FILE}" ${IMAGE_TAG} npm run migrate
+            docker run --rm --env-file "${ENV_FILE}" ${IMAGE_TAG} sh -lc 'echo "→ DB_HOST=$DB_HOST"; echo "→ DB_PORT=$DB_PORT"; echo "→ DB_USER=$DB_USER"; echo "→ DB_NAME=$DB_NAME"; echo "→ NODE_ENV=$NODE_ENV"; npx sequelize db:migrate --debug'
 
             # Start new container
             docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
