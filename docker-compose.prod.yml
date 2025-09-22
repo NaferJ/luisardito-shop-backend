@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  db:
+    # Do not publish MySQL port in production
+    ports: []
+    restart: unless-stopped
+
+  api:
+    env_file:
+      - ${HOME}/.env.backend.production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
