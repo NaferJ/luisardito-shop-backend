@@ -22,19 +22,11 @@ services:
   api:
     build: .
     container_name: luisardito-backend
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_NAME: luisardito_shop
-      DB_USER: app
-      DB_PASS: app
     depends_on:
       db:
         condition: service_healthy
+    command: >
+      sh -c "npm install && npx sequelize db:migrate && npm run start"
 
 volumes:
   db_data:

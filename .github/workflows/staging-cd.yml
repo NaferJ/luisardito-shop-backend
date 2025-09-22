@@ -45,25 +45,6 @@ jobs:
             pwd
             echo "SSH OK"
 
-      - name: Build image
-        run: docker build --tag backend:${{ github.sha }} .
-
-      - name: Save image to tar
-        run: docker save backend:${{ github.sha }} -o app-image.tar
-
-      - name: Adjust permissions for app-image.tar
-        run: chmod 644 app-image.tar
-
-      - name: Copy image to staging droplet
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.STG_SSH_HOST }}
-          username: ${{ secrets.STG_SSH_USER }}
-          key: ${{ secrets.STG_SSH_KEY }}
-          passphrase: ${{ secrets.STG_SSH_PASSPHRASE }}
-          port: ${{ secrets.STG_SSH_PORT }}
-          source: "app-image.tar"
-          target: "~/"
 
       - name: Ensure staging .env file exists
         uses: appleboy/ssh-action@v1.2.0
@@ -96,7 +77,7 @@ jobs:
             sed -e 's/=.*/=***/' "$ENV_PATH"
             ls -l "$ENV_PATH"
 
-      - name: Deploy on staging via SSH
+      - name: Deploy with Docker Compose (staging)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.STG_SSH_HOST }}
@@ -106,21 +87,23 @@ jobs:
           port: ${{ secrets.STG_SSH_PORT }}
           script: |
             set -e
-            CONTAINER_NAME=backend-stg
-            IMAGE_TAG=backend:${{ github.sha }}
-            ENV_FILE="$HOME/.env.backend.staging"
-
-            docker load -i ~/app-image.tar
-            rm -f ~/app-image.tar
-
-            # Stop and remove previous container if it exists to free the port
-            if docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}$"; then
-              docker rm -f "${CONTAINER_NAME}"
+            APP_DIR="$HOME/apps/luisardito-shop-backend"
+            if [ -d "$APP_DIR/.git" ]; then
+              cd "$APP_DIR"
+              git fetch origin
+              git checkout dev
+              git reset --hard origin/dev
+            else
+              mkdir -p "$HOME/apps"
+              cd "$HOME/apps"
+              git clone --depth 1 https://github.com/NaferJ/luisardito-shop-backend.git
+              cd luisardito-shop-backend
+              git checkout dev
             fi
 
-            # Run migrations in a one-off container (env from file on droplet)
-            docker run --rm --env-file "${ENV_FILE}" ${IMAGE_TAG} sh -lc 'echo "→ DB_HOST=$DB_HOST"; echo "→ DB_PORT=$DB_PORT"; echo "→ DB_USER=$DB_USER"; echo "→ DB_NAME=$DB_NAME"; echo "→ NODE_ENV=$NODE_ENV"; npx sequelize db:migrate --debug'
+            # Bring stack down and up with staging overrides
+            docker compose -f docker-compose.yml -f docker-compose.stg.yml down
+            docker compose -f docker-compose.yml -f docker-compose.stg.yml up -d --build
 
-            # Start new container
-            docker run -d --name "${CONTAINER_NAME}" --restart unless-stopped \
-              --env-file "${ENV_FILE}" -p 3000:3000 ${IMAGE_TAG}
+            # Show status
+            docker compose -f docker-compose.yml -f docker-compose.stg.yml ps
