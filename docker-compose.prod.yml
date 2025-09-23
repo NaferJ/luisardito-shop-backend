@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     # Do not publish MySQL port in production
@@ -9,6 +7,8 @@ services:
   api:
     env_file:
       - ${HOME}/.env.backend.production
+    command: >
+      sh -c "npx sequelize db:migrate --debug && npm run start"
     ports:
       - "3000:3000"
     restart: unless-stopped
