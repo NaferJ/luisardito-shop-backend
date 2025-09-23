@@ -45,6 +45,11 @@ jobs:
             pwd
             echo "SSH OK"
 
+      - name: Validate PROD repo read token
+        shell: bash
+        run: |
+          [ "${{ secrets.PROD_GITHUB_TOKEN }}" != "" ] || { echo "PROD_GITHUB_TOKEN missing (create a PAT with repo read access)"; exit 1; }
+          echo "PROD_GITHUB_TOKEN present."
 
       - name: Ensure production .env file exists
         uses: appleboy/ssh-action@v1.2.0
@@ -88,15 +93,16 @@ jobs:
           script: |
             set -e
             APP_DIR="$HOME/apps/luisardito-shop-backend"
+            REPO_URL="https://x-access-token:${{ secrets.PROD_GITHUB_TOKEN }}@github.com/NaferJ/luisardito-shop-backend.git"
             if [ -d "$APP_DIR/.git" ]; then
               cd "$APP_DIR"
-              git fetch origin
-              git checkout main
+              git remote set-url origin "$REPO_URL"
+              git fetch origin main
               git reset --hard origin/main
             else
               mkdir -p "$HOME/apps"
               cd "$HOME/apps"
-              git clone --depth 1 https://github.com/NaferJ/luisardito-shop-backend.git
+              git clone --depth 1 "$REPO_URL"
               cd luisardito-shop-backend
               git checkout main
             fi
