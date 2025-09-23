@@ -1,8 +1,8 @@
 services:
   db:
-    # Keep DB port published in development
+    # Keep DB port published in development (use 3307 on host to avoid conflict with local MySQL)
     ports:
-      - "3306:3306"
+      - "3307:3306"
 
   api:
     # Development overrides
