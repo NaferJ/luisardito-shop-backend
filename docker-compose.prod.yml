@@ -1,7 +1,8 @@
 services:
   db:
-    # Do not publish MySQL port in production
-    ports: []
+    # Publish MySQL only on loopback for SSH tunneling from DataGrip
+    ports:
+      - "127.0.0.1:3306:3306"
     restart: unless-stopped
 
   api:
