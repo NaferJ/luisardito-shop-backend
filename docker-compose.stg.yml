@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   db:
     # Expose DB port in staging if needed
@@ -10,6 +8,8 @@ services:
   api:
     env_file:
       - ${HOME}/.env.backend.staging
+    command: >
+      sh -c "npx sequelize db:migrate --debug && npm run start"
     ports:
       - "3001:3000"
     restart: unless-stopped
