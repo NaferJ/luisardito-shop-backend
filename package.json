@@ -7,7 +7,10 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "test": "echo \"No tests yet\"",
-    "migrate": "npx sequelize db:migrate"
+    "migrate": "npx sequelize db:migrate",
+    "seed": "npx sequelize db:seed:all",
+    "setup-db": "npm run migrate && npm run seed",
+    "reset-db": "npx sequelize db:migrate:undo:all && npm run setup-db"
   },
   "keywords": [],
   "author": "",
