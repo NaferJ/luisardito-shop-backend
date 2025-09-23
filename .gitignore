@@ -35,3 +35,7 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# Environment files (general)
+.env*
+!.env.template

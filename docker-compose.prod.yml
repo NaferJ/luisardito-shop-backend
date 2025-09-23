@@ -1,0 +1,15 @@
+services:
+  db:
+    # Publish MySQL only on loopback for SSH tunneling from DataGrip
+    ports:
+      - "127.0.0.1:3307:3306"
+    restart: unless-stopped
+
+  api:
+    env_file:
+      - ${HOME}/.env.backend.production
+    command: >
+      sh -c "npx sequelize db:migrate --debug && npm run start"
+    ports:
+      - "3001:3000"
+    restart: unless-stopped

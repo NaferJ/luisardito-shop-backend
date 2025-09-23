@@ -5,15 +5,17 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install dependencies first (only production deps)
-COPY package*.json ./
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev
+COPY package.json package-lock.json* ./
+RUN npm install --production
 
 # Copy source
 COPY . .
 
 # Expose app port
 EXPOSE 3000
+
+# Healthcheck (uses Node to fetch /health)
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD node -e "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
 # Start command
 CMD ["npm", "start"]
