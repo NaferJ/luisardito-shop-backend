@@ -2,11 +2,24 @@
 
 module.exports = {
   async up(queryInterface, Sequelize) {
-    // Disabled by request: product seed data removed
-    console.log('Seed disabled: productos (no data inserted)');
+    const productos = [
+      {
+        id: 999,
+        nombre: 'Producto Plantilla',
+        descripcion: 'Producto de prueba (plantilla) para desarrollo',
+        precio: 0,
+        stock: 0,
+        estado: 'borrador',
+        imagen_url: null,
+        creado: new Date(),
+        actualizado: new Date()
+      }
+    ];
+
+    await queryInterface.bulkInsert('productos', productos, { ignoreDuplicates: true });
   },
 
   async down(queryInterface, Sequelize) {
-    // Nothing to revert since no data seeded
+    await queryInterface.bulkDelete('productos', { id: [999] }, {});
   }
 };
