@@ -107,6 +107,13 @@ jobs:
               git checkout dev
             fi
 
+            # Remove possible conflicting containers by name to avoid name conflicts
+            for c in luisardito-mysql luisardito-backend luisardito-frontend; do
+              if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
+                docker rm -f "$c"
+              fi
+            done
+
             # Bring stack down and up with staging overrides
             docker compose -f docker-compose.yml -f docker-compose.stg.yml down
             docker compose -f docker-compose.yml -f docker-compose.stg.yml up -d --build
