@@ -40,7 +40,7 @@ services:
       - DB_SSL=false
       - DB_SSL_REJECT_UNAUTHORIZED=false
       # JWT y otras configuraciones
-      - JWT_SECRET=your-local-jwt-secret-key-change-this-in-production
+      - JWT_SECRET=bcad3d86a5f78e7f81a6666d397da64296ce657a467f2e43bfdf7eef520dcb3db6c571f9f9499eb5c72da67fa571afe004f13b91a30dd97c35b8f4b9d2e8541c
       - PORT=3000
     depends_on:
       db:
