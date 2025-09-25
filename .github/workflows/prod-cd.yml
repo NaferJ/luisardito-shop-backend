@@ -69,7 +69,7 @@ jobs:
             echo "DB_HOST=${{ secrets.PROD_DB_HOST }}" >> "$ENV_PATH"
             echo "DB_PORT=${{ secrets.PROD_DB_PORT }}" >> "$ENV_PATH"
             echo "DB_USER=${{ secrets.PROD_DB_USER }}" >> "$ENV_PATH"
-            echo "DB_PASS=${{ secrets.PROD_DB_PASS }}" >> "$ENV_PATH"
+            echo "DB_PASSWORD=${{ secrets.PROD_DB_PASS }}" >> "$ENV_PATH"
             echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> "$ENV_PATH"
             echo "DB_SSL=${{ secrets.PROD_DB_SSL }}" >> "$ENV_PATH"
             echo "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.PROD_DB_SSL_REJECT_UNAUTHORIZED }}" >> "$ENV_PATH"
