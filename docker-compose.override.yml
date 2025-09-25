@@ -1,13 +1,19 @@
 services:
   db:
-    # Keep DB port published in development
+    # Keep DB port published in development (use 3307 on host to avoid conflict with local MySQL)
     ports:
-      - "3306:3306"
+      - "3307:3306"
+    # Add environment variables for easier access
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: luisardito_shop
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
 
   api:
     # Development overrides
     env_file:
-      - .env
+      - .env.development
     working_dir: /app
     volumes:
       - ./:/app
@@ -15,3 +21,27 @@ services:
     ports:
       - "3001:3000"
     restart: unless-stopped
+    # Development command with hot reload
+    command: >
+      sh -c "npm install &&
+             npx sequelize db:migrate &&
+             npx sequelize db:seed:all || true &&
+             npm run dev"
+    # Environment variables que sobrescriben .env.development para Docker
+    environment:
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+      # Sobrescribir configuración de DB para usar nombre del servicio Docker
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=app
+      - DB_PASSWORD=app
+      - DB_NAME=luisardito_shop
+      - DB_SSL=false
+      - DB_SSL_REJECT_UNAUTHORIZED=false
+      # JWT y otras configuraciones
+      - JWT_SECRET=your-local-jwt-secret-key-change-this-in-production
+      - PORT=3000
+    depends_on:
+      db:
+        condition: service_healthy

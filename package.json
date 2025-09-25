@@ -7,7 +7,17 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "test": "echo \"No tests yet\"",
-    "migrate": "npx sequelize db:migrate"
+    "migrate": "npx sequelize db:migrate",
+    "seed": "npx sequelize db:seed:all",
+    "setup-db": "npm run migrate && npm run seed",
+    "reset-db": "npx sequelize db:migrate:undo:all && npm run setup-db",
+    "docker:dev": "docker-compose up --build",
+    "docker:dev:down": "docker-compose down",
+    "docker:dev:logs": "docker-compose logs -f api",
+    "docker:db": "docker-compose up db -d",
+    "dev:local": "NODE_ENV=development nodemon app.js",
+    "dev:setup": "docker-compose up db -d && npm run migrate && npm run seed",
+    "dev:reset": "docker-compose down -v && docker-compose up db -d && sleep 10 && npm run migrate && npm run seed"
   },
   "keywords": [],
   "author": "",
