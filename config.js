@@ -5,6 +5,15 @@ const toBool = (val, def = false) => {
     return /^(1|true|yes|on)$/i.test(String(val).trim());
 };
 
+// 🔍 DEBUG: Agreguemos logs para ver qué está pasando
+console.log('🔍 DEBUG - Variables de entorno:');
+console.log('JWT_SECRET existe:', !!process.env.JWT_SECRET);
+console.log('JWT_SECRET valor:', process.env.JWT_SECRET ? `"${process.env.JWT_SECRET.substring(0, 10)}..."` : 'undefined');
+console.log('JWT_SECRET type:', typeof process.env.JWT_SECRET);
+console.log('JWT_SECRET length:', process.env.JWT_SECRET?.length);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('DB_HOST:', process.env.DB_HOST);
+
 module.exports = {
     db: {
         host:     process.env.DB_HOST,
@@ -23,3 +32,8 @@ module.exports = {
     },
     port: Number(process.env.PORT || 3000)
 };
+
+// 🔍 DEBUG: Ver el resultado final
+console.log('🔍 DEBUG - Config resultante:');
+console.log('jwtSecret existe:', !!module.exports.jwtSecret);
+console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
