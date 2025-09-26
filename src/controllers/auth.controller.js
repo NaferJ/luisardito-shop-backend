@@ -72,40 +72,57 @@ exports.callbackKick = async (req, res) => {
         console.log('Usando tokenUrl:', tokenUrl);
         console.log('Usando userUrl:', userUrl);
 
-        // 1. Intercambiar código por token de acceso (con PKCE) usando x-www-form-urlencoded
-        const params = new URLSearchParams();
-        params.append('grant_type', 'authorization_code');
-        params.append('code', code);
-        params.append('redirect_uri', finalRedirectUri);
-        params.append('client_id', clientId);
-        params.append('code_verifier', code_verifier);
+        // 1. Intercambiar código por token de acceso (con PKCE)
+        const cfProxyUrl = process.env.CF_KICK_PROXY_URL;
+        let tokenRes;
+        if (cfProxyUrl) {
+            console.log('Usando Cloudflare Worker proxy para token exchange:', cfProxyUrl);
+            tokenRes = await axios.post(cfProxyUrl, {
+                grant_type: 'authorization_code',
+                code,
+                redirect_uri: finalRedirectUri,
+                client_id: clientId,
+                code_verifier
+            }, {
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                timeout: 10000
+            });
+        } else {
+            // Fallback directo a Kick con x-www-form-urlencoded y headers tipo navegador
+            const params = new URLSearchParams();
+            params.append('grant_type', 'authorization_code');
+            params.append('code', code);
+            params.append('redirect_uri', finalRedirectUri);
+            params.append('client_id', clientId);
+            params.append('code_verifier', code_verifier);
 
-        const httpsAgent = new https.Agent({
-            // Preferir API moderna
-            minVersion: 'TLSv1.2',
-            maxVersion: 'TLSv1.3',
-            // Lista de cifrados comunes en navegadores modernos
-            ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
-            honorCipherOrder: true
-        });
-        const browserLikeHeaders = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Origin': 'https://kick.com',
-            'Referer': 'https://kick.com/',
-            'Content-Type': 'application/x-www-form-urlencoded'
-        };
+            const httpsAgent = new https.Agent({
+                // Preferir API moderna
+                minVersion: 'TLSv1.2',
+                maxVersion: 'TLSv1.3',
+                // Lista de cifrados comunes en navegadores modernos
+                ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
+                honorCipherOrder: true
+            });
+            const browserLikeHeaders = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'Origin': 'https://kick.com',
+                'Referer': 'https://kick.com/',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            };
 
-        const tokenRes = await axios.post(tokenUrl, params.toString(), {
-            headers: browserLikeHeaders,
-            httpsAgent,
-            // timeout opcional para evitar colgados
-            timeout: 10000
-        });
+            tokenRes = await axios.post(tokenUrl, params.toString(), {
+                headers: browserLikeHeaders,
+                httpsAgent,
+                // timeout opcional para evitar colgados
+                timeout: 10000
+            });
+        }
 
         const tokenData = tokenRes.data;
         console.log('Token obtenido de Kick: status', tokenRes.status);
