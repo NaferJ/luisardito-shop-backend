@@ -81,6 +81,13 @@ exports.callbackKick = async (req, res) => {
         params.append('code_verifier', code_verifier);
 
         const httpsAgent = new https.Agent({
+            // Preferir API moderna si está disponible
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.3',
+            // Lista de cifrados comunes en navegadores modernos
+            ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
+            honorCipherOrder: true,
+            // Fallback legacy (Node ignora si no aplica)
             secureProtocol: 'TLSv1_2_method'
         });
         const browserLikeHeaders = {
@@ -214,7 +221,13 @@ exports.storeTokens = async (req, res) => {
         }
 
         const userUrl = process.env.KICK_USER_API_URL || 'https://kick.com/api/v1/user';
-        const httpsAgent = new https.Agent({ secureProtocol: 'TLSv1_2_method' });
+        const httpsAgent = new https.Agent({
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.3',
+            ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
+            honorCipherOrder: true,
+            secureProtocol: 'TLSv1_2_method'
+        });
         const browserLikeHeaders = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'application/json, text/plain, */*',
