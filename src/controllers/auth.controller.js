@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
+const https  = require('https');
 const config = require('../../config');
 const { Usuario } = require('../models');
 
@@ -79,11 +80,24 @@ exports.callbackKick = async (req, res) => {
         params.append('client_id', clientId);
         params.append('code_verifier', code_verifier);
 
+        const httpsAgent = new https.Agent({
+            secureProtocol: 'TLSv1_2_method'
+        });
+        const browserLikeHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Origin': 'https://kick.com',
+            'Referer': 'https://kick.com/',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+
         const tokenRes = await axios.post(tokenUrl, params.toString(), {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Accept': 'application/json'
-            },
+            headers: browserLikeHeaders,
+            httpsAgent,
             // timeout opcional para evitar colgados
             timeout: 10000
         });
@@ -94,9 +108,10 @@ exports.callbackKick = async (req, res) => {
         // 2. Obtener datos del usuario de Kick
         const userRes = await axios.get(userUrl, {
             headers: {
-                'Authorization': `Bearer ${tokenData.access_token}`,
-                'Accept': 'application/json'
+                ...browserLikeHeaders,
+                'Authorization': `Bearer ${tokenData.access_token}`
             },
+            httpsAgent,
             timeout: 10000
         });
 
@@ -186,6 +201,102 @@ exports.callbackKick = async (req, res) => {
             });
         }
 
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
+// Recibir tokens desde el frontend (token exchange realizado en el navegador)
+exports.storeTokens = async (req, res) => {
+    try {
+        const { accessToken, refreshToken, expiresIn } = req.body || {};
+        if (!accessToken) {
+            return res.status(400).json({ error: 'accessToken requerido' });
+        }
+
+        const userUrl = process.env.KICK_USER_API_URL || 'https://kick.com/api/v1/user';
+        const httpsAgent = new https.Agent({ secureProtocol: 'TLSv1_2_method' });
+        const browserLikeHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Origin': 'https://kick.com',
+            'Referer': 'https://kick.com/'
+        };
+
+        // Obtener datos de usuario con el access token recibido
+        const userRes = await axios.get(userUrl, {
+            headers: {
+                ...browserLikeHeaders,
+                'Authorization': `Bearer ${accessToken}`
+            },
+            httpsAgent,
+            timeout: 10000
+        });
+
+        const kickUser = userRes.data;
+
+        // Upsert de usuario local
+        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.id) } });
+        let isNewUser = false;
+        if (!usuario) {
+            usuario = await Usuario.create({
+                nickname: kickUser.username,
+                email: kickUser.email || `${kickUser.username}@kick.user`,
+                puntos: 1000,
+                rol_id: 2,
+                user_id_ext: String(kickUser.id),
+                password_hash: null,
+                kick_data: {
+                    avatar_url: kickUser.avatar_url,
+                    username: kickUser.username
+                }
+            });
+            isNewUser = true;
+        } else {
+            await usuario.update({
+                kick_data: {
+                    avatar_url: kickUser.avatar_url,
+                    username: kickUser.username
+                }
+            });
+        }
+
+        // Emitir nuestro JWT
+        const token = jwt.sign({
+            userId: usuario.id,
+            rolId: usuario.rol_id,
+            nickname: usuario.nickname,
+            kick_id: kickUser.id
+        }, config.jwtSecret, { expiresIn: '24h' });
+
+        return res.json({
+            token,
+            usuario: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                email: usuario.email,
+                puntos: usuario.puntos,
+                rol_id: usuario.rol_id,
+                user_id_ext: usuario.user_id_ext,
+                kick_data: usuario.kick_data,
+                createdAt: usuario.createdAt,
+                updatedAt: usuario.updatedAt
+            },
+            isNewUser,
+            // opcionalmente devolver lo que el frontend nos pasó
+            provider: {
+                accessTokenExpiresIn: expiresIn,
+                hasRefreshToken: !!refreshToken
+            }
+        });
+    } catch (error) {
+        console.error('Error en storeTokens:', error?.message || error);
+        if (error.response) {
+            return res.status(400).json({ error: 'Error al obtener perfil de Kick', details: error.response.data });
+        }
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
