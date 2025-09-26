@@ -73,7 +73,6 @@ exports.callbackKick = async (req, res) => {
         console.log('Usando userUrl:', userUrl);
 
         // 1. Intercambiar código por token de acceso (con PKCE)
-        const cfProxyUrl = process.env.CF_KICK_PROXY_URL;
         // Definiciones compartidas para ambos flujos (con y sin proxy)
         const httpsAgent = new https.Agent({
             // Preferir API moderna
@@ -93,36 +92,19 @@ exports.callbackKick = async (req, res) => {
             'Origin': 'https://kick.com',
             'Referer': 'https://kick.com/'
         };
-        let tokenRes;
-        if (cfProxyUrl) {
-            console.log('Usando Cloudflare Worker proxy para token exchange:', cfProxyUrl);
-            tokenRes = await axios.post(cfProxyUrl, {
-                grant_type: 'authorization_code',
-                code,
-                redirect_uri: finalRedirectUri,
-                client_id: clientId,
-                code_verifier
-            }, {
-                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                timeout: 10000
-            });
-        } else {
-            // Fallback directo a Kick con x-www-form-urlencoded y headers tipo navegador
-            const params = new URLSearchParams();
-            params.append('grant_type', 'authorization_code');
-            params.append('code', code);
-            params.append('redirect_uri', finalRedirectUri);
-            params.append('client_id', clientId);
-            params.append('code_verifier', code_verifier);
+        // Intercambio directo a Kick con x-www-form-urlencoded y headers tipo navegador
+        const params = new URLSearchParams();
+        params.append('grant_type', 'authorization_code');
+        params.append('code', code);
+        params.append('redirect_uri', finalRedirectUri);
+        params.append('client_id', clientId);
+        params.append('code_verifier', code_verifier);
 
-
-            tokenRes = await axios.post(tokenUrl, params.toString(), {
-                headers: browserLikeHeaders,
-                httpsAgent,
-                // timeout opcional para evitar colgados
-                timeout: 10000
-            });
-        }
+        const tokenRes = await axios.post(tokenUrl, params.toString(), {
+            headers: browserLikeHeaders,
+            httpsAgent,
+            timeout: 10000
+        });
 
         const tokenData = tokenRes.data;
         console.log('Token obtenido de Kick: status', tokenRes.status);

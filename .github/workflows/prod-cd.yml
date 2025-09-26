@@ -77,7 +77,6 @@ jobs:
             echo "KICK_CLIENT_ID=${{ secrets.PROD_KICK_CLIENT_ID }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_SECRET=${{ secrets.PROD_KICK_CLIENT_SECRET }}" >> "$ENV_PATH"
             echo "KICK_REDIRECT_URI=${{ secrets.PROD_KICK_REDIRECT_URI }}" >> "$ENV_PATH"
-            echo "CF_KICK_PROXY_URL=${{ secrets.PROD_CF_KICK_PROXY_URL }}" >> "$ENV_PATH"
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"
