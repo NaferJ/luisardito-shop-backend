@@ -74,6 +74,25 @@ exports.callbackKick = async (req, res) => {
 
         // 1. Intercambiar código por token de acceso (con PKCE)
         const cfProxyUrl = process.env.CF_KICK_PROXY_URL;
+        // Definiciones compartidas para ambos flujos (con y sin proxy)
+        const httpsAgent = new https.Agent({
+            // Preferir API moderna
+            minVersion: 'TLSv1.2',
+            maxVersion: 'TLSv1.3',
+            // Lista de cifrados comunes en navegadores modernos
+            ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
+            honorCipherOrder: true
+        });
+        const browserLikeHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Origin': 'https://kick.com',
+            'Referer': 'https://kick.com/'
+        };
         let tokenRes;
         if (cfProxyUrl) {
             console.log('Usando Cloudflare Worker proxy para token exchange:', cfProxyUrl);
@@ -96,25 +115,6 @@ exports.callbackKick = async (req, res) => {
             params.append('client_id', clientId);
             params.append('code_verifier', code_verifier);
 
-            const httpsAgent = new https.Agent({
-                // Preferir API moderna
-                minVersion: 'TLSv1.2',
-                maxVersion: 'TLSv1.3',
-                // Lista de cifrados comunes en navegadores modernos
-                ciphers: 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305',
-                honorCipherOrder: true
-            });
-            const browserLikeHeaders = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'application/json, text/plain, */*',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'Origin': 'https://kick.com',
-                'Referer': 'https://kick.com/',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            };
 
             tokenRes = await axios.post(tokenUrl, params.toString(), {
                 headers: browserLikeHeaders,
