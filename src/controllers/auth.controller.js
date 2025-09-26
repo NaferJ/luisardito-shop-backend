@@ -44,51 +44,68 @@ exports.redirectKick = (req, res) => {
 // Callback de Kick OAuth
 exports.callbackKick = async (req, res) => {
     try {
-        const { code, redirect_uri, code_verifier } = req.body;
+        const { code, redirect_uri, code_verifier } = req.body || {};
 
         if (!code) {
             return res.status(400).json({ error: 'Código de autorización requerido' });
         }
-
         if (!code_verifier) {
             return res.status(400).json({ error: 'Code verifier requerido para PKCE' });
+        }
+        const finalRedirectUri = redirect_uri || config.kick.redirectUri;
+        if (!finalRedirectUri) {
+            return res.status(400).json({ error: 'redirect_uri faltante' });
+        }
+
+        const tokenUrl = process.env.KICK_OAUTH_TOKEN_URL || 'https://kick.com/oauth/token';
+        const userUrl = process.env.KICK_USER_API_URL || 'https://kick.com/api/v1/user';
+        const clientId = process.env.KICK_CLIENT_ID || config.kick.clientId;
+
+        if (!clientId) {
+            console.error('Falta KICK_CLIENT_ID en variables de entorno/config');
+            return res.status(500).json({ error: 'Configuración del proveedor incompleta (client_id)' });
         }
 
         console.log('Procesando callback de Kick con código:', code);
         console.log('PKCE code_verifier presente:', !!code_verifier);
+        console.log('Usando tokenUrl:', tokenUrl);
+        console.log('Usando userUrl:', userUrl);
 
-        // 1. Intercambiar código por token de acceso (con PKCE)
-        const tokenRes = await axios.post(process.env.KICK_OAUTH_TOKEN_URL, {
-            client_id: process.env.KICK_CLIENT_ID,
-            client_secret: process.env.KICK_CLIENT_SECRET,
-            grant_type: 'authorization_code',
-            code: code,
-            redirect_uri: redirect_uri,
-            code_verifier: code_verifier
-        }, {
+        // 1. Intercambiar código por token de acceso (con PKCE) usando x-www-form-urlencoded
+        const params = new URLSearchParams();
+        params.append('grant_type', 'authorization_code');
+        params.append('code', code);
+        params.append('redirect_uri', finalRedirectUri);
+        params.append('client_id', clientId);
+        params.append('code_verifier', code_verifier);
+
+        const tokenRes = await axios.post(tokenUrl, params.toString(), {
             headers: {
-                'Content-Type': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
                 'Accept': 'application/json'
-            }
+            },
+            // timeout opcional para evitar colgados
+            timeout: 10000
         });
 
         const tokenData = tokenRes.data;
-        console.log('Token obtenido de Kick');
+        console.log('Token obtenido de Kick: status', tokenRes.status);
 
         // 2. Obtener datos del usuario de Kick
-        const userRes = await axios.get(process.env.KICK_USER_API_URL, {
+        const userRes = await axios.get(userUrl, {
             headers: {
                 'Authorization': `Bearer ${tokenData.access_token}`,
                 'Accept': 'application/json'
-            }
+            },
+            timeout: 10000
         });
 
         const kickUser = userRes.data;
-        console.log('Datos de usuario obtenidos:', kickUser.username);
+        console.log('Datos de usuario obtenidos para:', kickUser?.username || kickUser?.id);
 
         // 3. Buscar usuario existente por user_id_ext (ID de Kick)
         let usuario = await Usuario.findOne({
-            where: { user_id_ext: kickUser.id.toString() }
+            where: { user_id_ext: String(kickUser.id) }
         });
 
         let isNewUser = false;
@@ -102,7 +119,7 @@ exports.callbackKick = async (req, res) => {
                 email: kickUser.email || `${kickUser.username}@kick.user`,
                 puntos: 1000, // Puntos iniciales para usuarios de Kick
                 rol_id: 2, // rol_id 2 para usuarios de Kick
-                user_id_ext: kickUser.id.toString(),
+                user_id_ext: String(kickUser.id),
                 password_hash: null, // Sin password para usuarios OAuth
                 kick_data: { 
                     avatar_url: kickUser.avatar_url,
@@ -159,7 +176,7 @@ exports.callbackKick = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en callback de Kick:', error);
+        console.error('Error en callback de Kick:', error?.message || error);
 
         if (error.response) {
             console.error('Error de API:', error.response.status, error.response.data);
@@ -169,6 +186,6 @@ exports.callbackKick = async (req, res) => {
             });
         }
 
-        res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
