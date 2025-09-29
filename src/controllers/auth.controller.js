@@ -92,16 +92,21 @@ exports.callbackKick = async (req, res) => {
             'Origin': 'https://kick.com',
             'Referer': 'https://kick.com/'
         };
-        // Intercambio directo a Kick con x-www-form-urlencoded y headers tipo navegador
-        const params = new URLSearchParams();
-        params.append('grant_type', 'authorization_code');
-        params.append('code', code);
-        params.append('redirect_uri', finalRedirectUri);
-        params.append('client_id', clientId);
-        params.append('code_verifier', code_verifier);
+        // Intercambio directo a Kick con x-www-form-urlencoded y headers mínimos
+        const params = new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: finalRedirectUri,
+            client_id: clientId,
+            code_verifier
+        });
 
         const tokenRes = await axios.post(tokenUrl, params.toString(), {
-            headers: browserLikeHeaders,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+            },
             httpsAgent,
             timeout: 10000
         });
@@ -112,8 +117,9 @@ exports.callbackKick = async (req, res) => {
         // 2. Obtener datos del usuario de Kick
         const userRes = await axios.get(userUrl, {
             headers: {
-                ...browserLikeHeaders,
-                'Authorization': `Bearer ${tokenData.access_token}`
+                'Accept': 'application/json',
+                'Authorization': `Bearer ${tokenData.access_token}`,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
             },
             httpsAgent,
             timeout: 10000
@@ -199,9 +205,10 @@ exports.callbackKick = async (req, res) => {
 
         if (error.response) {
             console.error('Error de API:', error.response.status, error.response.data);
-            return res.status(400).json({ 
+            return res.status(error.response.status === 400 || error.response.status === 401 ? 400 : 502).json({
                 error: 'Error al comunicarse con Kick',
-                details: error.response.data 
+                provider_status: error.response.status,
+                details: error.response.data
             });
         }
 
