@@ -5,7 +5,7 @@ router.post('/register', authCtrl.registerLocal);
 router.post('/login',    authCtrl.loginLocal);
 
 router.get('/kick',      authCtrl.redirectKick);
-router.post('/kick-callback', authCtrl.callbackKick);
+router.get('/kick-callback', authCtrl.callbackKick);
 router.post('/store-tokens', authCtrl.storeTokens);
 
 module.exports = router;
