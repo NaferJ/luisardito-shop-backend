@@ -209,5 +209,3 @@ KICK_REDIRECT_URI=http://localhost:3001/auth/kick/callback
 2. Crea migraciones y seeders según necesites
 3. Desarrolla y prueba localmente
 4. Haz commit de tus cambios (sin incluir archivos .env)
-
-¿Necesitas ayuda? Revisa los logs o contacta al equipo.
