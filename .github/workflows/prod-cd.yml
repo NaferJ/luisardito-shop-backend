@@ -77,6 +77,11 @@ jobs:
             echo "KICK_CLIENT_ID=${{ secrets.PROD_KICK_CLIENT_ID }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_SECRET=${{ secrets.PROD_KICK_CLIENT_SECRET }}" >> "$ENV_PATH"
             echo "KICK_REDIRECT_URI=${{ secrets.PROD_KICK_REDIRECT_URI }}" >> "$ENV_PATH"
+            # Kick API/OAuth hosts (non-PROD-prefixed repo secrets as requested)
+            echo "KICK_API_BASE_URL=${{ secrets.KICK_API_BASE_URL }}" >> "$ENV_PATH"
+            echo "KICK_OAUTH_AUTHORIZE_URL=${{ secrets.KICK_OAUTH_AUTHORIZE_URL }}" >> "$ENV_PATH"
+            echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
+            echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"

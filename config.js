@@ -26,9 +26,15 @@ module.exports = {
     },
     jwtSecret: process.env.JWT_SECRET,
     kick: {
-        clientId:     process.env.KICK_CLIENT_ID,
-        clientSecret: process.env.KICK_CLIENT_SECRET,
-        redirectUri:  process.env.KICK_REDIRECT_URI
+        clientId:       process.env.KICK_CLIENT_ID,
+        clientSecret:   process.env.KICK_CLIENT_SECRET,
+        redirectUri:    process.env.KICK_REDIRECT_URI,
+        // API base (host distinto al de OAuth). Ajusta según la doc de APIs públicas.
+        apiBaseUrl:     process.env.KICK_API_BASE_URL || 'https://api.kick.com',
+        // Permite override por entorno si fuera necesario
+        oauthAuthorize: process.env.KICK_OAUTH_AUTHORIZE_URL || 'https://id.kick.com/oauth/authorize',
+        oauthToken:     process.env.KICK_OAUTH_TOKEN_URL     || 'https://id.kick.com/oauth/token',
+        oauthRevoke:    process.env.KICK_OAUTH_REVOKE_URL    || 'https://id.kick.com/oauth/revoke'
     },
     port: Number(process.env.PORT || 3000)
 };
