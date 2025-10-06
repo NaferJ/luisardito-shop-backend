@@ -12,12 +12,17 @@ const historialPuntosRoutes = require("./src/routes/historialPuntos.routes");
 
 const app = express();
 
+// A:
+app.use(cors({
+    origin: ['https://www.luisardito.com', 'https://www.shop.luisardito.com', 'http://localhost:3000'],
+    credentials: true
+}));
+
 app.get("/", (req, res) => {
   res.send("🚀 Luisardito Shop Backend en funcionamiento");
 });
 
 // Middleware global
-app.use(cors());
 app.use(express.json());
 
 // Rutas principales
