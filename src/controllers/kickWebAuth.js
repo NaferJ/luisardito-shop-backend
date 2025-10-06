@@ -13,49 +13,67 @@ class KickWebAuth {
     // Iniciar sesión web y capturar cookies
     async loginWithCredentials(username, password) {
         try {
-            this.browser = await puppeteer.launch({
+            // Configuración para usar Chrome del sistema
+            const browserConfig = {
                 headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
-            });
+                executablePath: process.env.CHROMIUM_PATH || '/usr/bin/chromium-browser',
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor'
+                ]
+            };
 
+            this.browser = await puppeteer.launch(browserConfig);
             const page = await this.browser.newPage();
 
+            // User agent real
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
             // Ir a la página de login
-            await page.goto('https://kick.com/login', { waitUntil: 'networkidle0' });
+            await page.goto('https://kick.com/login', { waitUntil: 'networkidle0', timeout: 30000 });
 
-            // Llenar formulario de login
-            await page.type('input[name="email"]', username);
-            await page.type('input[name="password"]', password);
+            // Esperar y llenar formulario
+            await page.waitForSelector('input[name="email"]', { timeout: 10000 });
+            await page.type('input[name="email"]', username, { delay: 100 });
+            await page.type('input[name="password"]', password, { delay: 100 });
 
-            // Enviar formulario y esperar navegación
+            // Enviar formulario
             await Promise.all([
                 page.click('button[type="submit"]'),
-                page.waitForNavigation({ waitUntil: 'networkidle0' })
+                page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 })
             ]);
 
-            // Verificar login exitoso (buscar elementos que indican sesión activa)
-            const isLoggedIn = await page.$('.user-menu') !== null;
+            // Verificar login exitoso
+            const isLoggedIn = await page.evaluate(() => {
+                return document.querySelector('[data-testid="user-menu"]') !== null ||
+                    document.querySelector('.user-dropdown') !== null ||
+                    window.location.pathname.includes('/dashboard');
+            });
 
             if (!isLoggedIn) {
-                throw new Error('Login fallido - credenciales inválidas');
+                throw new Error('Login fallido - verificar credenciales');
             }
 
-            // Capturar todas las cookies
+            // Capturar cookies
             const cookies = await page.cookies();
-            const sessionCookie = cookies.find(c => c.name.includes('session') || c.name.includes('auth'));
+            const sessionCookie = cookies.find(c =>
+                c.name.includes('session') ||
+                c.name.includes('auth') ||
+                c.name === 'laravel_session'
+            );
 
-            if (!sessionCookie) {
-                throw new Error('No se encontró cookie de sesión');
-            }
-
-            // Obtener datos del usuario usando endpoints internos
-            const userData = await this.getUserDataWithCookie(cookies);
+            // Obtener datos del usuario
+            const userData = await this.getUserDataWithCookie(cookies, page);
 
             await this.browser.close();
 
             return {
                 cookies: cookies,
-                sessionToken: sessionCookie.value,
+                sessionToken: sessionCookie?.value || 'multiple_cookies',
                 userData: userData
             };
 
