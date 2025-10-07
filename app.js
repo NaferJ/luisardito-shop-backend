@@ -14,10 +14,8 @@ const app = express();
 
 // A:
 app.use(cors({
-    origin: ['https://www.luisardito.com', 'https://www.shop.luisardito.com'],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    origin: ['https://www.luisardito.com', 'https://www.shop.luisardito.com', 'http://localhost:3000'],
+    credentials: true
 }));
 
 app.get("/", (req, res) => {
