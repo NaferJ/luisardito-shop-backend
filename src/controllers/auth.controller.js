@@ -5,7 +5,7 @@ const https  = require('https');
 const config = require('../../config');
 const { Usuario } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
-const KickWebAuth = require('./kickWebAuth');
+const KickWebAuth = require('./auth/kickWebAuth');
 const kickWebAuth = new KickWebAuth();
 
 // Registro local
