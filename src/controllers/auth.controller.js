@@ -169,7 +169,7 @@ exports.callbackKick = async (req, res) => {
 
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
-        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.id) } });
+        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
         let isNewUser = false;
 
         if (!usuario) {
@@ -265,7 +265,7 @@ exports.storeTokens = async (req, res) => {
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
         // Upsert de usuario local
-        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.id) } });
+        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
         let isNewUser = false;
         if (!usuario) {
             usuario = await Usuario.create({
