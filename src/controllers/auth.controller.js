@@ -137,7 +137,7 @@ exports.callbackKick = async (req, res) => {
         const tokenData = tokenRes.data;
 
         const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-        const userUrl = `${userApiBase}/v1/user`;
+        const userUrl = `${userApiBase}/public/v1/users`;
         console.log('[Kick OAuth][callbackKick] URL para obtener perfil de usuario:', userUrl);
 
         const userRes = await axios.get(userUrl, {
@@ -232,7 +232,7 @@ exports.storeTokens = async (req, res) => {
         }
 
         const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-        const userUrl = `${userApiBase}/v1/user`;
+        const userUrl = `${userApiBase}/public/v1/users`;
 
         // Obtener datos de usuario con el access token recibido
         const userRes = await axios.get(userUrl, {
