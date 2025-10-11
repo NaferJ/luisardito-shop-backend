@@ -6,10 +6,30 @@ const config = require('../../config');
 const { Usuario } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
 
-// Registro local
 exports.registerLocal = async (req, res) => {
     try {
-        const { nickname, email, password } = req.body;
+        let { nickname, email, password } = req.body;
+
+        if (!nickname || !email || !password) {
+            return res.status(400).json({ error: 'Todos los campos son obligatorios' });
+        }
+
+        nickname = nickname.trim().toLowerCase();
+        email = email.trim().toLowerCase();
+
+        const developers = ['naferjml@gmail.com'];
+        if (!developers.includes(email)) {
+            return res.status(403).json({ error: 'Registro manual solo para desarrolladores' });
+        }
+
+        // Verificar duplicados
+        const existe = await Usuario.findOne({
+            where: { [Usuario.sequelize.Op.or]: [{ nickname }, { email }] }
+        });
+        if (existe) {
+            return res.status(409).json({ error: 'El nickname o email ya están registrados' });
+        }
+
         const hash = await bcrypt.hash(password, 10);
         const user = await Usuario.create({ nickname, email, password_hash: hash });
         res.status(201).json({ message: 'Usuario creado', userId: user.id });
@@ -154,15 +174,15 @@ exports.callbackKick = async (req, res) => {
 
         if (!usuario) {
             usuario = await Usuario.create({
-                nickname: kickUser.username,
-                email: kickUser.email || `${kickUser.username}@kick.user`,
+                nickname: kickUser.name,
+                email: kickUser.email || `${kickUser.name}@kick.user`,
                 puntos: 1000,
                 rol_id: 2,
-                user_id_ext: String(kickUser.id),
+                user_id_ext: String(kickUser.user_id),
                 password_hash: null,
                 kick_data: {
-                    avatar_url: kickUser.avatar_url,
-                    username: kickUser.username
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
                 }
             });
             isNewUser = true;
@@ -170,8 +190,8 @@ exports.callbackKick = async (req, res) => {
         } else {
             await usuario.update({
                 kick_data: {
-                    avatar_url: kickUser.avatar_url,
-                    username: kickUser.username
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
                 }
             });
             console.log('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
@@ -249,23 +269,23 @@ exports.storeTokens = async (req, res) => {
         let isNewUser = false;
         if (!usuario) {
             usuario = await Usuario.create({
-                nickname: kickUser.username,
-                email: kickUser.email || `${kickUser.username}@kick.user`,
+                nickname: kickUser.name,
+                email: kickUser.email || `${kickUser.name}@kick.user`,
                 puntos: 1000,
                 rol_id: 2,
-                user_id_ext: String(kickUser.id),
+                user_id_ext: String(kickUser.user_id),
                 password_hash: null,
                 kick_data: {
-                    avatar_url: kickUser.avatar_url,
-                    username: kickUser.username
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
                 }
             });
             isNewUser = true;
         } else {
             await usuario.update({
                 kick_data: {
-                    avatar_url: kickUser.avatar_url,
-                    username: kickUser.username
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
                 }
             });
         }
