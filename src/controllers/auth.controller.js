@@ -188,6 +188,19 @@ exports.callbackKick = async (req, res) => {
             isNewUser = true;
             console.log('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
         } else {
+            const colision = await Usuario.findOne({
+                where: {
+                    [Usuario.sequelize.Op.or]: [
+                        { email: kickUser.email },
+                        { nickname: kickUser.name }
+                    ],
+                    id: { [Usuario.sequelize.Op.ne]: usuario.id }
+                }
+            });
+            if (colision) {
+                return res.status(409).json({ error: 'El email o nickname ya están en uso por otro usuario.' });
+            }
+
             await usuario.update({
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
@@ -203,7 +216,7 @@ exports.callbackKick = async (req, res) => {
             userId: usuario.id,
             rolId: usuario.rol_id,
             nickname: usuario.nickname,
-            kick_id: kickUser.id
+            kick_id: kickUser.user_id
         }, config.jwtSecret, { expiresIn: '24h' });
 
         console.log('[Kick OAuth][callbackKick] JWT emitido:', token);
@@ -223,9 +236,9 @@ exports.callbackKick = async (req, res) => {
             },
             isNewUser,
             kickProfile: {
-                username: kickUser.username,
-                id: kickUser.id,
-                avatar_url: kickUser.avatar_url
+                username: kickUser.name,
+                id: kickUser.user_id,
+                avatar_url: kickUser.profile_picture
             }
         });
 
@@ -299,7 +312,7 @@ exports.storeTokens = async (req, res) => {
             userId: usuario.id,
             rolId: usuario.rol_id,
             nickname: usuario.nickname,
-            kick_id: kickUser.id
+            kick_id: kickUser.user_id
         }, config.jwtSecret, { expiresIn: '24h' });
 
         return res.json({
@@ -316,10 +329,10 @@ exports.storeTokens = async (req, res) => {
                 updatedAt: usuario.updatedAt
             },
             isNewUser,
-            // opcionalmente devolver lo que el frontend nos pasó
-            provider: {
-                accessTokenExpiresIn: expiresIn,
-                hasRefreshToken: !!refreshToken
+            kickProfile: {
+                username: kickUser.name,
+                id: kickUser.user_id,
+                avatar_url: kickUser.profile_picture
             }
         });
     } catch (error) {
