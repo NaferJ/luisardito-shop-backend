@@ -184,40 +184,40 @@ exports.callbackKick = async (req, res) => {
                 }
             });
             if (colision) {
-                console.log('[Kick OAuth][callbackKick] Colisión detectada al crear usuario:', {
+                console.log('[Kick OAuth][callbackKick] Colisión detectada, usando usuario existente:', {
                     email: kickUser.email,
                     nickname: kickUser.name
                 });
-                return res.status(409).json({ error: 'El email o nickname ya están en uso por otro usuario.' });
+                usuario = colision;
+                isNewUser = false;
+            } else {
+                console.log('[Kick OAuth][callbackKick] Datos a crear usuario:', {
+                    nickname: kickUser.name,
+                    email: kickUser.email || `${kickUser.name}@kick.user`,
+                    puntos: 1000,
+                    rol_id: 2,
+                    user_id_ext: String(kickUser.user_id),
+                    password_hash: null,
+                    kick_data: {
+                        avatar_url: kickUser.profile_picture,
+                        username: kickUser.name
+                    }
+                });
+                usuario = await Usuario.create({
+                    nickname: kickUser.name,
+                    email: kickUser.email || `${kickUser.name}@kick.user`,
+                    puntos: 1000,
+                    rol_id: 2,
+                    user_id_ext: String(kickUser.user_id),
+                    password_hash: null,
+                    kick_data: {
+                        avatar_url: kickUser.profile_picture,
+                        username: kickUser.name
+                    }
+                });
+                isNewUser = true;
+                console.log('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
             }
-
-            // Log de datos antes de crear usuario
-            console.log('[Kick OAuth][callbackKick] Datos a crear usuario:', {
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                puntos: 1000,
-                rol_id: 2,
-                user_id_ext: String(kickUser.user_id),
-                password_hash: null,
-                kick_data: {
-                    avatar_url: kickUser.profile_picture,
-                    username: kickUser.name
-                }
-            });
-            usuario = await Usuario.create({
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                puntos: 1000,
-                rol_id: 2,
-                user_id_ext: String(kickUser.user_id),
-                password_hash: null,
-                kick_data: {
-                    avatar_url: kickUser.profile_picture,
-                    username: kickUser.name
-                }
-            });
-            isNewUser = true;
-            console.log('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
         } else {
             const colision = await Usuario.findOne({
                 where: {
