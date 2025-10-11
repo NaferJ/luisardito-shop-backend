@@ -5,6 +5,7 @@ const https  = require('https');
 const config = require('../../config');
 const { Usuario } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
+const { Op } = require('sequelize');
 
 exports.registerLocal = async (req, res) => {
     try {
@@ -24,7 +25,7 @@ exports.registerLocal = async (req, res) => {
 
         // Verificar duplicados
         const existe = await Usuario.findOne({
-            where: { [Usuario.sequelize.Op.or]: [{ nickname }, { email }] }
+            where: { [Op.or]: [{ nickname }, { email }] }
         });
         if (existe) {
             return res.status(409).json({ error: 'El nickname o email ya están registrados' });
@@ -176,7 +177,7 @@ exports.callbackKick = async (req, res) => {
             // Verificar colisión ANTES de crear usuario
             const colision = await Usuario.findOne({
                 where: {
-                    [Usuario.sequelize.Op.or]: [
+                    [Op.or]: [
                         { email: kickUser.email },
                         { nickname: kickUser.name }
                     ]
@@ -220,11 +221,11 @@ exports.callbackKick = async (req, res) => {
         } else {
             const colision = await Usuario.findOne({
                 where: {
-                    [Usuario.sequelize.Op.or]: [
+                    [Op.or]: [
                         { email: kickUser.email },
                         { nickname: kickUser.name }
                     ],
-                    id: { [Usuario.sequelize.Op.ne]: usuario.id }
+                    id: { [Op.ne]: usuario.id }
                 }
             });
             if (colision) {
