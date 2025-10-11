@@ -173,6 +173,19 @@ exports.callbackKick = async (req, res) => {
         let isNewUser = false;
 
         if (!usuario) {
+            // Log de datos antes de crear usuario
+            console.log('[Kick OAuth][callbackKick] Datos a crear usuario:', {
+                nickname: kickUser.name,
+                email: kickUser.email || `${kickUser.name}@kick.user`,
+                puntos: 1000,
+                rol_id: 2,
+                user_id_ext: String(kickUser.user_id),
+                password_hash: null,
+                kick_data: {
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
+                }
+            });
             usuario = await Usuario.create({
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
@@ -200,6 +213,16 @@ exports.callbackKick = async (req, res) => {
             if (colision) {
                 return res.status(409).json({ error: 'El email o nickname ya están en uso por otro usuario.' });
             }
+
+            // Log de datos antes de actualizar usuario
+            console.log('[Kick OAuth][callbackKick] Datos a actualizar usuario:', {
+                nickname: kickUser.name,
+                email: kickUser.email || `${kickUser.name}@kick.user`,
+                kick_data: {
+                    avatar_url: kickUser.profile_picture,
+                    username: kickUser.name
+                }
+            });
 
             await usuario.update({
                 nickname: kickUser.name,
@@ -245,6 +268,11 @@ exports.callbackKick = async (req, res) => {
     } catch (error) {
         console.error('[Kick OAuth][callbackKick] Error general:', error?.message || error);
 
+        // Mostrar detalle de errores de validación de Sequelize si existen
+        if (error.errors) {
+            console.error('[Kick OAuth][callbackKick] Detalle de errores de validación:', error.errors);
+        }
+
         if (error.response) {
             console.log('[Kick OAuth][callbackKick] error.response.data:', error.response.data);
             return res.status(error.response.status).json({
@@ -254,7 +282,10 @@ exports.callbackKick = async (req, res) => {
             });
         }
 
-        return res.status(502).json({ error: 'Fallo de red con el proveedor' });
+        return res.status(502).json({
+            error: 'Fallo de red con el proveedor',
+            detalle: error.errors || error.message || error
+        });
     }
 };
 
