@@ -36,6 +36,7 @@ module.exports = {
         oauthToken:     process.env.KICK_OAUTH_TOKEN_URL     || 'https://id.kick.com/oauth/token',
         oauthRevoke:    process.env.KICK_OAUTH_REVOKE_URL    || 'https://id.kick.com/oauth/revoke'
     },
+    frontendUrl: process.env.FRONTEND_URL,
     port: Number(process.env.PORT || 3000)
 };
 

@@ -262,7 +262,8 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] JWT emitido:', token);
 
-        return res.json({
+        const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+        const callbackData = {
             token,
             usuario: {
                 id: usuario.id,
@@ -281,7 +282,14 @@ exports.callbackKick = async (req, res) => {
                 id: kickUser.user_id,
                 avatar_url: kickUser.profile_picture
             }
-        });
+        };
+
+        const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
+        const redirectUrl = `${frontendUrl}/auth/callback?data=${encodeURIComponent(encodedData)}`;
+
+        console.log('[Kick OAuth][callbackKick] Redirigiendo al frontend:', redirectUrl);
+
+        return res.redirect(redirectUrl);
 
     } catch (error) {
         console.error('[Kick OAuth][callbackKick] Error general:', error?.message || error);
