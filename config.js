@@ -39,7 +39,6 @@ module.exports = {
     port: Number(process.env.PORT || 3000)
 };
 
-// 🔍 DEBUG: Ver el resultado final
 console.log('🔍 DEBUG - Config resultante:');
 console.log('jwtSecret existe:', !!module.exports.jwtSecret);
 console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
