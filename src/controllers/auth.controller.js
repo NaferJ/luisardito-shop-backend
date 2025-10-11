@@ -173,6 +173,23 @@ exports.callbackKick = async (req, res) => {
         let isNewUser = false;
 
         if (!usuario) {
+            // Verificar colisión ANTES de crear usuario
+            const colision = await Usuario.findOne({
+                where: {
+                    [Usuario.sequelize.Op.or]: [
+                        { email: kickUser.email },
+                        { nickname: kickUser.name }
+                    ]
+                }
+            });
+            if (colision) {
+                console.log('[Kick OAuth][callbackKick] Colisión detectada al crear usuario:', {
+                    email: kickUser.email,
+                    nickname: kickUser.name
+                });
+                return res.status(409).json({ error: 'El email o nickname ya están en uso por otro usuario.' });
+            }
+
             // Log de datos antes de crear usuario
             console.log('[Kick OAuth][callbackKick] Datos a crear usuario:', {
                 nickname: kickUser.name,
@@ -271,6 +288,11 @@ exports.callbackKick = async (req, res) => {
         // Mostrar detalle de errores de validación de Sequelize si existen
         if (error.errors) {
             console.error('[Kick OAuth][callbackKick] Detalle de errores de validación:', error.errors);
+            // Responder con el mensaje de validación si es colisión de unicidad
+            const uniqueError = error.errors.find(e => e.type === 'unique violation');
+            if (uniqueError) {
+                return res.status(409).json({ error: uniqueError.message, campo: uniqueError.path, valor: uniqueError.value });
+            }
         }
 
         if (error.response) {
