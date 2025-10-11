@@ -285,6 +285,8 @@ exports.storeTokens = async (req, res) => {
             isNewUser = true;
         } else {
             await usuario.update({
+                nickname: kickUser.name,
+                email: kickUser.email || `${kickUser.name}@kick.user`,
                 kick_data: {
                     avatar_url: kickUser.profile_picture,
                     username: kickUser.name
