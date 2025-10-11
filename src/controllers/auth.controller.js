@@ -23,7 +23,7 @@ exports.loginLocal = async (req, res) => {
     try {
         const { nickname, password } = req.body;
         const user = await Usuario.findOne({ where: { nickname } });
-        if (!user || !(await bcrypt.compare(password, user.password_hash))) {
+        if (!user || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
             return res.status(401).json({ error: 'Credenciales inválidas' });
         }
         const token = jwt.sign(
