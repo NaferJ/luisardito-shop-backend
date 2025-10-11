@@ -147,7 +147,7 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] Respuesta de perfil de usuario:', userRes.data);
 
-        const kickUser = userRes.data;
+        const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
         let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.id) } });
         let isNewUser = false;
@@ -242,7 +242,7 @@ exports.storeTokens = async (req, res) => {
             timeout: 10000
         });
 
-        const kickUser = userRes.data;
+        const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
         // Upsert de usuario local
         let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.id) } });
