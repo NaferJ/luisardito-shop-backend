@@ -320,30 +320,41 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
 
-        // Auto-suscribirse a eventos de Kick
-        console.log('[Kick OAuth][callbackKick] Iniciando auto-suscripción a eventos...');
+        // Auto-suscribirse a eventos de Kick SOLO si es el broadcaster principal (Luisardito)
+        const isBroadcaster = config.kick.broadcasterId &&
+                             String(kickUserId) === String(config.kick.broadcasterId);
+
+        console.log('[Kick OAuth][callbackKick] ¿Es broadcaster principal?', isBroadcaster,
+                   `(user: ${kickUserId}, broadcaster: ${config.kick.broadcasterId})`);
 
         let autoSubscribeResult = null;
-        try {
-            autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId);
 
-            await broadcasterToken.update({
-                auto_subscribed: autoSubscribeResult.success,
-                last_subscription_attempt: new Date(),
-                subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
-            });
+        if (isBroadcaster) {
+            console.log('[Kick OAuth][callbackKick] Iniciando auto-suscripción a eventos...');
 
-            console.log('[Kick OAuth][callbackKick] Auto-suscripción:', autoSubscribeResult.success ? '✅ Exitosa' : '❌ Falló');
-            if (autoSubscribeResult.success) {
-                console.log(`[Kick OAuth][callbackKick] ${autoSubscribeResult.totalSubscribed} eventos suscritos`);
+            try {
+                autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId);
+
+                await broadcasterToken.update({
+                    auto_subscribed: autoSubscribeResult.success,
+                    last_subscription_attempt: new Date(),
+                    subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
+                });
+
+                console.log('[Kick OAuth][callbackKick] Auto-suscripción:', autoSubscribeResult.success ? '✅ Exitosa' : '❌ Falló');
+                if (autoSubscribeResult.success) {
+                    console.log(`[Kick OAuth][callbackKick] ${autoSubscribeResult.totalSubscribed} eventos suscritos`);
+                }
+            } catch (subscribeError) {
+                console.error('[Kick OAuth][callbackKick] Error en auto-suscripción:', subscribeError.message);
+                await broadcasterToken.update({
+                    auto_subscribed: false,
+                    last_subscription_attempt: new Date(),
+                    subscription_error: subscribeError.message
+                });
             }
-        } catch (subscribeError) {
-            console.error('[Kick OAuth][callbackKick] Error en auto-suscripción:', subscribeError.message);
-            await broadcasterToken.update({
-                auto_subscribed: false,
-                last_subscription_attempt: new Date(),
-                subscription_error: subscribeError.message
-            });
+        } else {
+            console.log('[Kick OAuth][callbackKick] Usuario no es broadcaster, saltando auto-suscripción');
         }
 
         // Generar access token y refresh token
