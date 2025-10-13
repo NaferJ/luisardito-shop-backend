@@ -374,6 +374,7 @@ exports.callbackKick = async (req, res) => {
 
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
         const callbackData = {
+            token: jwtAccessToken, // Retrocompatibilidad
             accessToken: jwtAccessToken,
             refreshToken: refreshTokenObj.token,
             expiresIn: 3600, // 1 hora en segundos
