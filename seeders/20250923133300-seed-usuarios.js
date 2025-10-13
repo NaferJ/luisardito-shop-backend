@@ -38,6 +38,18 @@ module.exports = {
         creado: new Date('2025-09-15 16:18:43'),
         actualizado: new Date('2025-09-15 16:43:44'),
         rol_id: 1
+      },
+      {
+        id: 5,
+        user_id_ext: null,
+        nickname: 'Luisardito',
+        email: 'luisardito@streamer.com',
+        password_hash: null, // Sin password, solo OAuth
+        puntos: 0,
+        kick_data: null,
+        creado: new Date(),
+        actualizado: new Date(),
+        rol_id: 3 // Rol streamer
       }
     ];
 
@@ -45,6 +57,6 @@ module.exports = {
   },
 
   async down(queryInterface, Sequelize) {
-    await queryInterface.bulkDelete('usuarios', { id: [2,3,4] }, {});
+    await queryInterface.bulkDelete('usuarios', { id: [2,3,4,5] }, {});
   }
 };

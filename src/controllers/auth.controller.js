@@ -3,7 +3,7 @@ const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
 const https  = require('https');
 const config = require('../../config');
-const { Usuario, KickBroadcasterToken } = require('../models');
+const { Usuario, KickBroadcasterToken, sequelize } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
 const { Op } = require('sequelize');
 const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
@@ -198,24 +198,46 @@ exports.callbackKick = async (req, res) => {
 
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
+        // Primero buscar por user_id_ext (usuario ya vinculado)
         let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
         let isNewUser = false;
 
         if (!usuario) {
-            // Verificar colisión ANTES de crear usuario
+            // Si no existe, buscar por nickname (case-insensitive) o email
             const colision = await Usuario.findOne({
                 where: {
                     [Op.or]: [
                         { email: kickUser.email },
-                        { nickname: kickUser.name }
+                        { nickname: kickUser.name },
+                        // Búsqueda case-insensitive para nickname
+                        sequelize.where(
+                            sequelize.fn('LOWER', sequelize.col('nickname')),
+                            sequelize.fn('LOWER', kickUser.name)
+                        )
                     ]
                 }
             });
+
             if (colision) {
-                console.log('[Kick OAuth][callbackKick] Colisión detectada, usando usuario existente:', {
-                    email: kickUser.email,
-                    nickname: kickUser.name
+                console.log('[Kick OAuth][callbackKick] Colisión detectada, vinculando usuario existente:', {
+                    usuario_id: colision.id,
+                    usuario_nickname: colision.nickname,
+                    kick_nickname: kickUser.name,
+                    kick_email: kickUser.email,
+                    kick_user_id: kickUser.user_id
                 });
+
+                // Vincular el user_id_ext al usuario existente
+                await colision.update({
+                    user_id_ext: String(kickUser.user_id),
+                    nickname: kickUser.name, // Actualizar con el nombre exacto de Kick
+                    email: kickUser.email || colision.email, // Actualizar email si viene de Kick
+                    kick_data: {
+                        avatar_url: kickUser.profile_picture,
+                        username: kickUser.name
+                    }
+                });
+
                 usuario = colision;
                 isNewUser = false;
             } else {
