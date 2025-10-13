@@ -9,6 +9,10 @@ const usuariosRoutes = require("./src/routes/usuarios.routes");
 const productosRoutes = require("./src/routes/productos.routes");
 const canjesRoutes = require("./src/routes/canjes.routes");
 const historialPuntosRoutes = require("./src/routes/historialPuntos.routes");
+const kickWebhookRoutes = require("./src/routes/kickWebhook.routes");
+const kickSubscriptionRoutes = require("./src/routes/kickSubscription.routes");
+const kickPointsConfigRoutes = require("./src/routes/kickPointsConfig.routes");
+const kickBroadcasterRoutes = require("./src/routes/kickBroadcaster.routes");
 
 const app = express();
 
@@ -26,6 +30,10 @@ app.use("/api/usuarios", usuariosRoutes);
 app.use("/api/productos", productosRoutes);
 app.use("/api/canjes", canjesRoutes);
 app.use("/api/historial-puntos", historialPuntosRoutes);
+app.use("/api/kick-webhook", kickWebhookRoutes);
+app.use("/api/kick", kickSubscriptionRoutes);
+app.use("/api/kick", kickPointsConfigRoutes);
+app.use("/api/kick", kickBroadcasterRoutes);
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {

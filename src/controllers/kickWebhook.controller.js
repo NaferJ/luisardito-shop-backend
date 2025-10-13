@@ -1,0 +1,637 @@
+const { verifyWebhookSignature } = require('../utils/kickWebhook.util');
+const {
+    KickWebhookEvent,
+    KickPointsConfig,
+    KickChatCooldown,
+    KickUserTracking,
+    Usuario,
+    HistorialPunto
+} = require('../models');
+const { Op } = require('sequelize');
+
+/**
+ * Controlador principal para recibir webhooks de Kick
+ */
+exports.handleWebhook = async (req, res) => {
+    try {
+        // Extraer headers del webhook
+        const messageId = req.headers['kick-event-message-id'];
+        const subscriptionId = req.headers['kick-event-subscription-id'];
+        const signature = req.headers['kick-event-signature'];
+        const timestamp = req.headers['kick-event-message-timestamp'];
+        const eventType = req.headers['kick-event-type'];
+        const eventVersion = req.headers['kick-event-version'];
+
+        console.log('[Kick Webhook] Evento recibido:', {
+            messageId,
+            subscriptionId,
+            eventType,
+            eventVersion,
+            timestamp
+        });
+
+        // Validar que existen los headers necesarios
+        if (!messageId || !signature || !timestamp || !eventType) {
+            console.error('[Kick Webhook] Faltan headers requeridos');
+            return res.status(400).json({ error: 'Faltan headers requeridos' });
+        }
+
+        // Obtener el cuerpo sin procesar como string
+        const rawBody = JSON.stringify(req.body);
+
+        // Verificar la firma del webhook
+        const isValidSignature = verifyWebhookSignature(messageId, timestamp, rawBody, signature);
+
+        if (!isValidSignature) {
+            console.error('[Kick Webhook] Firma inválida');
+            return res.status(401).json({ error: 'Firma inválida' });
+        }
+
+        console.log('[Kick Webhook] Firma verificada correctamente');
+
+        // Verificar si el evento ya fue procesado (idempotencia)
+        const existingEvent = await KickWebhookEvent.findOne({
+            where: { message_id: messageId }
+        });
+
+        if (existingEvent) {
+            console.log('[Kick Webhook] Evento duplicado, ya fue procesado:', messageId);
+            return res.status(200).json({ message: 'Evento ya procesado previamente' });
+        }
+
+        // Guardar el evento en la base de datos
+        await KickWebhookEvent.create({
+            message_id: messageId,
+            subscription_id: subscriptionId,
+            event_type: eventType,
+            event_version: eventVersion,
+            message_timestamp: new Date(timestamp),
+            payload: req.body,
+            processed: false
+        });
+
+        // Procesar el evento según su tipo
+        await processWebhookEvent(eventType, eventVersion, req.body, {
+            messageId,
+            subscriptionId,
+            timestamp
+        });
+
+        // Marcar como procesado
+        await KickWebhookEvent.update(
+            { processed: true, processed_at: new Date() },
+            { where: { message_id: messageId } }
+        );
+
+        // Responder con 200 para confirmar recepción
+        return res.status(200).json({ message: 'Webhook procesado correctamente' });
+
+    } catch (error) {
+        console.error('[Kick Webhook] Error procesando webhook:', error.message);
+        return res.status(500).json({ error: 'Error interno al procesar webhook' });
+    }
+};
+
+/**
+ * Procesa el evento según su tipo
+ * @param {string} eventType - Tipo de evento (ej: chat.message.sent)
+ * @param {string} eventVersion - Versión del evento
+ * @param {object} payload - Datos del evento
+ * @param {object} metadata - Metadatos del webhook (messageId, subscriptionId, timestamp)
+ */
+async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
+    console.log(`[Kick Webhook] Procesando evento ${eventType} v${eventVersion}`, payload);
+
+    switch (eventType) {
+        case 'chat.message.sent':
+            await handleChatMessage(payload, metadata);
+            break;
+
+        case 'channel.followed':
+            await handleChannelFollowed(payload, metadata);
+            break;
+
+        case 'channel.subscription.new':
+            await handleNewSubscription(payload, metadata);
+            break;
+
+        case 'channel.subscription.renewal':
+            await handleSubscriptionRenewal(payload, metadata);
+            break;
+
+        case 'channel.subscription.gifts':
+            await handleSubscriptionGifts(payload, metadata);
+            break;
+
+        case 'livestream.status.updated':
+            await handleLivestreamStatusUpdated(payload, metadata);
+            break;
+
+        case 'livestream.metadata.updated':
+            await handleLivestreamMetadataUpdated(payload, metadata);
+            break;
+
+        case 'moderation.banned':
+            await handleModerationBanned(payload, metadata);
+            break;
+
+        default:
+            console.log(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
+    }
+}
+
+// ============================================================================
+// Handlers para cada tipo de evento
+// ============================================================================
+
+/**
+ * Maneja mensajes de chat
+ */
+async function handleChatMessage(payload, metadata) {
+    try {
+        const sender = payload.sender;
+        const kickUserId = String(sender.user_id);
+        const kickUsername = sender.username;
+
+        console.log('[Kick Webhook][Chat Message]', {
+            messageId: payload.message_id,
+            sender: kickUsername,
+            content: payload.content,
+            broadcaster: payload.broadcaster.username
+        });
+
+        // Verificar si el usuario existe en nuestra BD
+        const usuario = await Usuario.findOne({
+            where: { user_id_ext: kickUserId }
+        });
+
+        if (!usuario) {
+            console.log(`[Kick Webhook][Chat Message] Usuario ${kickUsername} no registrado en la BD`);
+            return;
+        }
+
+        // Obtener configuración de puntos
+        const configs = await KickPointsConfig.findAll({
+            where: { enabled: true }
+        });
+
+        const configMap = {};
+        configs.forEach(c => {
+            configMap[c.config_key] = c.config_value;
+        });
+
+        // Determinar si es suscriptor
+        const userTracking = await KickUserTracking.findOne({
+            where: { kick_user_id: kickUserId }
+        });
+
+        const isSubscriber = userTracking?.is_subscribed || false;
+        const pointsKey = isSubscriber ? 'chat_points_subscriber' : 'chat_points_regular';
+        const pointsToAward = configMap[pointsKey] || 0;
+
+        if (pointsToAward <= 0) {
+            console.log('[Kick Webhook][Chat Message] Puntos por chat deshabilitados');
+            return;
+        }
+
+        // Verificar cooldown (5 minutos)
+        const now = new Date();
+        const cooldown = await KickChatCooldown.findOne({
+            where: { kick_user_id: kickUserId }
+        });
+
+        if (cooldown && cooldown.cooldown_expires_at > now) {
+            console.log(`[Kick Webhook][Chat Message] Usuario ${kickUsername} en cooldown hasta ${cooldown.cooldown_expires_at}`);
+            return;
+        }
+
+        // Otorgar puntos
+        await usuario.increment('puntos', { by: pointsToAward });
+
+        // Registrar en historial
+        await HistorialPunto.create({
+            usuario_id: usuario.id,
+            puntos: pointsToAward,
+            tipo: 'ganado',
+            concepto: `Mensaje en chat (${isSubscriber ? 'suscriptor' : 'regular'})`,
+            kick_event_data: {
+                event_type: 'chat.message.sent',
+                message_id: payload.message_id,
+                kick_user_id: kickUserId,
+                kick_username: kickUsername
+            }
+        });
+
+        // Actualizar o crear cooldown
+        const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutos
+        await KickChatCooldown.upsert({
+            kick_user_id: kickUserId,
+            kick_username: kickUsername,
+            last_message_at: now,
+            cooldown_expires_at: cooldownExpiresAt
+        });
+
+        console.log(`[Kick Webhook][Chat Message] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}`);
+
+    } catch (error) {
+        console.error('[Kick Webhook][Chat Message] Error:', error.message);
+    }
+}
+
+/**
+ * Maneja nuevos seguidores
+ */
+async function handleChannelFollowed(payload, metadata) {
+    try {
+        const follower = payload.follower;
+        const kickUserId = String(follower.user_id);
+        const kickUsername = follower.username;
+
+        console.log('[Kick Webhook][Channel Followed]', {
+            broadcaster: payload.broadcaster.username,
+            follower: kickUsername
+        });
+
+        // Verificar si el usuario existe en nuestra BD
+        const usuario = await Usuario.findOne({
+            where: { user_id_ext: kickUserId }
+        });
+
+        if (!usuario) {
+            console.log(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} no registrado en la BD`);
+            return;
+        }
+
+        // Verificar si ya siguió antes (solo primera vez)
+        let userTracking = await KickUserTracking.findOne({
+            where: { kick_user_id: kickUserId }
+        });
+
+        if (userTracking && userTracking.follow_points_awarded) {
+            console.log(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} ya recibió puntos por follow anteriormente`);
+            return;
+        }
+
+        // Obtener configuración de puntos por follow
+        const config = await KickPointsConfig.findOne({
+            where: {
+                config_key: 'follow_points',
+                enabled: true
+            }
+        });
+
+        const pointsToAward = config?.config_value || 0;
+
+        if (pointsToAward <= 0) {
+            console.log('[Kick Webhook][Channel Followed] Puntos por follow deshabilitados');
+            return;
+        }
+
+        // Otorgar puntos
+        await usuario.increment('puntos', { by: pointsToAward });
+
+        // Registrar en historial
+        await HistorialPunto.create({
+            usuario_id: usuario.id,
+            puntos: pointsToAward,
+            tipo: 'ganado',
+            concepto: 'Primer follow al canal',
+            kick_event_data: {
+                event_type: 'channel.followed',
+                kick_user_id: kickUserId,
+                kick_username: kickUsername
+            }
+        });
+
+        // Actualizar o crear tracking
+        if (!userTracking) {
+            userTracking = await KickUserTracking.create({
+                kick_user_id: kickUserId,
+                kick_username: kickUsername,
+                has_followed: true,
+                first_follow_at: new Date(),
+                follow_points_awarded: true
+            });
+        } else {
+            await userTracking.update({
+                has_followed: true,
+                first_follow_at: userTracking.first_follow_at || new Date(),
+                follow_points_awarded: true
+            });
+        }
+
+        console.log(`[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow)`);
+
+    } catch (error) {
+        console.error('[Kick Webhook][Channel Followed] Error:', error.message);
+    }
+}
+
+/**
+ * Maneja nuevas suscripciones
+ */
+async function handleNewSubscription(payload, metadata) {
+    try {
+        const subscriber = payload.subscriber;
+        const kickUserId = String(subscriber.user_id);
+        const kickUsername = subscriber.username;
+        const duration = payload.duration;
+        const expiresAt = new Date(payload.expires_at);
+
+        console.log('[Kick Webhook][New Subscription]', {
+            broadcaster: payload.broadcaster.username,
+            subscriber: kickUsername,
+            duration,
+            expires_at: expiresAt
+        });
+
+        // Verificar si el usuario existe en nuestra BD
+        const usuario = await Usuario.findOne({
+            where: { user_id_ext: kickUserId }
+        });
+
+        if (!usuario) {
+            console.log(`[Kick Webhook][New Subscription] Usuario ${kickUsername} no registrado en la BD`);
+            return;
+        }
+
+        // Obtener configuración de puntos por nueva suscripción
+        const config = await KickPointsConfig.findOne({
+            where: {
+                config_key: 'subscription_new_points',
+                enabled: true
+            }
+        });
+
+        const pointsToAward = config?.config_value || 0;
+
+        if (pointsToAward > 0) {
+            // Otorgar puntos
+            await usuario.increment('puntos', { by: pointsToAward });
+
+            // Registrar en historial
+            await HistorialPunto.create({
+                usuario_id: usuario.id,
+                puntos: pointsToAward,
+                tipo: 'ganado',
+                concepto: `Nueva suscripción (${duration} ${duration === 1 ? 'mes' : 'meses'})`,
+                kick_event_data: {
+                    event_type: 'channel.subscription.new',
+                    kick_user_id: kickUserId,
+                    kick_username: kickUsername,
+                    duration,
+                    expires_at: expiresAt
+                }
+            });
+        }
+
+        // Actualizar tracking de usuario
+        await KickUserTracking.upsert({
+            kick_user_id: kickUserId,
+            kick_username: kickUsername,
+            is_subscribed: true,
+            subscription_expires_at: expiresAt,
+            subscription_duration_months: duration,
+            total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
+        });
+
+        console.log(`[Kick Webhook][New Subscription] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub hasta ${expiresAt}`);
+
+    } catch (error) {
+        console.error('[Kick Webhook][New Subscription] Error:', error.message);
+    }
+}
+
+/**
+ * Maneja renovaciones de suscripción
+ */
+async function handleSubscriptionRenewal(payload, metadata) {
+    try {
+        const subscriber = payload.subscriber;
+        const kickUserId = String(subscriber.user_id);
+        const kickUsername = subscriber.username;
+        const duration = payload.duration;
+        const expiresAt = new Date(payload.expires_at);
+
+        console.log('[Kick Webhook][Subscription Renewal]', {
+            broadcaster: payload.broadcaster.username,
+            subscriber: kickUsername,
+            duration,
+            expires_at: expiresAt
+        });
+
+        // Verificar si el usuario existe en nuestra BD
+        const usuario = await Usuario.findOne({
+            where: { user_id_ext: kickUserId }
+        });
+
+        if (!usuario) {
+            console.log(`[Kick Webhook][Subscription Renewal] Usuario ${kickUsername} no registrado en la BD`);
+            return;
+        }
+
+        // Obtener configuración de puntos por renovación
+        const config = await KickPointsConfig.findOne({
+            where: {
+                config_key: 'subscription_renewal_points',
+                enabled: true
+            }
+        });
+
+        const pointsToAward = config?.config_value || 0;
+
+        if (pointsToAward > 0) {
+            // Otorgar puntos
+            await usuario.increment('puntos', { by: pointsToAward });
+
+            // Registrar en historial
+            await HistorialPunto.create({
+                usuario_id: usuario.id,
+                puntos: pointsToAward,
+                tipo: 'ganado',
+                concepto: `Renovación de suscripción (${duration} ${duration === 1 ? 'mes' : 'meses'})`,
+                kick_event_data: {
+                    event_type: 'channel.subscription.renewal',
+                    kick_user_id: kickUserId,
+                    kick_username: kickUsername,
+                    duration,
+                    expires_at: expiresAt
+                }
+            });
+        }
+
+        // Actualizar tracking de usuario
+        await KickUserTracking.upsert({
+            kick_user_id: kickUserId,
+            kick_username: kickUsername,
+            is_subscribed: true,
+            subscription_expires_at: expiresAt,
+            subscription_duration_months: duration,
+            total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
+        });
+
+        console.log(`[Kick Webhook][Subscription Renewal] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub renovada hasta ${expiresAt}`);
+
+    } catch (error) {
+        console.error('[Kick Webhook][Subscription Renewal] Error:', error.message);
+    }
+}
+
+/**
+ * Maneja regalos de suscripciones
+ */
+async function handleSubscriptionGifts(payload, metadata) {
+    try {
+        const gifter = payload.gifter;
+        const giftees = payload.giftees || [];
+        const expiresAt = new Date(payload.expires_at);
+
+        console.log('[Kick Webhook][Subscription Gifts]', {
+            broadcaster: payload.broadcaster.username,
+            gifter: gifter.is_anonymous ? 'Anónimo' : gifter.username,
+            giftees: giftees.map(g => g.username),
+            totalGifts: giftees.length
+        });
+
+        // Obtener configuraciones de puntos
+        const configs = await KickPointsConfig.findAll({
+            where: {
+                config_key: ['gift_given_points', 'gift_received_points'],
+                enabled: true
+            }
+        });
+
+        const configMap = {};
+        configs.forEach(c => {
+            configMap[c.config_key] = c.config_value;
+        });
+
+        const pointsForGifter = configMap['gift_given_points'] || 0;
+        const pointsForGiftee = configMap['gift_received_points'] || 0;
+
+        // Otorgar puntos al que regala (si no es anónimo)
+        if (!gifter.is_anonymous && pointsForGifter > 0) {
+            const gifterKickUserId = String(gifter.user_id);
+            const gifterUsuario = await Usuario.findOne({
+                where: { user_id_ext: gifterKickUserId }
+            });
+
+            if (gifterUsuario) {
+                const totalPoints = pointsForGifter * giftees.length;
+                await gifterUsuario.increment('puntos', { by: totalPoints });
+
+                await HistorialPunto.create({
+                    usuario_id: gifterUsuario.id,
+                    puntos: totalPoints,
+                    tipo: 'ganado',
+                    concepto: `Regaló ${giftees.length} suscripción${giftees.length !== 1 ? 'es' : ''}`,
+                    kick_event_data: {
+                        event_type: 'channel.subscription.gifts',
+                        kick_user_id: gifterKickUserId,
+                        kick_username: gifter.username,
+                        gifts_count: giftees.length
+                    }
+                });
+
+                // Actualizar tracking del que regala
+                await KickUserTracking.upsert({
+                    kick_user_id: gifterKickUserId,
+                    kick_username: gifter.username,
+                    total_gifts_given: KickUserTracking.sequelize.literal(`total_gifts_given + ${giftees.length}`)
+                });
+
+                console.log(`[Kick Webhook][Subscription Gifts] ✅ ${totalPoints} puntos a ${gifter.username} por regalar ${giftees.length} subs`);
+            }
+        }
+
+        // Otorgar puntos a cada giftee
+        if (pointsForGiftee > 0) {
+            for (const giftee of giftees) {
+                const gifteeKickUserId = String(giftee.user_id);
+                const gifteeUsername = giftee.username;
+
+                const gifteeUsuario = await Usuario.findOne({
+                    where: { user_id_ext: gifteeKickUserId }
+                });
+
+                if (gifteeUsuario) {
+                    await gifteeUsuario.increment('puntos', { by: pointsForGiftee });
+
+                    await HistorialPunto.create({
+                        usuario_id: gifteeUsuario.id,
+                        puntos: pointsForGiftee,
+                        tipo: 'ganado',
+                        concepto: `Suscripción regalada recibida`,
+                        kick_event_data: {
+                            event_type: 'channel.subscription.gifts',
+                            kick_user_id: gifteeKickUserId,
+                            kick_username: gifteeUsername,
+                            gifter: gifter.is_anonymous ? 'Anónimo' : gifter.username,
+                            expires_at: expiresAt
+                        }
+                    });
+
+                    // Actualizar tracking del que recibe
+                    await KickUserTracking.upsert({
+                        kick_user_id: gifteeKickUserId,
+                        kick_username: gifteeUsername,
+                        is_subscribed: true,
+                        subscription_expires_at: expiresAt,
+                        total_gifts_received: KickUserTracking.sequelize.literal('total_gifts_received + 1'),
+                        total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
+                    });
+
+                    console.log(`[Kick Webhook][Subscription Gifts] ✅ ${pointsForGiftee} puntos a ${gifteeUsername} por recibir sub regalada`);
+                }
+            }
+        }
+
+    } catch (error) {
+        console.error('[Kick Webhook][Subscription Gifts] Error:', error.message);
+    }
+}
+
+/**
+ * Maneja cambios de estado de transmisión
+ */
+async function handleLivestreamStatusUpdated(payload, metadata) {
+    console.log('[Kick Webhook][Livestream Status]', {
+        broadcaster: payload.broadcaster.username,
+        is_live: payload.is_live,
+        title: payload.title,
+        started_at: payload.started_at,
+        ended_at: payload.ended_at
+    });
+
+    // TODO: Implementar lógica de negocio (notificar usuarios, actualizar estado, etc.)
+}
+
+/**
+ * Maneja actualizaciones de metadatos de transmisión
+ */
+async function handleLivestreamMetadataUpdated(payload, metadata) {
+    console.log('[Kick Webhook][Livestream Metadata]', {
+        broadcaster: payload.broadcaster.username,
+        title: payload.metadata.title,
+        category: payload.metadata.category?.name,
+        language: payload.metadata.language,
+        has_mature_content: payload.metadata.has_mature_content
+    });
+
+    // TODO: Implementar lógica de negocio (actualizar información de stream, etc.)
+}
+
+/**
+ * Maneja baneos de moderación
+ */
+async function handleModerationBanned(payload, metadata) {
+    console.log('[Kick Webhook][Moderation Banned]', {
+        broadcaster: payload.broadcaster.username,
+        moderator: payload.moderator.username,
+        banned_user: payload.banned_user.username,
+        reason: payload.metadata.reason,
+        expires_at: payload.metadata.expires_at
+    });
+
+    // TODO: Implementar lógica de negocio (registrar baneo, actualizar permisos, etc.)
+}

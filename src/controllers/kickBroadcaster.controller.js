@@ -1,0 +1,137 @@
+const { KickBroadcasterToken, KickEventSubscription } = require('../models');
+const { hasActiveSubscriptions } = require('../services/kickAutoSubscribe.service');
+
+/**
+ * Verifica el estado de conexión del broadcaster
+ */
+exports.getConnectionStatus = async (req, res) => {
+    try {
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: { is_active: true },
+            order: [['created_at', 'DESC']]
+        });
+
+        if (!broadcasterToken) {
+            return res.json({
+                connected: false,
+                message: 'No hay broadcaster conectado'
+            });
+        }
+
+        // Verificar suscripciones activas
+        const subscriptions = await KickEventSubscription.findAll({
+            where: {
+                broadcaster_user_id: broadcasterToken.kick_user_id,
+                status: 'active'
+            }
+        });
+
+        // Verificar si el token expiró
+        const now = new Date();
+        const isTokenExpired = broadcasterToken.token_expires_at && broadcasterToken.token_expires_at < now;
+
+        return res.json({
+            connected: true,
+            broadcaster: {
+                kick_user_id: broadcasterToken.kick_user_id,
+                kick_username: broadcasterToken.kick_username,
+                connected_at: broadcasterToken.created_at,
+                last_updated: broadcasterToken.updated_at
+            },
+            token: {
+                expires_at: broadcasterToken.token_expires_at,
+                is_expired: isTokenExpired,
+                has_refresh_token: !!broadcasterToken.refresh_token
+            },
+            subscriptions: {
+                auto_subscribed: broadcasterToken.auto_subscribed,
+                total_active: subscriptions.length,
+                last_attempt: broadcasterToken.last_subscription_attempt,
+                error: broadcasterToken.subscription_error,
+                events: subscriptions.map(s => ({
+                    event_type: s.event_type,
+                    event_version: s.event_version,
+                    subscription_id: s.subscription_id,
+                    created_at: s.created_at
+                }))
+            }
+        });
+
+    } catch (error) {
+        console.error('[Kick Broadcaster] Error obteniendo estado:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
+/**
+ * Desconecta el broadcaster (desactiva el token)
+ */
+exports.disconnect = async (req, res) => {
+    try {
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: { is_active: true },
+            order: [['created_at', 'DESC']]
+        });
+
+        if (!broadcasterToken) {
+            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+        }
+
+        await broadcasterToken.update({
+            is_active: false
+        });
+
+        // Opcional: también desactivar las suscripciones
+        await KickEventSubscription.update(
+            { status: 'inactive' },
+            {
+                where: {
+                    broadcaster_user_id: broadcasterToken.kick_user_id,
+                    status: 'active'
+                }
+            }
+        );
+
+        return res.json({
+            message: 'Broadcaster desconectado exitosamente',
+            broadcaster: broadcasterToken.kick_username
+        });
+
+    } catch (error) {
+        console.error('[Kick Broadcaster] Error desconectando:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
+/**
+ * Obtiene el token activo del broadcaster (solo para uso interno/admin)
+ */
+exports.getActiveToken = async (req, res) => {
+    try {
+        // TODO: Agregar verificación de permisos de admin
+
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: { is_active: true },
+            order: [['created_at', 'DESC']]
+        });
+
+        if (!broadcasterToken) {
+            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+        }
+
+        // No exponer el token completo por seguridad
+        return res.json({
+            kick_user_id: broadcasterToken.kick_user_id,
+            kick_username: broadcasterToken.kick_username,
+            token_preview: broadcasterToken.access_token ?
+                `${broadcasterToken.access_token.substring(0, 10)}...` : null,
+            token_expires_at: broadcasterToken.token_expires_at,
+            has_refresh_token: !!broadcasterToken.refresh_token,
+            auto_subscribed: broadcasterToken.auto_subscribed
+        });
+
+    } catch (error) {
+        console.error('[Kick Broadcaster] Error obteniendo token:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
