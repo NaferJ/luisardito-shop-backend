@@ -29,6 +29,7 @@ module.exports = {
         clientId:       process.env.KICK_CLIENT_ID,
         clientSecret:   process.env.KICK_CLIENT_SECRET,
         redirectUri:    process.env.KICK_REDIRECT_URI,
+        broadcasterId:  process.env.KICK_BROADCASTER_ID, // ID de Luisardito
         // API base (host distinto al de OAuth). Ajusta según la doc de APIs públicas.
         apiBaseUrl:     process.env.KICK_API_BASE_URL || 'https://api.kick.com',
         // Permite override por entorno si fuera necesario
