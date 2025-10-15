@@ -82,6 +82,7 @@ jobs:
             echo "KICK_OAUTH_AUTHORIZE_URL=${{ secrets.KICK_OAUTH_AUTHORIZE_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
+            echo "KICK_BROADCASTER_ID=${{ secrets.KICK_BROADCASTER_ID }}" >> "$ENV_PATH"
             echo "FRONTEND_URL=https://luisardito.com" >> "$ENV_PATH"
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
