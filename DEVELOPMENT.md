@@ -1,54 +1,254 @@
-# Guía de Desarrollo Local
+# Guía de Desarrollo - Luisardito Shop Backend
 
-Este documento te guiará para configurar y ejecutar el proyecto en tu máquina local para desarrollo.
+## 🚀 Configuración Inicial
 
-## Prerrequisitos
-
-- Docker y Docker Compose instalados
-- Node.js 18+ (para desarrollo sin Docker)
+### Prerrequisitos
+- Node.js 18+
+- Docker y Docker Compose
 - Git
 
-## Configuración Inicial
-
-### 1. Clonar el repositorio
+### Setup del Proyecto
 ```bash
-git clone <repository-url>
+# Clonar el repositorio
+git clone <repo-url>
 cd luisardito-shop-backend
-```
 
-### 2. Configurar variables de entorno
-Copia el archivo de configuración de desarrollo:
-```bash
-cp .env.development .env
-```
-
-**Importante**: Edita el archivo `.env` y actualiza las siguientes variables con tus valores reales:
-- `JWT_SECRET`: Genera una clave secreta fuerte
-- `KICK_CLIENT_ID`: Tu Client ID de desarrollo de Kick
-- `KICK_CLIENT_SECRET`: Tu Client Secret de desarrollo de Kick
-
-### 3. Instalar dependencias
-```bash
+# Instalar dependencias
 npm install
+
+# Configurar variables de entorno
+cp .env.example .env  # Ajustar según sea necesario
+
+# Levantar la base de datos
+npm run docker:db
+
+# Esperar que MySQL esté listo y configurar DB
+npm run dev:setup
 ```
 
-## Métodos de Desarrollo
+## 📊 Base de Datos y Migraciones
 
-### Opción 1: Desarrollo con Docker (Recomendado)
+### ✅ Estado Actual de Migraciones
+**PROBLEMA RESUELTO**: Las migraciones ahora están completamente sincronizadas con la estructura actual de la base de datos.
 
-**Ventajas:**
-- Mismo entorno que producción (MySQL 8.0)
-- No interfiere con tu MySQL local
-- Setup automático de base de datos
-- Aislamiento completo
+### Migraciones Disponibles
+1. **20250101000001-create-auth-tables.js** - Tablas de autenticación
+2. **20250101000002-create-core-tables.js** - Tablas principales del sistema
+3. **20250101000003-create-refresh-tokens.js** - Sistema de refresh tokens
+4. **20250101000004-create-kick-tables-1.js** - Integración con Kick (parte 1)
+5. **20250101000005-create-kick-tables-2.js** - Integración con Kick (parte 2)
+6. **20251011011630-allow-null-password-hash.js** - Soporte para usuarios OAuth
 
-**Comandos:**
+### Comandos de Base de Datos
+
 ```bash
-# Levantar todo el entorno (base de datos + API)
+# Ver estado de migraciones
+npm run migrate:status
+
+# Ejecutar migraciones pendientes
+npm run migrate
+
+# Ejecutar seeders
+npm run seed
+
+# Setup completo (migraciones + seeders)
+npm run setup-db
+
+# Reset completo de la DB
+npm run reset-db
+
+# Deshacer última migración
+npm run migrate:undo
+
+# Deshacer todas las migraciones
+npm run migrate:undo:all
+```
+
+### Para Entornos de Producción
+
+Si necesitas sincronizar migraciones en un entorno donde las tablas ya existen:
+
+```powershell
+# Windows
+.\sync-migrations.ps1 register
+.\sync-migrations.ps1 status
+```
+
+```bash
+# Linux/Mac
+./sync-migrations.sh register
+./sync-migrations.sh status
+```
+
+## 🐳 Docker
+
+### Comandos Útiles
+```bash
+# Desarrollo completo con Docker
 npm run docker:dev
 
-# Ver logs en tiempo real
+# Solo base de datos
+npm run docker:db
+
+# Ver logs del API
 npm run docker:dev:logs
+
+# Bajar contenedores
+npm run docker:dev:down
+
+# Reset completo con Docker
+npm run dev:reset
+```
+
+### Configuración de Puertos
+- **API**: Puerto 3001 (mapeado desde 3000 interno)
+- **MySQL**: Puerto 3307 (mapeado desde 3306 interno)
+
+## 🏗️ Estructura del Proyecto
+
+### Modelos Principales
+- **Usuarios**: Sistema híbrido (local + Kick OAuth)
+- **Productos**: Catálogo para sistema de puntos
+- **Canjes**: Historial de intercambios
+- **Puntos**: Sistema de recompensas completo
+
+### Integración con Kick
+- **OAuth**: Autenticación con Kick
+- **Webhooks**: Eventos en tiempo real
+- **Puntos**: Sistema automático por chat, follows, subs
+- **Tracking**: Seguimiento detallado de usuarios
+
+## 🔧 Desarrollo
+
+### Crear Nueva Migración
+```bash
+# Generar nueva migración
+npx sequelize migration:generate --name descripcion-del-cambio
+
+# Editar el archivo generado en migrations/
+# Implementar métodos up() y down()
+
+# Ejecutar la migración
+npm run migrate
+```
+
+### Crear Nuevo Seeder
+```bash
+# Generar seeder
+npx sequelize seed:generate --name nombre-del-seeder
+
+# Editar archivo en seeders/
+# Ejecutar seeders
+npm run seed
+```
+
+### Estructura de Archivos
+```
+src/
+├── controllers/     # Lógica de negocio
+├── middleware/      # Middlewares (auth, permisos)
+├── models/          # Modelos de Sequelize
+├── routes/          # Definición de rutas
+├── services/        # Servicios auxiliares
+└── utils/           # Utilidades
+```
+
+## 🔐 Autenticación
+
+### Sistema Híbrido
+- **Local**: email/password tradicional
+- **Kick OAuth**: Integración con streaming platform
+
+### Tokens
+- **JWT**: Access tokens de corta duración
+- **Refresh Tokens**: Tokens de larga duración con rotación
+
+### Permisos
+Sistema granular de roles y permisos:
+- Roles: admin, moderador, usuario
+- Permisos: granulares por funcionalidad
+
+## 🎯 Sistema de Puntos
+
+### Eventos que Otorgan Puntos
+- **Chat**: Mensajes cada 5 minutos
+- **Follow**: Primera vez que sigues
+- **Suscripción**: Nueva suscripción o renovación
+- **Regalos**: Subs regaladas
+
+### Configuración
+Los valores se configuran en `kick_points_config`:
+```sql
+SELECT * FROM kick_points_config;
+```
+
+## 🚨 Troubleshooting
+
+### Error: "Table already exists"
+```bash
+# Registrar migraciones existentes
+npm run sync:migrations register
+```
+
+### Error de Conexión a DB
+```bash
+# Verificar contenedores
+docker ps
+
+# Verificar configuración
+cat .env
+
+# Para desarrollo local
+DB_HOST=localhost
+DB_PORT=3307
+```
+
+### Verificar Estado de DB
+```bash
+# Ver tablas existentes
+docker exec -it luisardito-mysql mysql -u app -papp luisardito_shop -e "SHOW TABLES;"
+
+# Ver migraciones aplicadas
+docker exec -it luisardito-mysql mysql -u app -papp luisardito_shop -e "SELECT * FROM SequelizeMeta ORDER BY name;"
+```
+
+## 📝 Mejores Prácticas
+
+### Migraciones
+1. **Siempre** incluir método `down()` para reversibilidad
+2. **Nunca** modificar migraciones ya aplicadas en producción
+3. **Crear nueva migración** para cualquier cambio de schema
+4. **Probar** migraciones en desarrollo antes de producción
+
+### Modelos
+1. **Mantener sincronización** entre modelos y migraciones
+2. **Documentar** relaciones complejas
+3. **Usar comentarios** para campos no obvios
+
+### Código
+1. **Usar middlewares** para validaciones comunes
+2. **Manejar errores** de forma consistente
+3. **Documentar APIs** con comentarios claros
+
+## 🔄 Workflow de Desarrollo
+
+1. **Crear feature branch**
+2. **Hacer cambios** en modelos/migraciones
+3. **Probar localmente** con `npm run dev:reset`
+4. **Verificar** que migraciones funcionan correctamente
+5. **Commit y push**
+6. **Deploy** ejecutando migraciones en producción
+
+## 📚 Referencias
+
+- [Sequelize Migrations](https://sequelize.org/docs/v6/other-topics/migrations/)
+- [Docker Compose](https://docs.docker.com/compose/)
+- [Kick.com API](https://kick.com/developer)
+
+---
+
+**Última actualización**: Diciembre 2024
+**Estado**: ✅ Migraciones sincronizadas y funcionando correctamente
 
 # Detener el entorno
 npm run docker:dev:down
