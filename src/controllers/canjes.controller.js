@@ -40,8 +40,11 @@ exports.crear = async (req, res) => {
         // 5) Registrar historial de puntos
         await HistorialPunto.create({
             usuario_id: usuario.id,
-            cambio: -producto.precio,
-            motivo: `Canje producto ${producto.nombre}`
+            puntos: -producto.precio,  // Cantidad negativa porque se gastan puntos
+            cambio: -producto.precio,  // Campo legacy para compatibilidad
+            tipo: 'gastado',
+            concepto: `Canje producto: ${producto.nombre}`,
+            motivo: `Canje producto ${producto.nombre}`  // Campo legacy para compatibilidad
         }, { transaction: t });
 
         await t.commit();
@@ -148,8 +151,11 @@ exports.devolverCanje = async (req, res) => {
         // 3. Registrar historial
         await HistorialPunto.create({
             usuario_id: usuario.id,
-            cambio: puntosADevolver,
-            motivo: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`
+            puntos: puntosADevolver,  // Cantidad positiva porque se devuelven puntos
+            cambio: puntosADevolver,  // Campo legacy para compatibilidad
+            tipo: 'ganado',
+            concepto: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`,
+            motivo: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`  // Campo legacy para compatibilidad
         }, { transaction: t });
 
         // 4. Reponer stock del producto (si corresponde)

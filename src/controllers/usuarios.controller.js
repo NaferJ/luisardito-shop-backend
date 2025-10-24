@@ -94,8 +94,11 @@ exports.actualizarPuntos = async (req, res) => {
 
         await HistorialPunto.create({
             usuario_id: usuario.id,
-            cambio,
-            motivo: `${motivo} (Admin: ${adminNickname})`
+            puntos: cambio,  // La cantidad del cambio (positivo o negativo)
+            cambio,  // Campo legacy para compatibilidad
+            tipo: cambio > 0 ? 'ganado' : cambio < 0 ? 'gastado' : 'ajuste',
+            concepto: `Ajuste de puntos: ${motivo} (Admin: ${adminNickname})`,
+            motivo: `${motivo} (Admin: ${adminNickname})`  // Campo legacy para compatibilidad
         }, { transaction: t });
 
         await t.commit();
