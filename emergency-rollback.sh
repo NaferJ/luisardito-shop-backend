@@ -3,6 +3,9 @@
 
 echo "🚨 ROLLBACK DE EMERGENCIA - Migraciones"
 echo "======================================"
+echo "ℹ️  Si hay errores 'Unknown column puntos', ejecutar:"
+echo "   npx sequelize-cli db:migrate --to 20251024000001-emergency-add-puntos-column.js"
+echo ""
 
 # Función para hacer backup
 backup_db() {
@@ -28,6 +31,18 @@ rollback_migrations() {
     echo "✅ Registros removidos"
 }
 
+# Función para aplicar migración de emergencia (columna puntos)
+apply_emergency_migration() {
+    echo "🔧 Aplicando migración de emergencia para columna puntos..."
+    npx sequelize-cli db:migrate --to 20251024000001-emergency-add-puntos-column.js
+    if [ $? -eq 0 ]; then
+        echo "✅ Migración de emergencia aplicada correctamente"
+    else
+        echo "❌ Error aplicando migración de emergencia"
+        exit 1
+    fi
+}
+
 # Función para verificar estado
 check_status() {
     echo "📊 Estado actual:"
@@ -44,14 +59,23 @@ case "${1:-help}" in
         rollback_migrations
         check_status
         ;;
+    "fix-puntos")
+        backup_db
+        apply_emergency_migration
+        check_status
+        ;;
     "status")
         check_status
         ;;
     *)
-        echo "Uso: $0 [backup|rollback|status]"
+        echo "Uso: $0 [backup|rollback|fix-puntos|status]"
         echo ""
-        echo "backup   - Crear backup de la base de datos"
-        echo "rollback - Hacer rollback de migraciones + backup"
-        echo "status   - Ver estado actual"
+        echo "backup     - Crear backup de la base de datos"
+        echo "rollback   - Hacer rollback de migraciones + backup"
+        echo "fix-puntos - Aplicar migración de emergencia para columna puntos"
+        echo "status     - Ver estado actual"
+        echo ""
+        echo "🔧 PROBLEMA ESPECÍFICO: Error 'Unknown column puntos'"
+        echo "   Si ves este error, ejecuta: $0 fix-puntos"
         ;;
 esac
