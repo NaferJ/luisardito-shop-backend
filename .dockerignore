@@ -9,5 +9,6 @@ coverage
 .dockerignore
 Dockerfile
 docker-compose*.yml
+# Excluir solo la migración fantasma problemática
 migrations/20251024000001-emergency-add-puntos-column.js
 
