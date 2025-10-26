@@ -196,5 +196,3 @@ FRONTEND_URLS=https://luisardito.com,https://shop.luisardito.com
 - ✅ **Funciona en desarrollo y producción**
 - ✅ **Incluye debugging tools**
 - ✅ **Compatible con el frontend actualizado**
-
-**Después del próximo deploy, las cookies funcionarán perfectamente entre luisardito.com y shop.luisardito.com** 🚀
