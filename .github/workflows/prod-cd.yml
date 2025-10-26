@@ -83,6 +83,10 @@ jobs:
             echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
             echo "KICK_BROADCASTER_ID=${{ secrets.KICK_BROADCASTER_ID }}" >> "$ENV_PATH"
+            # Cloudinary configuration
+            echo "CLOUDINARY_CLOUD_NAME=${{ secrets.CLOUDINARY_CLOUD_NAME }}" >> "$ENV_PATH"
+            echo "CLOUDINARY_API_KEY=${{ secrets.CLOUDINARY_API_KEY }}" >> "$ENV_PATH"
+            echo "CLOUDINARY_API_SECRET=${{ secrets.CLOUDINARY_API_SECRET }}" >> "$ENV_PATH"
             echo "FRONTEND_URL=https://luisardito.com" >> "$ENV_PATH"
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"

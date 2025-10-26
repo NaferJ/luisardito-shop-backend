@@ -13,6 +13,8 @@ console.log('JWT_SECRET type:', typeof process.env.JWT_SECRET);
 console.log('JWT_SECRET length:', process.env.JWT_SECRET?.length);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
+console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'CONFIGURADO' : 'NO CONFIGURADO');
+console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'CONFIGURADO' : 'NO CONFIGURADO');
 
 module.exports = {
     db: {
@@ -37,6 +39,11 @@ module.exports = {
         oauthToken:     process.env.KICK_OAUTH_TOKEN_URL     || 'https://id.kick.com/oauth/token',
         oauthRevoke:    process.env.KICK_OAUTH_REVOKE_URL    || 'https://id.kick.com/oauth/revoke'
     },
+    cloudinary: {
+        cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+        apiKey: process.env.CLOUDINARY_API_KEY,
+        apiSecret: process.env.CLOUDINARY_API_SECRET
+    },
     frontendUrl: process.env.FRONTEND_URL,
     port: Number(process.env.PORT || 3000)
 };
@@ -44,3 +51,5 @@ module.exports = {
 console.log('🔍 DEBUG - Config resultante:');
 console.log('jwtSecret existe:', !!module.exports.jwtSecret);
 console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
+console.log('cloudinary.cloudName:', module.exports.cloudinary.cloudName ? 'CONFIGURADO' : 'NO CONFIGURADO');
+console.log('cloudinary.apiKey:', module.exports.cloudinary.apiKey ? 'CONFIGURADO' : 'NO CONFIGURADO');
