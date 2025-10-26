@@ -1,6 +1,6 @@
 const axios = require('axios');
 const config = require('../../config');
-const { KickEventSubscription } = require('../models');
+const { KickEventSubscription, KickBroadcasterToken } = require('../models');
 
 /**
  * Lista de eventos a los que auto-suscribirse
@@ -25,6 +25,12 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
     try {
         console.log(`[Auto Subscribe] Iniciando suscripción para broadcaster ${broadcasterUserId}`);
 
+        // Asegurar que tenemos un token válido
+        const validToken = await ensureValidToken(broadcasterUserId);
+        if (!validToken) {
+            throw new Error('No se pudo obtener un token válido');
+        }
+
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
         const payload = {
@@ -37,7 +43,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
 
         const response = await axios.post(apiUrl, payload, {
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
+                'Authorization': `Bearer ${validToken}`,
                 'Content-Type': 'application/json'
             },
             timeout: 15000
@@ -72,6 +78,21 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
             }
         }
 
+        // Actualizar el registro del broadcaster
+        await KickBroadcasterToken.update(
+            {
+                auto_subscribed: createdSubscriptions.length > 0,
+                last_subscription_attempt: new Date(),
+                subscription_error: errors.length > 0 ? JSON.stringify(errors) : null
+            },
+            {
+                where: {
+                    kick_user_id: broadcasterUserId,
+                    is_active: true
+                }
+            }
+        );
+
         const result = {
             success: createdSubscriptions.length > 0,
             totalSubscribed: createdSubscriptions.length,
@@ -87,6 +108,21 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
 
     } catch (error) {
         console.error('[Auto Subscribe] Error general:', error.message);
+
+        // Actualizar el error en la base de datos
+        await KickBroadcasterToken.update(
+            {
+                auto_subscribed: false,
+                last_subscription_attempt: new Date(),
+                subscription_error: error.message
+            },
+            {
+                where: {
+                    kick_user_id: broadcasterUserId,
+                    is_active: true
+                }
+            }
+        );
 
         if (error.response) {
             console.error('[Auto Subscribe] Response data:', error.response.data);
@@ -124,8 +160,109 @@ async function hasActiveSubscriptions(broadcasterUserId) {
     return count > 0;
 }
 
+/**
+ * Refresca el token de acceso usando el refresh token
+ * @param {Object} broadcasterToken - Instancia del token del broadcaster
+ * @returns {Promise<boolean>} True si se refrescó exitosamente
+ */
+async function refreshAccessToken(broadcasterToken) {
+    try {
+        if (!broadcasterToken.refresh_token) {
+            console.error('[Token Refresh] No hay refresh token disponible');
+            return false;
+        }
+
+        console.log(`[Token Refresh] Refrescando token para ${broadcasterToken.kick_username}`);
+
+        const refreshUrl = `${config.kick.apiBaseUrl}/oauth/token`;
+
+        const payload = {
+            grant_type: 'refresh_token',
+            client_id: config.kick.clientId,
+            client_secret: config.kick.clientSecret,
+            refresh_token: broadcasterToken.refresh_token
+        };
+
+        const response = await axios.post(refreshUrl, payload, {
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            timeout: 10000
+        });
+
+        if (response.data.access_token) {
+            const newExpiresAt = new Date(Date.now() + (response.data.expires_in * 1000));
+
+            await broadcasterToken.update({
+                access_token: response.data.access_token,
+                refresh_token: response.data.refresh_token || broadcasterToken.refresh_token,
+                token_expires_at: newExpiresAt
+            });
+
+            console.log(`[Token Refresh] ✅ Token refrescado exitosamente, expira: ${newExpiresAt}`);
+            return true;
+        }
+
+        return false;
+
+    } catch (error) {
+        console.error('[Token Refresh] Error:', error.message);
+        if (error.response) {
+            console.error('[Token Refresh] Response:', error.response.data);
+        }
+        return false;
+    }
+}
+
+/**
+ * Verifica y refresca el token si es necesario
+ * @param {string} broadcasterUserId - ID del broadcaster
+ * @returns {Promise<string|null>} Token de acceso válido o null
+ */
+async function ensureValidToken(broadcasterUserId) {
+    try {
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: {
+                kick_user_id: broadcasterUserId,
+                is_active: true
+            }
+        });
+
+        if (!broadcasterToken) {
+            console.error('[Token Ensure] No se encontró token activo');
+            return null;
+        }
+
+        const now = new Date();
+        const bufferTime = 5 * 60 * 1000; // 5 minutos de buffer
+        const expiresAt = new Date(broadcasterToken.token_expires_at);
+
+        // Si el token expira en menos de 5 minutos, refrescarlo
+        if (expiresAt.getTime() - now.getTime() < bufferTime) {
+            console.log('[Token Ensure] Token expira pronto, refrescando...');
+            const refreshed = await refreshAccessToken(broadcasterToken);
+
+            if (!refreshed) {
+                console.error('[Token Ensure] No se pudo refrescar el token');
+                return null;
+            }
+
+            // Recargar el token actualizado
+            await broadcasterToken.reload();
+        }
+
+        return broadcasterToken.access_token;
+
+    } catch (error) {
+        console.error('[Token Ensure] Error:', error.message);
+        return null;
+    }
+}
+
 module.exports = {
     autoSubscribeToEvents,
     hasActiveSubscriptions,
+    refreshAccessToken,
+    ensureValidToken,
     DEFAULT_EVENTS
 };

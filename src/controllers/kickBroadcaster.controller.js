@@ -1,5 +1,6 @@
 const { KickBroadcasterToken, KickEventSubscription } = require('../models');
 const { hasActiveSubscriptions } = require('../services/kickAutoSubscribe.service');
+const tokenRefreshService = require('../services/tokenRefresh.service');
 
 /**
  * Verifica el estado de conexión del broadcaster
@@ -135,3 +136,55 @@ exports.getActiveToken = async (req, res) => {
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
+
+/**
+ * Refresca manualmente el token del broadcaster activo
+ */
+exports.refreshToken = async (req, res) => {
+    try {
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: { is_active: true },
+            order: [['created_at', 'DESC']]
+        });
+
+        if (!broadcasterToken) {
+            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+        }
+
+        const result = await tokenRefreshService.forceRefresh(broadcasterToken.kick_user_id);
+
+        if (result.success) {
+            // Recargar el token actualizado
+            await broadcasterToken.reload();
+
+            return res.json({
+                message: 'Token refrescado exitosamente',
+                broadcaster: broadcasterToken.kick_username,
+                new_expires_at: broadcasterToken.token_expires_at
+            });
+        } else {
+            return res.status(400).json({
+                error: 'No se pudo refrescar el token',
+                details: result.error
+            });
+        }
+
+    } catch (error) {
+        console.error('[Kick Broadcaster] Error refrescando token:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
+/**
+ * Obtiene el estado del servicio de refresh automático
+ */
+exports.getRefreshServiceStatus = async (req, res) => {
+    try {
+        const status = tokenRefreshService.getStatus();
+        return res.json(status);
+    } catch (error) {
+        console.error('[Kick Broadcaster] Error obteniendo estado del servicio:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+

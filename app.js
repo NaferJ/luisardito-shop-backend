@@ -3,6 +3,9 @@ const cors = require("cors");
 const { sequelize } = require("./src/models");
 const config = require("./config");
 
+// Servicios
+const tokenRefreshService = require("./src/services/tokenRefresh.service");
+
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
 const usuariosRoutes = require("./src/routes/usuarios.routes");
@@ -70,6 +73,10 @@ const start = async () => {
   try {
     await sequelize.sync();
     console.log("✅ Base de datos conectada y modelos sincronizados");
+
+    // Iniciar el servicio de refresh automático de tokens
+    tokenRefreshService.start();
+
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
       const isDocker =
