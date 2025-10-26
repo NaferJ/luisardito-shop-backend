@@ -17,18 +17,22 @@ const DEFAULT_EVENTS = [
 
 /**
  * Auto-suscribe a todos los eventos del broadcaster
- * @param {string} accessToken - Token de acceso del broadcaster
- * @param {string} broadcasterUserId - ID del broadcaster en Kick
+ * @param {string} accessToken - Token de acceso para hacer la petición
+ * @param {string} broadcasterUserId - ID del broadcaster del cual escuchar eventos
+ * @param {string} tokenProviderId - ID del usuario que provee el token (opcional, por defecto igual que broadcaster)
  * @returns {Promise<Object>} Resultado de la suscripción
  */
-async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
+async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProviderId = null) {
     try {
-        console.log(`[Auto Subscribe] Iniciando suscripción para broadcaster ${broadcasterUserId}`);
+        const actualTokenProvider = tokenProviderId || broadcasterUserId;
 
-        // Asegurar que tenemos un token válido
-        const validToken = await ensureValidToken(broadcasterUserId);
+        console.log(`[Auto Subscribe] Iniciando suscripción para broadcaster ${broadcasterUserId}`);
+        console.log(`[Auto Subscribe] Token proveído por: ${actualTokenProvider}`);
+
+        // Asegurar que tenemos un token válido del proveedor del token
+        const validToken = await ensureValidToken(actualTokenProvider);
         if (!validToken) {
-            throw new Error('No se pudo obtener un token válido');
+            throw new Error(`No se pudo obtener un token válido del usuario ${actualTokenProvider}`);
         }
 
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
@@ -78,7 +82,8 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
             }
         }
 
-        // Actualizar el registro del broadcaster
+        // Actualizar el registro del TOKEN PROVIDER (quien provee el token)
+        // No del broadcaster de eventos, ya que pueden ser diferentes
         await KickBroadcasterToken.update(
             {
                 auto_subscribed: createdSubscriptions.length > 0,
@@ -87,7 +92,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId) {
             },
             {
                 where: {
-                    kick_user_id: broadcasterUserId,
+                    kick_user_id: actualTokenProvider, // Usar el proveedor del token, no el broadcaster
                     is_active: true
                 }
             }

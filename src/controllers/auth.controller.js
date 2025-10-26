@@ -391,20 +391,23 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
 
-        // Auto-suscribirse a eventos de Kick SOLO si es el broadcaster principal (Luisardito)
-        const isBroadcaster = config.kick.broadcasterId &&
-                             String(kickUserId) === String(config.kick.broadcasterId);
+        // LÓGICA CORREGIDA: Auto-suscribirse a eventos si el usuario tiene permisos de admin
+        // Los eventos siempre serán del broadcaster principal, independientemente de quién se conecte
+        const isAdmin = usuario.rol_id <= 3; // Roles 1 y 2 son admins
+        const broadcasterIdToSubscribe = config.kick.broadcasterId; // El broadcaster principal (2771761)
 
-        console.log('[Kick OAuth][callbackKick] ¿Es broadcaster principal?', isBroadcaster,
-                   `(user: ${kickUserId}, broadcaster: ${config.kick.broadcasterId})`);
+        console.log('[Kick OAuth][callbackKick] ¿Es usuario admin?', isAdmin, `(rol: ${usuario.rol_id})`);
+        console.log('[Kick OAuth][callbackKick] Broadcaster a suscribir:', broadcasterIdToSubscribe);
+        console.log('[Kick OAuth][callbackKick] Token provider:', kickUserId);
 
         let autoSubscribeResult = null;
 
-        if (isBroadcaster) {
-            console.log('[Kick OAuth][callbackKick] Iniciando auto-suscripción a eventos...');
+        if (isAdmin && broadcasterIdToSubscribe) {
+            console.log('[Kick OAuth][callbackKick] Iniciando auto-suscripción a eventos del broadcaster principal...');
 
             try {
-                autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId);
+                // IMPORTANTE: Usar el token del usuario que se conecta para suscribirse a eventos del broadcaster principal
+                autoSubscribeResult = await autoSubscribeToEvents(accessToken, broadcasterIdToSubscribe, kickUserId);
 
                 await broadcasterToken.update({
                     auto_subscribed: autoSubscribeResult.success,
@@ -414,7 +417,7 @@ exports.callbackKick = async (req, res) => {
 
                 console.log('[Kick OAuth][callbackKick] Auto-suscripción:', autoSubscribeResult.success ? '✅ Exitosa' : '❌ Falló');
                 if (autoSubscribeResult.success) {
-                    console.log(`[Kick OAuth][callbackKick] ${autoSubscribeResult.totalSubscribed} eventos suscritos`);
+                    console.log(`[Kick OAuth][callbackKick] ${autoSubscribeResult.totalSubscribed} eventos suscritos para broadcaster ${broadcasterIdToSubscribe} usando token de ${kickUserId}`);
                 }
             } catch (subscribeError) {
                 console.error('[Kick OAuth][callbackKick] Error en auto-suscripción:', subscribeError.message);
@@ -424,8 +427,10 @@ exports.callbackKick = async (req, res) => {
                     subscription_error: subscribeError.message
                 });
             }
+        } else if (!isAdmin) {
+            console.log('[Kick OAuth][callbackKick] Usuario no es admin, no puede suscribirse a eventos');
         } else {
-            console.log('[Kick OAuth][callbackKick] Usuario no es broadcaster, saltando auto-suscripción');
+            console.log('[Kick OAuth][callbackKick] No hay broadcaster configurado, saltando auto-suscripción');
         }
 
         // Generar access token y refresh token
