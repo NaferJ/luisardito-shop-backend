@@ -10,6 +10,9 @@ router.get('/me', auth, usuariosCtrl.me);
 // (Opcional) Actualizar perfil
 router.put('/me', auth, usuariosCtrl.updateMe);
 
+// Sincronizar información de Kick (avatar, username, etc.)
+router.post('/sync-kick-info', auth, usuariosCtrl.syncKickInfo);
+
 // Listar todos los usuarios (admin por permiso)
 router.get('/', auth, permiso('ver_usuarios'), usuariosCtrl.listarUsuarios);
 

@@ -1,3 +1,13 @@
+        console.log(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
+        return cloudinaryUrl;
+
+    } catch (error) {
+        console.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
+        // No fallar el proceso de autenticación por problemas con el avatar
+        return null;
+    }
+}
+
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
@@ -17,35 +27,6 @@ const {
     revokeAllUserTokens,
     rotateRefreshToken
 } = require('../services/tokenService');
-
-/**
- * Procesa el avatar de Kick y lo sube a Cloudinary
- * @param {Object} kickUser - Datos del usuario de Kick
- * @param {number} userId - ID del usuario en nuestra BD
- * @returns {Promise<string|null>} - URL de Cloudinary o null si falla
- */
-async function processKickAvatar(kickUser, userId) {
-    try {
-        const kickAvatarUrl = extractAvatarUrl(kickUser);
-
-        if (!kickAvatarUrl) {
-            console.log(`[Auth] No se encontró avatar para usuario ${userId}`);
-            return null;
-        }
-
-        console.log(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
-
-        const cloudinaryUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
-
-        console.log(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
-        return cloudinaryUrl;
-
-    } catch (error) {
-        console.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
-        // No fallar el proceso de autenticación por problemas con el avatar
-        return null;
-    }
-}
 
 exports.registerLocal = async (req, res) => {
     try {
@@ -347,7 +328,6 @@ exports.callbackKick = async (req, res) => {
             console.log('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
         }
 
-        // ...existing code... (resto del callback igual que antes)
         // Guardar token del broadcaster y auto-suscribirse a eventos
         const kickUserId = String(kickUser.user_id);
         const accessToken = tokenData.access_token;
@@ -505,8 +485,6 @@ exports.callbackKick = async (req, res) => {
         });
     }
 };
-
-// ...existing endpoints... (refreshToken, logout, logoutAll)
 
 /**
  * Endpoint para refrescar el access token usando el refresh token
@@ -732,3 +710,23 @@ exports.storeTokens = async (req, res) => {
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
+
+/**
+ * Procesa el avatar de Kick y lo sube a Cloudinary
+ * @param {Object} kickUser - Datos del usuario de Kick
+ * @param {number} userId - ID del usuario en nuestra BD
+ * @returns {Promise<string|null>} - URL de Cloudinary o null si falla
+ */
+async function processKickAvatar(kickUser, userId) {
+    try {
+        const kickAvatarUrl = extractAvatarUrl(kickUser);
+
+        if (!kickAvatarUrl) {
+            console.log(`[Auth] No se encontró avatar para usuario ${userId}`);
+            return null;
+        }
+
+        console.log(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
+
+        const cloudinaryUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
+

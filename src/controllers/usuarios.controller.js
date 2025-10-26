@@ -63,6 +63,108 @@ exports.listarUsuarios = async (req, res) => {
     }
 };
 
+// Sincronizar información de Kick (avatar, username, etc.)
+exports.syncKickInfo = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const user = await Usuario.findByPk(userId);
+
+        if (!user || !user.user_id_ext) {
+            return res.status(400).json({
+                error: 'Usuario no conectado con Kick',
+                details: 'Debes conectar tu cuenta con Kick primero'
+            });
+        }
+
+        console.log(`[Sync Kick Info] Sincronizando datos para usuario ${user.nickname} (ID: ${userId})`);
+
+        // Obtener datos actualizados de Kick usando el ID externo
+        let kickUserData;
+        try {
+            kickUserData = await getKickUserData(user.user_id_ext);
+            console.log(`[Sync Kick Info] Datos obtenidos de Kick:`, {
+                name: kickUserData?.name,
+                user_id: kickUserData?.user_id,
+                profile_picture: kickUserData?.profile_picture ? 'presente' : 'ausente'
+            });
+        } catch (kickError) {
+            console.error('[Sync Kick Info] Error obteniendo datos de Kick:', kickError.message);
+            return res.status(500).json({
+                error: 'No se pudieron obtener datos actualizados de Kick',
+                details: kickError.message
+            });
+        }
+
+        if (!kickUserData) {
+            return res.status(404).json({
+                error: 'Usuario no encontrado en Kick',
+                details: 'El usuario puede haber sido eliminado o no ser público'
+            });
+        }
+
+        // Procesar avatar
+        let cloudinaryAvatarUrl = user.kick_data?.avatar_url || null; // Mantener el actual si falla
+        const kickAvatarUrl = extractAvatarUrl(kickUserData);
+
+        if (kickAvatarUrl) {
+            try {
+                console.log(`[Sync Kick Info] Procesando avatar para usuario ${userId}`);
+                cloudinaryAvatarUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
+                console.log(`[Sync Kick Info] ✅ Avatar actualizado en Cloudinary:`, cloudinaryAvatarUrl);
+            } catch (avatarError) {
+                console.warn('[Sync Kick Info] Error actualizando avatar, manteniendo el anterior:', avatarError.message);
+                // No fallar la sincronización por problemas con el avatar
+            }
+        } else {
+            console.log('[Sync Kick Info] No se encontró avatar en los datos de Kick');
+        }
+
+        // Actualizar usuario con datos sincronizados
+        const updatedKickData = {
+            ...user.kick_data,
+            username: kickUserData.name || kickUserData.username,
+            avatar_url: cloudinaryAvatarUrl,
+            user_id: kickUserData.user_id || kickUserData.id,
+            last_sync: new Date().toISOString()
+        };
+
+        await user.update({
+            nickname: kickUserData.name || kickUserData.username || user.nickname,
+            kick_data: updatedKickData
+        });
+
+        console.log(`[Sync Kick Info] ✅ Usuario sincronizado exitosamente`);
+
+        // Devolver usuario actualizado
+        const updatedUser = await Usuario.findByPk(userId);
+
+        res.json({
+            message: 'Información sincronizada exitosamente',
+            user: {
+                id: updatedUser.id,
+                nickname: updatedUser.nickname,
+                email: updatedUser.email,
+                puntos: updatedUser.puntos,
+                rol_id: updatedUser.rol_id,
+                kick_data: updatedUser.kick_data,
+                creado: updatedUser.creado,
+                actualizado: updatedUser.actualizado
+            },
+            changes: {
+                avatar_updated: cloudinaryAvatarUrl !== user.kick_data?.avatar_url,
+                username_updated: (kickUserData.name || kickUserData.username) !== user.nickname
+            }
+        });
+
+    } catch (error) {
+        console.error('[Sync Kick Info] Error general:', error.message);
+        res.status(500).json({
+            error: 'Error al sincronizar información',
+            details: error.message
+        });
+    }
+};
+
 // Actualizar puntos de un usuario (admin por permiso)
 exports.actualizarPuntos = async (req, res) => {
     const t = await Usuario.sequelize.transaction();
