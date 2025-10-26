@@ -44,6 +44,11 @@ module.exports = {
         apiKey: process.env.CLOUDINARY_API_KEY,
         apiSecret: process.env.CLOUDINARY_API_SECRET
     },
+    cookies: {
+        domain: process.env.COOKIE_DOMAIN || (process.env.NODE_ENV === 'production' ? '.luisardito.com' : undefined),
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+    },
     frontendUrl: process.env.FRONTEND_URL,
     port: Number(process.env.PORT || 3000)
 };

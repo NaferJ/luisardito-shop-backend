@@ -1,5 +1,6 @@
 const express = require("express");
-const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const customCors = require("./src/middleware/cors.middleware");
 const { sequelize } = require("./src/models");
 const config = require("./config");
 
@@ -24,7 +25,8 @@ app.get("/", (req, res) => {
 });
 
 // Middleware global
-app.use(cors());
+app.use(customCors);
+app.use(cookieParser()); // Para leer cookies
 app.use(express.json());
 
 // Rutas principales
