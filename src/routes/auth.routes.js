@@ -15,4 +15,7 @@ router.get('/kick',      authCtrl.redirectKick);
 router.get('/kick-callback', authCtrl.callbackKick);
 router.post('/store-tokens', authCtrl.storeTokens);
 
+// Debugging de cookies
+router.get('/cookie-status', authCtrl.cookieStatus);
+
 module.exports = router;

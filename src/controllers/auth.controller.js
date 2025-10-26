@@ -9,6 +9,7 @@ const { Op } = require('sequelize');
 const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
 const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl } = require('../utils/kickApi');
+const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
 const {
     generateAccessToken,
     createRefreshToken,
@@ -99,6 +100,9 @@ exports.loginLocal = async (req, res) => {
         const userAgent = req.headers['user-agent'];
 
         const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
+
+        // Configurar cookies cross-domain
+        setAuthCookies(res, accessToken, refreshToken.token);
 
         res.json({
             accessToken,
@@ -439,6 +443,9 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] JWT emitido (access + refresh)');
 
+        // Configurar cookies cross-domain
+        setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
+
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
         const callbackData = {
             token: jwtAccessToken, // Retrocompatibilidad
@@ -553,6 +560,9 @@ exports.refreshToken = async (req, res) => {
 
         console.log(`[Auth][refreshToken] Token renovado para usuario ${usuario.nickname}`);
 
+        // Configurar cookies con los nuevos tokens
+        setAuthCookies(res, newAccessToken, newRefreshToken.token);
+
         return res.json({
             accessToken: newAccessToken,
             refreshToken: newRefreshToken.token,
@@ -590,6 +600,9 @@ exports.logout = async (req, res) => {
             return res.status(404).json({ error: 'Refresh token no encontrado' });
         }
 
+        // Limpiar cookies cross-domain
+        clearAuthCookies(res);
+
         console.log('[Auth][logout] Sesión cerrada exitosamente');
 
         return res.json({ message: 'Sesión cerrada exitosamente' });
@@ -614,6 +627,9 @@ exports.logoutAll = async (req, res) => {
 
         // Revocar todos los refresh tokens del usuario
         const revokedCount = await revokeAllUserTokens(userId);
+
+        // Limpiar cookies cross-domain
+        clearAuthCookies(res);
 
         console.log(`[Auth][logoutAll] ${revokedCount} sesiones cerradas para usuario ${userId}`);
 
@@ -704,6 +720,9 @@ exports.storeTokens = async (req, res) => {
             kick_id: kickUser.user_id
         }, config.jwtSecret, { expiresIn: '24h' });
 
+        // Configurar cookies (aunque este endpoint se usa menos, por compatibilidad)
+        setAuthCookies(res, token, 'no-refresh-token-provided');
+
         return res.json({
             token,
             usuario: {
@@ -732,3 +751,29 @@ exports.storeTokens = async (req, res) => {
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
+
+/**
+ * Endpoint para verificar el estado de las cookies (debugging)
+ */
+exports.cookieStatus = async (req, res) => {
+    try {
+        const cookies = req.headers.cookie;
+        const authToken = req.cookies?.auth_token;
+        const refreshToken = req.cookies?.refresh_token;
+
+        return res.json({
+            hasCookies: !!cookies,
+            authToken: authToken ? 'presente' : 'ausente',
+            refreshToken: refreshToken ? 'presente' : 'ausente',
+            environment: process.env.NODE_ENV,
+            domain: process.env.NODE_ENV === 'production' ? '.luisardito.com' : 'localhost',
+            userAgent: req.headers['user-agent'],
+            origin: req.headers.origin,
+            allCookies: req.cookies
+        });
+    } catch (error) {
+        console.error('[Auth][cookieStatus] Error:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
