@@ -8,9 +8,13 @@ const corsOptions = {
             'https://shop.luisardito.com',
             'https://www.luisardito.com',
             'http://localhost:3000',    // Para desarrollo
+            'http://localhost:3001',    // Backend (auto-referencia)
+            'http://localhost:3002',    // Frontend desarrollo actual
             'http://localhost:5173',    // Vite dev server
-            'http://127.0.0.1:3001',   // Para desarrollo
-            'http://127.0.0.1:3002'    // Para desarrollo
+            'http://127.0.0.1:3000',    // Para desarrollo
+            'http://127.0.0.1:3001',    // Backend (auto-referencia)
+            'http://127.0.0.1:3002',    // Frontend desarrollo actual
+            'http://127.0.0.1:5173'     // Para desarrollo
         ];
 
         // Permitir requests sin origin (para apps móviles, Postman, etc.)
