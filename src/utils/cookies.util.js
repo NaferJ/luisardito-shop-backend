@@ -58,10 +58,6 @@ function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_E
     const cookieOptions = getCookieOptions(env);
     const refreshOptions = getRefreshCookieOptions(env);
 
-    console.log('[Cookies] Configurando cookies de autenticación');
-    console.log('[Cookies] Entorno:', env);
-    console.log('[Cookies] Dominio:', cookieOptions.domain || 'localhost');
-
     res.cookie('auth_token', accessToken, cookieOptions);
     res.cookie('refresh_token', refreshToken, refreshOptions);
 }
@@ -73,10 +69,6 @@ function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_E
  */
 function clearAuthCookies(res, env = process.env.NODE_ENV) {
     const clearOptions = getClearCookieOptions(env);
-
-    console.log('[Cookies] Limpiando cookies de autenticación');
-    console.log('[Cookies] Entorno:', env);
-    console.log('[Cookies] Dominio:', clearOptions.domain || 'localhost');
 
     res.clearCookie('auth_token', clearOptions);
     res.clearCookie('refresh_token', clearOptions);

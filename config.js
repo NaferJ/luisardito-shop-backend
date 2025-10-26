@@ -8,13 +8,8 @@ const toBool = (val, def = false) => {
 // 🔍 DEBUG: Agreguemos logs para ver qué está pasando
 console.log('🔍 DEBUG - Variables de entorno:');
 console.log('JWT_SECRET existe:', !!process.env.JWT_SECRET);
-console.log('JWT_SECRET valor:', process.env.JWT_SECRET ? `"${process.env.JWT_SECRET.substring(0, 10)}..."` : 'undefined');
-console.log('JWT_SECRET type:', typeof process.env.JWT_SECRET);
-console.log('JWT_SECRET length:', process.env.JWT_SECRET?.length);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
-console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'CONFIGURADO' : 'NO CONFIGURADO');
-console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'CONFIGURADO' : 'NO CONFIGURADO');
 
 module.exports = {
     db: {
@@ -56,5 +51,3 @@ module.exports = {
 console.log('🔍 DEBUG - Config resultante:');
 console.log('jwtSecret existe:', !!module.exports.jwtSecret);
 console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
-console.log('cloudinary.cloudName:', module.exports.cloudinary.cloudName ? 'CONFIGURADO' : 'NO CONFIGURADO');
-console.log('cloudinary.apiKey:', module.exports.cloudinary.apiKey ? 'CONFIGURADO' : 'NO CONFIGURADO');

@@ -46,8 +46,6 @@ async function uploadKickAvatarToCloudinary(kickAvatarUrl, userId) {
         const dataUri = `data:image/jpeg;base64,${base64Image}`;
 
         console.log(`[Upload Avatar] Subiendo a Cloudinary para usuario ${userId}...`);
-        console.log(`[Upload Avatar] Cloudinary config - Cloud Name: ${cloudinary.config().cloud_name}`);
-        console.log(`[Upload Avatar] Cloudinary config - API Key: ${cloudinary.config().api_key}`);
 
         // 3. Subir a Cloudinary
         const result = await cloudinary.uploader.upload(dataUri, {
@@ -61,7 +59,7 @@ async function uploadKickAvatarToCloudinary(kickAvatarUrl, userId) {
             ]
         });
 
-        console.log(`[Upload Avatar] ✅ Avatar subido exitosamente:`, result.secure_url);
+        console.log(`[Upload Avatar] ✅ Avatar subido exitosamente`);
         return result.secure_url;
 
     } catch (error) {
