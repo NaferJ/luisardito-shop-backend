@@ -1,12 +1,24 @@
 const { KickBroadcasterToken, KickEventSubscription } = require('../models');
 const { hasActiveSubscriptions } = require('../services/kickAutoSubscribe.service');
 const tokenRefreshService = require('../services/tokenRefresh.service');
+const config = require('../../config');
 
 /**
  * Verifica el estado de conexión del broadcaster
  */
 exports.getConnectionStatus = async (req, res) => {
     try {
+        // Obtener el broadcaster principal de la configuración
+        const mainBroadcasterId = config.kick.broadcasterId;
+
+        if (!mainBroadcasterId) {
+            return res.json({
+                connected: false,
+                message: 'No hay broadcaster principal configurado'
+            });
+        }
+
+        // Buscar cualquier token activo (puede ser de cualquier admin)
         const broadcasterToken = await KickBroadcasterToken.findOne({
             where: { is_active: true },
             order: [['created_at', 'DESC']]
@@ -15,14 +27,14 @@ exports.getConnectionStatus = async (req, res) => {
         if (!broadcasterToken) {
             return res.json({
                 connected: false,
-                message: 'No hay broadcaster conectado'
+                message: 'No hay tokens activos disponibles'
             });
         }
 
-        // Verificar suscripciones activas
+        // Verificar suscripciones activas del BROADCASTER PRINCIPAL
         const subscriptions = await KickEventSubscription.findAll({
             where: {
-                broadcaster_user_id: broadcasterToken.kick_user_id,
+                broadcaster_user_id: parseInt(mainBroadcasterId), // Siempre del broadcaster principal
                 status: 'active'
             }
         });
@@ -34,15 +46,16 @@ exports.getConnectionStatus = async (req, res) => {
         return res.json({
             connected: true,
             broadcaster: {
-                kick_user_id: broadcasterToken.kick_user_id,
-                kick_username: broadcasterToken.kick_username,
+                kick_user_id: mainBroadcasterId, // Siempre mostrar el broadcaster principal
+                kick_username: "Luisardito", // Nombre del broadcaster principal
                 connected_at: broadcasterToken.created_at,
                 last_updated: broadcasterToken.updated_at
             },
             token: {
                 expires_at: broadcasterToken.token_expires_at,
                 is_expired: isTokenExpired,
-                has_refresh_token: !!broadcasterToken.refresh_token
+                has_refresh_token: !!broadcasterToken.refresh_token,
+                provided_by: broadcasterToken.kick_username // Quién provee el token
             },
             subscriptions: {
                 auto_subscribed: broadcasterToken.auto_subscribed,
@@ -69,6 +82,8 @@ exports.getConnectionStatus = async (req, res) => {
  */
 exports.disconnect = async (req, res) => {
     try {
+        const mainBroadcasterId = config.kick.broadcasterId;
+
         const broadcasterToken = await KickBroadcasterToken.findOne({
             where: { is_active: true },
             order: [['created_at', 'DESC']]
@@ -82,20 +97,23 @@ exports.disconnect = async (req, res) => {
             is_active: false
         });
 
-        // Opcional: también desactivar las suscripciones
-        await KickEventSubscription.update(
-            { status: 'inactive' },
-            {
-                where: {
-                    broadcaster_user_id: broadcasterToken.kick_user_id,
-                    status: 'active'
+        // Desactivar las suscripciones del broadcaster principal
+        if (mainBroadcasterId) {
+            await KickEventSubscription.update(
+                { status: 'inactive' },
+                {
+                    where: {
+                        broadcaster_user_id: parseInt(mainBroadcasterId),
+                        status: 'active'
+                    }
                 }
-            }
-        );
+            );
+        }
 
         return res.json({
             message: 'Broadcaster desconectado exitosamente',
-            broadcaster: broadcasterToken.kick_username
+            broadcaster: 'Luisardito',
+            token_provider: broadcasterToken.kick_username
         });
 
     } catch (error) {
