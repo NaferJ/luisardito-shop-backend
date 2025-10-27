@@ -34,6 +34,11 @@ router.get('/debug-subscription-process', kickWebhookCtrl.debugSubscriptionProce
 // 🔧 DEPURACIÓN: Verificar estructura de tabla
 router.get('/debug-table-structure', kickWebhookCtrl.debugTableStructure);
 
+// 🚀 APP TOKEN: Webhooks permanentes
+router.post('/setup-permanent-webhooks', kickWebhookCtrl.setupPermanentWebhooks);
+router.get('/debug-app-token', kickWebhookCtrl.debugAppTokenWebhooks);
+router.get('/compare-token-types', kickWebhookCtrl.compareTokenTypes);
+
 // 📊 ESTADO: Sistema de webhooks
 router.get('/status', kickWebhookCtrl.systemStatus);
 
