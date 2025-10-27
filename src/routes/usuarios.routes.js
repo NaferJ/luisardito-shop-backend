@@ -31,4 +31,7 @@ router.get('/debug/roles-permisos', usuariosCtrl.debugRolesPermisos);
 // 🔍 DEBUG: Verificar usuario específico por ID (sin auth)
 router.get('/debug/:usuarioId', usuariosCtrl.debugUsuarioEspecifico);
 
+// 🔧 HOTFIX: Actualizar rol de usuario específico (temporal)
+router.put('/hotfix/:usuarioId/rol/:nuevoRol', usuariosCtrl.hotfixActualizarRol);
+
 module.exports = router;

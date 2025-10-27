@@ -452,3 +452,38 @@ exports.debugUsuarioEspecifico = async (req, res) => {
         });
     }
 };
+
+/**
+ * 🔧 HOTFIX: Actualizar rol de usuario específico (temporal)
+ */
+exports.hotfixActualizarRol = async (req, res) => {
+    try {
+        const { usuarioId, nuevoRol } = req.params;
+
+        const usuario = await Usuario.findByPk(usuarioId);
+        if (!usuario) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const rolAnterior = usuario.rol_id;
+        await usuario.update({ rol_id: parseInt(nuevoRol) });
+
+        res.json({
+            success: true,
+            mensaje: `Rol actualizado para ${usuario.nickname}`,
+            usuario: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                rol_anterior: rolAnterior,
+                rol_nuevo: parseInt(nuevoRol)
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Hotfix Rol] Error:', error);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+};

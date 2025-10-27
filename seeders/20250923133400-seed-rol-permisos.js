@@ -8,6 +8,7 @@ module.exports = {
       { id: 38, rol_id: 1, permiso_id: 9 },
       { id: 8,  rol_id: 2, permiso_id: 4 },
       { id: 9,  rol_id: 2, permiso_id: 5 },
+      { id: 39, rol_id: 2, permiso_id: 9 }, // Agregar permiso ver_historial_puntos para suscriptores
       { id: 15, rol_id: 3, permiso_id: 7 },
       { id: 12, rol_id: 3, permiso_id: 8 },
       { id: 14, rol_id: 3, permiso_id: 9 },
@@ -39,7 +40,7 @@ module.exports = {
 
   async down(queryInterface, Sequelize) {
     await queryInterface.bulkDelete('rol_permisos', {
-      id: [1,2,3,4,5,6,8,9,12,13,14,15,19,20,21,22,26,27,28,29,30,31,32,33,34,35,36,37,38]
+      id: [1,2,3,4,5,6,8,9,12,13,14,15,19,20,21,22,26,27,28,29,30,31,32,33,34,35,36,37,38,39]
     }, {});
   }
 };

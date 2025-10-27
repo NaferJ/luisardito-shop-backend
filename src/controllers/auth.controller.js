@@ -285,7 +285,7 @@ exports.callbackKick = async (req, res) => {
                     nickname: kickUser.name,
                     email: kickUser.email || `${kickUser.name}@kick.user`,
                     puntos: 1000,
-                    rol_id: 2,
+                    rol_id: 1, // Usuarios nuevos empiezan como "usuario básico"
                     user_id_ext: String(kickUser.user_id),
                     password_hash: null,
                     kick_data: {
@@ -675,7 +675,7 @@ exports.storeTokens = async (req, res) => {
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 puntos: 1000,
-                rol_id: 2,
+                rol_id: 1, // Usuarios nuevos empiezan como "usuario básico"
                 user_id_ext: String(kickUser.user_id),
                 password_hash: null,
                 kick_data: {
