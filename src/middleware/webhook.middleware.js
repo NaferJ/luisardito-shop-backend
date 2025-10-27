@@ -1,47 +1,42 @@
 /**
- * Middleware específico para webhooks - Simplificado
- * El CORS ahora se maneja automáticamente en cors.middleware.js
+ * 🚨 MODO DEBUG: Middleware ultra-simplificado para webhooks
+ * Solo logging - SIN restricciones de CORS
  */
 
 const logWebhookRequest = (req, res, next) => {
-    console.log('🎯🎯🎯 [WEBHOOK DETALLADO] =================================');
-    console.log('🎯 Método:', req.method);
-    console.log('🎯 URL completa:', req.originalUrl);
-    console.log('🎯 IP origen:', req.ip || req.connection.remoteAddress);
-    console.log('🎯 User-Agent:', req.headers['user-agent'] || 'NO ESPECIFICADO');
-    console.log('🎯 Content-Type:', req.headers['content-type'] || 'NO ESPECIFICADO');
+    console.log('🚨🚨🚨 [WEBHOOK DEBUG] ===================================');
+    console.log('🚨 PETICIÓN RECIBIDA EN:', req.originalUrl);
+    console.log('🚨 Método:', req.method);
+    console.log('🚨 IP:', req.ip || req.connection.remoteAddress || 'DESCONOCIDA');
+    console.log('🚨 User-Agent:', req.headers['user-agent'] || 'NO ESPECIFICADO');
+    console.log('🚨 Origin:', req.headers.origin || 'SIN ORIGIN');
+    console.log('🚨 Content-Type:', req.headers['content-type'] || 'NO ESPECIFICADO');
 
-    // Headers específicos de Kick
-    const kickHeaders = {};
-    Object.keys(req.headers).forEach(key => {
-        if (key.toLowerCase().startsWith('kick-event') || key.toLowerCase().includes('signature')) {
-            kickHeaders[key] = req.headers[key];
-        }
-    });
+    // Mostrar TODOS los headers
+    console.log('🚨 TODOS LOS HEADERS:', JSON.stringify(req.headers, null, 2));
 
-    if (Object.keys(kickHeaders).length > 0) {
-        console.log('🎯 Headers de Kick:', JSON.stringify(kickHeaders, null, 2));
+    // Mostrar el body si existe
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log('🚨 BODY:', JSON.stringify(req.body, null, 2));
+    } else {
+        console.log('🚨 BODY: VACÍO O NO PARSEADO');
     }
 
-    // Solo mostrar el body si no es muy grande
-    if (req.body) {
-        const bodyStr = JSON.stringify(req.body);
-        if (bodyStr.length < 1000) {
-            console.log('🎯 Body:', bodyStr);
-        } else {
-            console.log('🎯 Body: [DEMASIADO GRANDE - ' + bodyStr.length + ' caracteres]');
-        }
-    }
-
-    console.log('🎯🎯🎯 ===================================================');
+    console.log('🚨🚨🚨 =============================================');
     next();
 };
 
-// CORS simplificado - solo como backup (el principal ya maneja todo)
+// CORS completamente permisivo - solo como backup
 const webhookCors = (req, res, next) => {
-    // Este middleware ya no es necesario porque el CORS principal
-    // detecta automáticamente las peticiones de webhook
-    console.log('[Webhook CORS] ✅ Pasando al CORS principal');
+    console.log('🚨 [Webhook CORS] Permitiendo TODO');
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', '*');
+    res.header('Access-Control-Allow-Headers', '*');
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+
     next();
 };
 
