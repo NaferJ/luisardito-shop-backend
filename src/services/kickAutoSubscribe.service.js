@@ -55,15 +55,8 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
 
         console.log('[Auto Subscribe] Respuesta de Kick:', response.data);
 
-        // Limpiar suscripciones existentes para este broadcaster antes de crear nuevas
-        console.log(`[Auto Subscribe] Limpiando suscripciones existentes para broadcaster ${broadcasterUserId}...`);
-        await KickEventSubscription.destroy({
-            where: {
-                broadcaster_user_id: parseInt(broadcasterUserId)
-            }
-        });
-
         // Almacenar las suscripciones exitosas en la base de datos local
+        // NO limpiar suscripciones existentes - solo agregar nuevas
         const subscriptionsData = response.data.data || [];
         const createdSubscriptions = [];
         const errors = [];
