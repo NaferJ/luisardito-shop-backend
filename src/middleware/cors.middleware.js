@@ -1,12 +1,16 @@
 const cors = require('cors');
 
-// 🚨 MODO DEBUG: PERMITIR TODO SIN RESTRICCIONES
-// Temporalmente para probar si el CORS es el problema con los webhooks
-
+// 🧪 MODO TEST PRODUCCIÓN: CORS ultra-permisivo para debugging de webhooks
 const corsHandler = (req, res, next) => {
-    console.log('🚨 [CORS DEBUG] Permitiendo TODO sin restricciones');
+    // Solo log para webhooks y requests importantes
+    const isWebhook = req.originalUrl && req.originalUrl.includes('/api/kick-webhook');
+    const isImportant = isWebhook || req.originalUrl.includes('/health') === false;
 
-    // Permitir cualquier origen
+    if (isImportant) {
+        console.log(`🔍 [CORS] ${req.method} ${req.originalUrl} - Origin: ${req.headers.origin || 'SIN ORIGIN'}`);
+    }
+
+    // Permitir cualquier origen (TEMPORAL para debugging)
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', '*');
     res.header('Access-Control-Allow-Headers', '*');
@@ -15,11 +19,12 @@ const corsHandler = (req, res, next) => {
 
     // Manejar preflight
     if (req.method === 'OPTIONS') {
-        console.log('🚨 [CORS DEBUG] Manejando OPTIONS - permitiendo TODO');
+        if (isWebhook) {
+            console.log('🔍 [CORS] Manejando OPTIONS para webhook');
+        }
         return res.sendStatus(200);
     }
 
-    console.log('🚨 [CORS DEBUG] Petición permitida:', req.method, req.originalUrl);
     next();
 };
 
