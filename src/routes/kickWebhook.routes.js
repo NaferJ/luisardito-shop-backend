@@ -23,5 +23,6 @@ router.options('/test-cors', kickWebhookCtrl.testCors);
 
 // 🔍 DIAGNÓSTICO: Verificar problema de tokens
 router.get('/diagnostic-tokens', kickWebhookCtrl.diagnosticTokens);
+router.get('/diagnostic-tokens-db', kickWebhookCtrl.diagnosticTokensDB);
 
 module.exports = router;

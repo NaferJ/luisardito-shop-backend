@@ -10,8 +10,121 @@ const {
 const { Op } = require('sequelize');
 
 /**
- * 🔍 DIAGNÓSTICO: Verificar tokens y broadcaster
+ * 🔍 DIAGNÓSTICO: Verificar tokens guardados en BD
  */
+exports.diagnosticTokensDB = async (req, res) => {
+    try {
+        const { KickBroadcasterToken, KickEventSubscription } = require('../models');
+        const config = require('../../config');
+
+        console.log('🔍 [DIAGNÓSTICO DB] Consultando tokens en base de datos...');
+
+        // 1. Obtener TODOS los tokens guardados (activos e inactivos)
+        const allTokens = await KickBroadcasterToken.findAll({
+            attributes: [
+                'id', 'kick_user_id', 'kick_username', 'token_expires_at',
+                'is_active', 'auto_subscribed', 'last_subscription_attempt',
+                'subscription_error', 'created_at', 'updated_at'
+            ],
+            order: [['updated_at', 'DESC']]
+        });
+
+        console.log('🔍 [DIAGNÓSTICO DB] Tokens encontrados:', allTokens.length);
+
+        // 2. Verificar el broadcaster principal específicamente
+        const broadcasterPrincipal = await KickBroadcasterToken.findOne({
+            where: {
+                kick_user_id: config.kick.broadcasterId,
+                is_active: true
+            }
+        });
+
+        // 3. Verificar suscripciones del broadcaster principal
+        const suscripciones = await KickEventSubscription.findAll({
+            where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
+            attributes: ['id', 'subscription_id', 'event_type', 'status', 'created_at']
+        });
+
+        // 4. Análisis de tokens
+        const tokensActivos = allTokens.filter(t => t.is_active);
+        const tokensExpirados = allTokens.filter(t => {
+            if (!t.token_expires_at) return false;
+            return new Date(t.token_expires_at) < new Date();
+        });
+
+        const diagnostico = {
+            resumen: {
+                total_tokens: allTokens.length,
+                tokens_activos: tokensActivos.length,
+                tokens_expirados: tokensExpirados.length,
+                broadcaster_principal_id: config.kick.broadcasterId,
+                broadcaster_principal_tiene_token: !!broadcasterPrincipal,
+                total_suscripciones: suscripciones.length
+            },
+            broadcaster_principal: broadcasterPrincipal ? {
+                id: broadcasterPrincipal.id,
+                kick_user_id: broadcasterPrincipal.kick_user_id,
+                kick_username: broadcasterPrincipal.kick_username,
+                token_expires_at: broadcasterPrincipal.token_expires_at,
+                auto_subscribed: broadcasterPrincipal.auto_subscribed,
+                last_subscription_attempt: broadcasterPrincipal.last_subscription_attempt,
+                subscription_error: broadcasterPrincipal.subscription_error,
+                created_at: broadcasterPrincipal.created_at,
+                updated_at: broadcasterPrincipal.updated_at,
+                token_valido: broadcasterPrincipal.token_expires_at ?
+                    new Date(broadcasterPrincipal.token_expires_at) > new Date() :
+                    'DESCONOCIDO'
+            } : null,
+            todos_los_tokens: allTokens.map(t => ({
+                id: t.id,
+                kick_user_id: t.kick_user_id,
+                kick_username: t.kick_username,
+                is_active: t.is_active,
+                auto_subscribed: t.auto_subscribed,
+                token_expires_at: t.token_expires_at,
+                token_valido: t.token_expires_at ?
+                    new Date(t.token_expires_at) > new Date() :
+                    'DESCONOCIDO',
+                created_at: t.created_at,
+                updated_at: t.updated_at
+            })),
+            suscripciones: suscripciones.map(s => ({
+                id: s.id,
+                subscription_id: s.subscription_id,
+                event_type: s.event_type,
+                status: s.status,
+                created_at: s.created_at
+            })),
+            estado: {
+                problema_identificado: !broadcasterPrincipal ?
+                    'El broadcaster principal (ID: ' + config.kick.broadcasterId + ') NO tiene token guardado' :
+                    (suscripciones.length === 0 ?
+                        'El broadcaster principal tiene token pero NO hay suscripciones' :
+                        'Token y suscripciones presentes - debería funcionar'),
+                accion_requerida: !broadcasterPrincipal ?
+                    'Luisardito necesita autenticarse en: https://luisardito.com/auth/login' :
+                    (suscripciones.length === 0 ?
+                        'Re-autenticación necesaria para crear suscripciones' :
+                        'Probar webhook enviando mensaje en chat de Luisardito')
+            }
+        };
+
+        console.log('🔍 [DIAGNÓSTICO DB] RESULTADO:', JSON.stringify(diagnostico.resumen, null, 2));
+
+        res.json({
+            success: true,
+            diagnostico,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔍 [DIAGNÓSTICO DB] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
 exports.diagnosticTokens = async (req, res) => {
     try {
         const { KickBroadcasterToken, KickEventSubscription } = require('../models');
