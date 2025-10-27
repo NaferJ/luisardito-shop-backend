@@ -28,6 +28,12 @@ router.get('/diagnostic-tokens-db', kickWebhookCtrl.diagnosticTokensDB);
 // 🔧 REPARAR: Reactivar token del broadcaster principal
 router.post('/reactivate-broadcaster-token', kickWebhookCtrl.reactivateBroadcasterToken);
 
+// 🔧 DEPURACIÓN: Debug proceso de suscripción
+router.get('/debug-subscription-process', kickWebhookCtrl.debugSubscriptionProcess);
+
+// 🔧 DEPURACIÓN: Verificar estructura de tabla
+router.get('/debug-table-structure', kickWebhookCtrl.debugTableStructure);
+
 // 📊 ESTADO: Sistema de webhooks
 router.get('/status', kickWebhookCtrl.systemStatus);
 

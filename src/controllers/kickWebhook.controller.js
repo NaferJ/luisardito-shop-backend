@@ -1209,3 +1209,291 @@ exports.systemStatus = async (req, res) => {
         });
     }
 };
+
+/**
+ * 🔧 DEPURACIÓN: Endpoint temporal para debuggear el proceso de suscripción
+ */
+exports.debugSubscriptionProcess = async (req, res) => {
+    try {
+        const { KickBroadcasterToken, KickEventSubscription } = require('../models');
+        const config = require('../../config');
+        const axios = require('axios');
+
+        console.log('🔧 [DEBUG SUB] Iniciando depuración del proceso de suscripción...');
+
+        // 1. Verificar token activo
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: {
+                kick_user_id: config.kick.broadcasterId,
+                is_active: true
+            }
+        });
+
+        if (!broadcasterToken) {
+            return res.json({
+                success: false,
+                error: 'No hay token activo para el broadcaster principal',
+                broadcaster_id: config.kick.broadcasterId
+            });
+        }
+
+        console.log('🔧 [DEBUG SUB] Token encontrado para:', broadcasterToken.kick_username);
+
+        // 2. Simular llamada a la API de Kick (solo un evento para prueba)
+        const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
+        const testPayload = {
+            broadcaster_user_id: parseInt(config.kick.broadcasterId),
+            events: [{ name: 'chat.message.sent', version: 1 }], // Solo un evento para prueba
+            method: 'webhook',
+            webhook_url: 'https://api.luisardito.com/api/kick-webhook/events'
+        };
+
+        console.log('🔧 [DEBUG SUB] Payload enviado a Kick:', JSON.stringify(testPayload, null, 2));
+
+        let kickResponse;
+        try {
+            const response = await axios.post(apiUrl, testPayload, {
+                headers: {
+                    'Authorization': `Bearer ${broadcasterToken.access_token}`,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 15000
+            });
+            kickResponse = response.data;
+            console.log('🔧 [DEBUG SUB] Respuesta de Kick:', JSON.stringify(kickResponse, null, 2));
+        } catch (apiError) {
+            console.error('🔧 [DEBUG SUB] Error en API de Kick:', apiError.message);
+            return res.json({
+                success: false,
+                error: 'Error comunicándose con API de Kick',
+                details: apiError.response?.data || apiError.message
+            });
+        }
+
+        // 3. Intentar guardar cada suscripción y capturar errores detallados
+        const subscriptionsData = kickResponse.data || [];
+        const debugResults = [];
+
+        for (const sub of subscriptionsData) {
+            console.log('🔧 [DEBUG SUB] Procesando suscripción:', JSON.stringify(sub, null, 2));
+
+            if (sub.subscription_id && !sub.error) {
+                const dataToSave = {
+                    subscription_id: sub.subscription_id,
+                    broadcaster_user_id: parseInt(config.kick.broadcasterId),
+                    event_type: sub.name,
+                    event_version: sub.version,
+                    method: 'webhook',
+                    status: 'active'
+                };
+
+                console.log('🔧 [DEBUG SUB] Datos a guardar:', JSON.stringify(dataToSave, null, 2));
+
+                try {
+                    // Intentar crear directamente (no findOrCreate) para ver el error específico
+                    const newSubscription = await KickEventSubscription.create(dataToSave);
+
+                    debugResults.push({
+                        event: sub.name,
+                        success: true,
+                        subscription_id: sub.subscription_id,
+                        db_id: newSubscription.id
+                    });
+
+                    console.log('🔧 [DEBUG SUB] ✅ Guardado exitoso para:', sub.name);
+
+                } catch (dbError) {
+                    console.error('🔧 [DEBUG SUB] ❌ Error DB detallado:', {
+                        message: dbError.message,
+                        name: dbError.name,
+                        errors: dbError.errors,
+                        sql: dbError.sql,
+                        stack: dbError.stack
+                    });
+
+                    debugResults.push({
+                        event: sub.name,
+                        success: false,
+                        error: {
+                            message: dbError.message,
+                            name: dbError.name,
+                            errors: dbError.errors ? dbError.errors.map(e => ({
+                                message: e.message,
+                                type: e.type,
+                                path: e.path,
+                                value: e.value
+                            })) : null,
+                            sql: dbError.sql
+                        },
+                        attempted_data: dataToSave
+                    });
+                }
+            } else {
+                debugResults.push({
+                    event: sub.name || 'DESCONOCIDO',
+                    success: false,
+                    kick_error: sub.error || 'No subscription_id en respuesta'
+                });
+            }
+        }
+
+        // 4. Limpiar cualquier suscripción que se haya creado durante la prueba
+        await KickEventSubscription.destroy({
+            where: {
+                broadcaster_user_id: parseInt(config.kick.broadcasterId),
+                event_type: 'chat.message.sent'
+            }
+        });
+        console.log('🔧 [DEBUG SUB] Limpieza completada');
+
+        res.json({
+            success: true,
+            debug_info: {
+                broadcaster_id: config.kick.broadcasterId,
+                broadcaster_username: broadcasterToken.kick_username,
+                token_expires_at: broadcasterToken.token_expires_at,
+                kick_api_payload: testPayload,
+                kick_api_response: kickResponse,
+                db_save_results: debugResults
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔧 [DEBUG SUB] Error general:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+
+/**
+ * 🔧 DEPURACIÓN: Verificar estructura de tabla KickEventSubscription
+ */
+exports.debugTableStructure = async (req, res) => {
+    try {
+        const { KickEventSubscription } = require('../models');
+        const { sequelize } = require('../models/database');
+
+        console.log('🔧 [DEBUG TABLE] Verificando estructura de tabla...');
+
+        // 1. Describir la tabla directamente en la BD
+        const [tableDescription] = await sequelize.query(`DESCRIBE kick_event_subscriptions`);
+
+        // 2. Obtener constraints y índices
+        const [constraints] = await sequelize.query(`
+            SELECT 
+                COLUMN_NAME, 
+                IS_NULLABLE, 
+                DATA_TYPE, 
+                COLUMN_DEFAULT,
+                COLUMN_KEY,
+                EXTRA
+            FROM INFORMATION_SCHEMA.COLUMNS 
+            WHERE TABLE_NAME = 'kick_event_subscriptions' 
+            AND TABLE_SCHEMA = DATABASE()
+        `);
+
+        // 3. Verificar índices únicos
+        const [uniqueIndexes] = await sequelize.query(`
+            SELECT 
+                INDEX_NAME,
+                COLUMN_NAME,
+                NON_UNIQUE
+            FROM INFORMATION_SCHEMA.STATISTICS 
+            WHERE TABLE_NAME = 'kick_event_subscriptions' 
+            AND TABLE_SCHEMA = DATABASE()
+            AND NON_UNIQUE = 0
+        `);
+
+        // 4. Verificar foreign keys
+        const [foreignKeys] = await sequelize.query(`
+            SELECT 
+                COLUMN_NAME,
+                CONSTRAINT_NAME,
+                REFERENCED_TABLE_NAME,
+                REFERENCED_COLUMN_NAME
+            FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+            WHERE TABLE_NAME = 'kick_event_subscriptions' 
+            AND TABLE_SCHEMA = DATABASE()
+            AND REFERENCED_TABLE_NAME IS NOT NULL
+        `);
+
+        // 5. Probar inserción simple para capturar error
+        let insertTestResult = null;
+        try {
+            // Datos de prueba mínimos
+            const testData = {
+                subscription_id: 'test_debug_' + Date.now(),
+                broadcaster_user_id: 33112734,
+                event_type: 'chat.message.sent',
+                event_version: 1,
+                method: 'webhook',
+                status: 'active'
+            };
+
+            console.log('🔧 [DEBUG TABLE] Probando inserción con datos:', testData);
+
+            const testRecord = await KickEventSubscription.create(testData);
+
+            // Si funciona, eliminar inmediatamente
+            await testRecord.destroy();
+
+            insertTestResult = {
+                success: true,
+                message: 'Inserción de prueba exitosa',
+                test_data: testData
+            };
+
+        } catch (insertError) {
+            console.error('🔧 [DEBUG TABLE] Error en inserción de prueba:', insertError);
+
+            insertTestResult = {
+                success: false,
+                error: {
+                    message: insertError.message,
+                    name: insertError.name,
+                    errors: insertError.errors ? insertError.errors.map(e => ({
+                        message: e.message,
+                        type: e.type,
+                        path: e.path,
+                        value: e.value,
+                        validatorKey: e.validatorKey,
+                        validatorName: e.validatorName
+                    })) : null,
+                    sql: insertError.sql
+                }
+            };
+        }
+
+        res.json({
+            success: true,
+            table_info: {
+                table_description: tableDescription,
+                column_constraints: constraints,
+                unique_indexes: uniqueIndexes,
+                foreign_keys: foreignKeys,
+                insert_test: insertTestResult
+            },
+            sequelize_model_attributes: Object.keys(KickEventSubscription.rawAttributes).map(key => ({
+                name: key,
+                type: KickEventSubscription.rawAttributes[key].type.constructor.name,
+                allowNull: KickEventSubscription.rawAttributes[key].allowNull,
+                defaultValue: KickEventSubscription.rawAttributes[key].defaultValue,
+                unique: KickEventSubscription.rawAttributes[key].unique
+            })),
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔧 [DEBUG TABLE] Error general:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+
