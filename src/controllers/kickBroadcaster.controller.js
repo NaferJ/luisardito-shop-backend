@@ -32,12 +32,19 @@ exports.getConnectionStatus = async (req, res) => {
         }
 
         // Verificar suscripciones activas del BROADCASTER PRINCIPAL
+        console.log(`[Broadcaster Status] Buscando suscripciones para broadcaster ${mainBroadcasterId}`);
+
         const subscriptions = await KickEventSubscription.findAll({
             where: {
                 broadcaster_user_id: parseInt(mainBroadcasterId), // Siempre del broadcaster principal
                 status: 'active'
             }
         });
+
+        console.log(`[Broadcaster Status] Suscripciones encontradas: ${subscriptions.length}`);
+        if (subscriptions.length > 0) {
+            console.log(`[Broadcaster Status] Eventos:`, subscriptions.map(s => s.event_type));
+        }
 
         // Verificar si el token expiró
         const now = new Date();
@@ -206,3 +213,28 @@ exports.getRefreshServiceStatus = async (req, res) => {
     }
 };
 
+/**
+ * Debug endpoint para verificar configuración
+ */
+exports.debugConfig = async (req, res) => {
+    try {
+        return res.json({
+            config: {
+                broadcasterId: config.kick.broadcasterId,
+                hasBroadcasterId: !!config.kick.broadcasterId,
+                nodeEnv: process.env.NODE_ENV,
+                kickBroadcasterIdEnv: process.env.KICK_BROADCASTER_ID
+            },
+            tokenCount: await KickBroadcasterToken.count({ where: { is_active: true } }),
+            subscriptionCount: await KickEventSubscription.count({ where: { status: 'active' } }),
+            subscriptionsByBroadcaster: await KickEventSubscription.count({
+                where: {
+                    broadcaster_user_id: config.kick.broadcasterId ? parseInt(config.kick.broadcasterId) : null,
+                    status: 'active'
+                }
+            })
+        });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+};

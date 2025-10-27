@@ -10,4 +10,7 @@ router.get('/broadcaster/token', kickBroadcasterCtrl.getActiveToken);
 router.post('/broadcaster/refresh-token', kickBroadcasterCtrl.refreshToken);
 router.get('/broadcaster/refresh-service/status', kickBroadcasterCtrl.getRefreshServiceStatus);
 
+// Debug endpoint
+router.get('/broadcaster/debug', kickBroadcasterCtrl.debugConfig);
+
 module.exports = router;
