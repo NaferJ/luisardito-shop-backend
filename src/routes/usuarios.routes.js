@@ -25,4 +25,10 @@ router.put('/:id/puntos', auth, permiso('editar_puntos'), usuariosCtrl.actualiza
 // 🔍 DEBUG: Verificar permisos del usuario actual
 router.get('/me/debug-permisos', auth, usuariosCtrl.debugPermisos);
 
+// 🔍 DEBUG: Verificar estructura de roles y permisos (sin auth)
+router.get('/debug/roles-permisos', usuariosCtrl.debugRolesPermisos);
+
+// 🔍 DEBUG: Verificar usuario específico por ID (sin auth)
+router.get('/debug/:usuarioId', usuariosCtrl.debugUsuarioEspecifico);
+
 module.exports = router;
