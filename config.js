@@ -10,6 +10,7 @@ console.log('🔍 DEBUG - Variables de entorno:');
 console.log('JWT_SECRET existe:', !!process.env.JWT_SECRET);
 console.log('NODE_ENV:', process.env.NODE_ENV);
 console.log('DB_HOST:', process.env.DB_HOST);
+console.log('KICK_BROADCASTER_ID:', process.env.KICK_BROADCASTER_ID || 'NO CONFIGURADO');
 
 module.exports = {
     db: {
@@ -51,3 +52,4 @@ module.exports = {
 console.log('🔍 DEBUG - Config resultante:');
 console.log('jwtSecret existe:', !!module.exports.jwtSecret);
 console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
+console.log('kick.broadcasterId:', module.exports.kick.broadcasterId || 'NO CONFIGURADO');
