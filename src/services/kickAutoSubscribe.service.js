@@ -55,6 +55,14 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
 
         console.log('[Auto Subscribe] Respuesta de Kick:', response.data);
 
+        // Limpiar suscripciones existentes para este broadcaster antes de crear nuevas
+        console.log(`[Auto Subscribe] Limpiando suscripciones existentes para broadcaster ${broadcasterUserId}...`);
+        await KickEventSubscription.destroy({
+            where: {
+                broadcaster_user_id: parseInt(broadcasterUserId)
+            }
+        });
+
         // Almacenar las suscripciones exitosas en la base de datos local
         const subscriptionsData = response.data.data || [];
         const createdSubscriptions = [];
@@ -63,7 +71,25 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
         for (const sub of subscriptionsData) {
             if (sub.subscription_id && !sub.error) {
                 try {
-                    const localSub = await KickEventSubscription.create({
+                    const [localSub, created] = await KickEventSubscription.findOrCreate({
+                        where: {
+                            subscription_id: sub.subscription_id
+                        },
+                        defaults: {
+                            subscription_id: sub.subscription_id,
+                            broadcaster_user_id: parseInt(broadcasterUserId),
+                            event_type: sub.name,
+                            event_version: sub.version,
+                            method: 'webhook',
+                            status: 'active'
+                        }
+                    });
+
+                    createdSubscriptions.push(localSub);
+                    console.log(`[Auto Subscribe] ✅ Suscrito a ${sub.name} ${created ? '(nuevo)' : '(existente)'}`);
+                } catch (dbError) {
+                    console.error(`[Auto Subscribe] Error guardando suscripción ${sub.name}:`, dbError.message);
+                    console.error(`[Auto Subscribe] Datos intentados:`, {
                         subscription_id: sub.subscription_id,
                         broadcaster_user_id: parseInt(broadcasterUserId),
                         event_type: sub.name,
@@ -71,10 +97,9 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
                         method: 'webhook',
                         status: 'active'
                     });
-                    createdSubscriptions.push(localSub);
-                    console.log(`[Auto Subscribe] ✅ Suscrito a ${sub.name}`);
-                } catch (dbError) {
-                    console.error(`[Auto Subscribe] Error guardando suscripción ${sub.name}:`, dbError.message);
+                    if (dbError.errors) {
+                        console.error(`[Auto Subscribe] Errores de validación específicos:`, dbError.errors);
+                    }
                 }
             } else if (sub.error) {
                 errors.push({ event: sub.name, error: sub.error });
