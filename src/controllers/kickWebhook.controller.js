@@ -1514,3 +1514,216 @@ exports.debugTableStructure = async (req, res) => {
     }
 };
 
+/**
+ * 🚀 APP TOKEN: Configurar webhooks permanentes con App Access Token
+ */
+exports.setupPermanentWebhooks = async (req, res) => {
+    try {
+        const { subscribeToEventsWithAppToken } = require('../services/kickAppToken.service');
+        const config = require('../../config');
+
+        console.log('🚀 [Setup Permanent] Iniciando configuración de webhooks permanentes...');
+
+        const result = await subscribeToEventsWithAppToken(config.kick.broadcasterId);
+
+        if (result.success) {
+            res.json({
+                success: true,
+                message: '🚀 ¡Webhooks permanentes configurados exitosamente!',
+                permanent: true,
+                token_type: 'APP_TOKEN',
+                no_user_auth_required: true,
+                broadcaster_id: config.kick.broadcasterId,
+                subscriptions_created: result.totalSubscribed,
+                subscriptions_errors: result.totalErrors,
+                webhook_url: 'https://api.luisardito.com/api/kick-webhook/events',
+                benefits: [
+                    'No requiere re-autenticación del usuario',
+                    'Funciona 24/7 sin intervención manual',
+                    'No expira cada 2 horas',
+                    'No hay refresh tokens que expiren',
+                    'Completamente autónomo'
+                ],
+                next_steps: [
+                    'Los webhooks están listos',
+                    'Probar enviando mensaje en chat',
+                    'Verificar logs del servidor'
+                ]
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: 'Error configurando webhooks permanentes',
+                error: result.error,
+                token_type: 'APP_TOKEN',
+                permanent: false
+            });
+        }
+
+    } catch (error) {
+        console.error('🚀 [Setup Permanent] Error general:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            message: 'Error interno configurando webhooks permanentes'
+        });
+    }
+};
+
+/**
+ * 🔍 APP TOKEN: Debug y estado de webhooks permanentes
+ */
+exports.debugAppTokenWebhooks = async (req, res) => {
+    try {
+        const {
+            getAppAccessToken,
+            checkAppTokenWebhooksStatus
+        } = require('../services/kickAppToken.service');
+        const config = require('../../config');
+
+        console.log('🔍 [Debug App Token] Iniciando diagnóstico de webhooks permanentes...');
+
+        // 1. Probar obtención de App Token
+        console.log('🔍 [Debug App Token] Probando obtención de App Access Token...');
+        const appToken = await getAppAccessToken();
+
+        // 2. Verificar estado de suscripciones
+        console.log('🔍 [Debug App Token] Verificando estado de suscripciones...');
+        const webhooksStatus = await checkAppTokenWebhooksStatus(config.kick.broadcasterId);
+
+        // 3. Verificar todas las suscripciones en DB
+        const { KickEventSubscription } = require('../models');
+        const allSubscriptions = await KickEventSubscription.findAll({
+            where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
+            attributes: ['id', 'subscription_id', 'event_type', 'app_id', 'status', 'created_at'],
+            order: [['created_at', 'DESC']]
+        });
+
+        const debug_info = {
+            app_token_test: {
+                success: !!appToken,
+                token_obtained: !!appToken,
+                token_length: appToken ? appToken.length : 0,
+                message: appToken ? 'App Token obtenido exitosamente' : 'Error obteniendo App Token'
+            },
+            webhooks_status: webhooksStatus,
+            broadcaster_config: {
+                broadcaster_id: config.kick.broadcasterId,
+                webhook_url: 'https://api.luisardito.com/api/kick-webhook/events',
+                client_id: config.kick.clientId,
+                client_secret_configured: !!config.kick.clientSecret
+            },
+            subscriptions_breakdown: {
+                app_token_subs: allSubscriptions.filter(s => s.app_id === 'APP_TOKEN'),
+                user_token_subs: allSubscriptions.filter(s => s.app_id !== 'APP_TOKEN'),
+                all_subscriptions: allSubscriptions
+            },
+            system_assessment: {
+                is_permanent: webhooksStatus.is_permanent,
+                requires_maintenance: !webhooksStatus.is_permanent,
+                user_dependency: webhooksStatus.requires_user_auth,
+                recommendation: webhooksStatus.is_permanent ?
+                    'Sistema funcionando con webhooks permanentes' :
+                    'Se recomienda configurar webhooks permanentes con App Token'
+            }
+        };
+
+        res.json({
+            success: true,
+            debug_info,
+            summary: {
+                app_token_working: !!appToken,
+                permanent_webhooks_active: webhooksStatus.is_permanent,
+                total_active_subscriptions: webhooksStatus.total_subscriptions,
+                system_status: webhooksStatus.is_permanent ? 'PERMANENT' : 'TEMPORARY'
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔍 [Debug App Token] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+
+/**
+ * 🔄 APP TOKEN: Estado comparativo entre User Token vs App Token
+ */
+exports.compareTokenTypes = async (req, res) => {
+    try {
+        const { checkAppTokenWebhooksStatus } = require('../services/kickAppToken.service');
+        const { KickBroadcasterToken } = require('../models');
+        const config = require('../../config');
+
+        console.log('🔄 [Compare Tokens] Comparando User Token vs App Token...');
+
+        // Estado de webhooks
+        const webhooksStatus = await checkAppTokenWebhooksStatus(config.kick.broadcasterId);
+
+        // Estado de User Tokens
+        const userTokens = await KickBroadcasterToken.findAll({
+            where: { kick_user_id: config.kick.broadcasterId },
+            attributes: ['id', 'kick_username', 'is_active', 'token_expires_at', 'auto_subscribed'],
+            order: [['updated_at', 'DESC']]
+        });
+
+        const now = new Date();
+        const activeUserTokens = userTokens.filter(t =>
+            t.is_active && t.token_expires_at && new Date(t.token_expires_at) > now
+        );
+
+        const comparison = {
+            user_tokens: {
+                total: userTokens.length,
+                active: activeUserTokens.length,
+                expires: activeUserTokens.length > 0 ? activeUserTokens[0].token_expires_at : null,
+                requires_user_interaction: true,
+                maintenance_required: true,
+                duration: '2 horas (con refresh hasta ~30-90 días)',
+                webhooks_count: webhooksStatus.user_token_subscriptions
+            },
+            app_tokens: {
+                total: 'N/A (sin estado en DB)',
+                active: webhooksStatus.app_token_subscriptions > 0 ? 1 : 0,
+                expires: 'NUNCA (permanente)',
+                requires_user_interaction: false,
+                maintenance_required: false,
+                duration: 'PERMANENTE (hasta cambio manual de credenciales)',
+                webhooks_count: webhooksStatus.app_token_subscriptions
+            },
+            recommendation: {
+                current_status: webhooksStatus.is_permanent ? 'USANDO_APP_TOKEN' : 'USANDO_USER_TOKEN',
+                should_migrate: !webhooksStatus.is_permanent,
+                benefits_migration: [
+                    'Elimina dependencia del usuario',
+                    'No requiere re-autenticación',
+                    'Funciona 24/7 sin mantenimiento',
+                    'Elimina expiración de tokens',
+                    'Sistema completamente autónomo'
+                ]
+            }
+        };
+
+        res.json({
+            success: true,
+            comparison,
+            summary: {
+                current_system: webhooksStatus.is_permanent ? 'PERMANENT (App Token)' : 'TEMPORARY (User Token)',
+                recommendation: webhooksStatus.is_permanent ? 'Ya optimizado' : 'Migrar a App Token',
+                action_needed: !webhooksStatus.is_permanent
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔄 [Compare Tokens] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
