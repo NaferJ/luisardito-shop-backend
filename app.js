@@ -29,6 +29,21 @@ app.use(customCors);
 app.use(cookieParser()); // Para leer cookies
 app.use(express.json());
 
+// Middleware específico para webhooks con logging detallado
+app.use("/api/kick-webhook", (req, res, next) => {
+    console.log('🚨🚨🚨 [WEBHOOK MIDDLEWARE] =================================');
+    console.log('🚨 Petición a /api/kick-webhook/*');
+    console.log('🚨 Method:', req.method);
+    console.log('🚨 URL:', req.url);
+    console.log('🚨 Full URL:', req.originalUrl);
+    console.log('🚨 IP:', req.ip);
+    console.log('🚨 User-Agent:', req.headers['user-agent']);
+    console.log('🚨 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('🚨 Body:', JSON.stringify(req.body, null, 2));
+    console.log('🚨🚨🚨 =================================================');
+    next();
+});
+
 // Rutas principales
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", usuariosRoutes);
