@@ -1290,17 +1290,34 @@ exports.debugSubscriptionProcess = async (req, res) => {
                 console.log('🔧 [DEBUG SUB] Datos a guardar:', JSON.stringify(dataToSave, null, 2));
 
                 try {
-                    // Intentar crear directamente (no findOrCreate) para ver el error específico
-                    const newSubscription = await KickEventSubscription.create(dataToSave);
-
-                    debugResults.push({
-                        event: sub.name,
-                        success: true,
-                        subscription_id: sub.subscription_id,
-                        db_id: newSubscription.id
+                    // Usar la misma lógica que en el servicio principal: find-update
+                    let localSub = await KickEventSubscription.findOne({
+                        where: { subscription_id: sub.subscription_id }
                     });
 
-                    console.log('🔧 [DEBUG SUB] ✅ Guardado exitoso para:', sub.name);
+                    if (localSub) {
+                        // Si existe, actualizar los datos
+                        await localSub.update(dataToSave);
+                        debugResults.push({
+                            event: sub.name,
+                            success: true,
+                            action: 'updated',
+                            subscription_id: sub.subscription_id,
+                            db_id: localSub.id
+                        });
+                        console.log('🔧 [DEBUG SUB] ✅ Actualizado exitoso para:', sub.name);
+                    } else {
+                        // Si no existe, crear nuevo
+                        const newSubscription = await KickEventSubscription.create(dataToSave);
+                        debugResults.push({
+                            event: sub.name,
+                            success: true,
+                            action: 'created',
+                            subscription_id: sub.subscription_id,
+                            db_id: newSubscription.id
+                        });
+                        console.log('🔧 [DEBUG SUB] ✅ Creado exitoso para:', sub.name);
+                    }
 
                 } catch (dbError) {
                     console.error('🔧 [DEBUG SUB] ❌ Error DB detallado:', {
