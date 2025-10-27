@@ -13,13 +13,28 @@ const { Op } = require('sequelize');
  * Controlador principal para recibir webhooks de Kick
  */
 exports.handleWebhook = async (req, res) => {
+    // LOG UNIVERSAL - captura CUALQUIER petición que llegue
+    console.log('🚨 [Kick Webhook] ==========================================');
+    console.log('🚨 [Kick Webhook] PETICIÓN RECIBIDA EN /api/kick-webhook/events');
+    console.log('🚨 [Kick Webhook] Timestamp:', new Date().toISOString());
+    console.log('🚨 [Kick Webhook] Method:', req.method);
+    console.log('🚨 [Kick Webhook] URL:', req.url);
+    console.log('🚨 [Kick Webhook] Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('🚨 [Kick Webhook] Body:', JSON.stringify(req.body, null, 2));
+    console.log('🚨 [Kick Webhook] IP:', req.ip);
+    console.log('🚨 [Kick Webhook] User-Agent:', req.headers['user-agent']);
+    console.log('🚨 [Kick Webhook] ==========================================');
+
     try {
-        console.log('[Kick Webhook] ⚡ WEBHOOK RECIBIDO');
-        console.log('[Kick Webhook] Method:', req.method);
-        console.log('[Kick Webhook] URL:', req.url);
-        console.log('[Kick Webhook] Headers completos:', req.headers);
-        console.log('[Kick Webhook] Body:', req.body);
-        console.log('[Kick Webhook] IP:', req.ip);
+        // Si es una petición de test simple, responder inmediatamente
+        if (req.body && req.body.test === true) {
+            console.log('🔧 [Kick Webhook] Petición de test detectada');
+            return res.status(200).json({
+                status: 'success',
+                message: 'Test webhook received',
+                timestamp: new Date().toISOString()
+            });
+        }
 
         // Extraer headers del webhook
         const messageId = req.headers['kick-event-message-id'];
@@ -36,6 +51,12 @@ exports.handleWebhook = async (req, res) => {
             eventVersion,
             timestamp
         });
+
+        // Si faltan headers de webhook de Kick, pero hay contenido, puede ser una verificación
+        if (!messageId && !eventType) {
+            console.log('⚠️ [Kick Webhook] Petición sin headers de Kick - posible verificación');
+            return res.status(200).json({ message: 'Webhook endpoint ready' });
+        }
 
         // Validar que existen los headers necesarios
         if (!messageId || !signature || !timestamp || !eventType) {
@@ -690,5 +711,55 @@ exports.debugWebhook = async (req, res) => {
         });
     } catch (error) {
         return res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Endpoint temporal para simular un evento de chat y verificar que el procesamiento funciona
+ * POST /api/kick-webhook/simulate-chat
+ */
+exports.simulateChat = async (req, res) => {
+    try {
+        console.log('[Webhook Simulator] Simulando evento de chat...');
+
+        // Simular payload de chat message
+        const simulatedPayload = {
+            message_id: 'sim_' + Date.now(),
+            content: 'Mensaje de prueba simulado',
+            sender: {
+                user_id: 33112734, // Tu user_id
+                username: 'NaferJ'
+            },
+            broadcaster: {
+                user_id: 2771761,
+                username: 'Luisardito'
+            },
+            sent_at: new Date().toISOString()
+        };
+
+        const metadata = {
+            messageId: simulatedPayload.message_id,
+            subscriptionId: 'sim_subscription',
+            timestamp: Date.now()
+        };
+
+        console.log('[Webhook Simulator] Procesando evento simulado...');
+
+        // Procesar el evento como si fuera real
+        await processWebhookEvent('chat.message.sent', 1, simulatedPayload, metadata);
+
+        return res.json({
+            status: 'success',
+            message: 'Evento de chat simulado procesado',
+            payload: simulatedPayload,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Webhook Simulator] Error:', error.message);
+        return res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
     }
 };
