@@ -25,4 +25,7 @@ router.options('/test-cors', kickWebhookCtrl.testCors);
 router.get('/diagnostic-tokens', kickWebhookCtrl.diagnosticTokens);
 router.get('/diagnostic-tokens-db', kickWebhookCtrl.diagnosticTokensDB);
 
+// 🔧 REPARAR: Reactivar token del broadcaster principal
+router.post('/reactivate-broadcaster-token', kickWebhookCtrl.reactivateBroadcasterToken);
+
 module.exports = router;
