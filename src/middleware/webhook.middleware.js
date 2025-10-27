@@ -1,47 +1,35 @@
 /**
- * 🧪 MODO TEST PRODUCCIÓN: Logging optimizado para webhooks
+ * Middleware para webhooks - Optimizado para producción
  */
 
 const logWebhookRequest = (req, res, next) => {
-    console.log('🎯🎯🎯 [WEBHOOK] ============================================');
-    console.log('🎯 TIMESTAMP:', new Date().toISOString());
-    console.log('🎯 MÉTODO:', req.method, '| URL:', req.originalUrl);
-    console.log('🎯 IP ORIGEN:', req.ip || req.connection.remoteAddress || 'DESCONOCIDA');
-    console.log('🎯 USER-AGENT:', req.headers['user-agent'] || 'NO ESPECIFICADO');
-    console.log('🎯 ORIGIN:', req.headers.origin || 'SIN ORIGIN');
-    console.log('🎯 CONTENT-TYPE:', req.headers['content-type'] || 'NO ESPECIFICADO');
+    // Solo log para webhooks reales de Kick
+    const hasKickHeaders = Object.keys(req.headers).some(key =>
+        key.toLowerCase().startsWith('kick-event')
+    );
 
-    // Headers específicos de Kick
-    const kickHeaders = Object.keys(req.headers)
-        .filter(key => key.toLowerCase().startsWith('kick-event'))
-        .reduce((obj, key) => {
-            obj[key] = req.headers[key];
-            return obj;
-        }, {});
+    if (hasKickHeaders || req.body?.test) {
+        console.log('🎯 [WEBHOOK]', new Date().toISOString(), req.method, req.originalUrl);
 
-    if (Object.keys(kickHeaders).length > 0) {
-        console.log('🎯 HEADERS DE KICK:', JSON.stringify(kickHeaders, null, 2));
-    } else {
-        console.log('🎯 HEADERS DE KICK: NINGUNO');
-    }
+        const kickHeaders = {};
+        Object.keys(req.headers).forEach(key => {
+            if (key.toLowerCase().startsWith('kick-event')) {
+                kickHeaders[key] = req.headers[key];
+            }
+        });
 
-    // Body (limitado para evitar spam)
-    if (req.body && Object.keys(req.body).length > 0) {
-        const bodyStr = JSON.stringify(req.body, null, 2);
-        if (bodyStr.length > 500) {
-            console.log('🎯 BODY: [GRANDE - ' + bodyStr.length + ' chars] ' + bodyStr.substring(0, 200) + '...');
-        } else {
-            console.log('🎯 BODY:', bodyStr);
+        if (Object.keys(kickHeaders).length > 0) {
+            console.log('🎯 [KICK HEADERS]', kickHeaders);
         }
-    } else {
-        console.log('🎯 BODY: VACÍO');
+
+        if (req.body && Object.keys(req.body).length > 0) {
+            console.log('🎯 [PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
+        }
     }
 
-    console.log('🎯🎯🎯 ====================================================');
     next();
 };
 
-// CORS backup (aunque el principal ya maneja todo)
 const webhookCors = (req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', '*');

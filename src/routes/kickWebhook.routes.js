@@ -28,4 +28,7 @@ router.get('/diagnostic-tokens-db', kickWebhookCtrl.diagnosticTokensDB);
 // 🔧 REPARAR: Reactivar token del broadcaster principal
 router.post('/reactivate-broadcaster-token', kickWebhookCtrl.reactivateBroadcasterToken);
 
+// 📊 ESTADO: Sistema de webhooks
+router.get('/status', kickWebhookCtrl.systemStatus);
+
 module.exports = router;

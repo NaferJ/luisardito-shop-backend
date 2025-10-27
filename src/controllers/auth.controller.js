@@ -363,20 +363,11 @@ exports.callbackKick = async (req, res) => {
             tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
         }
 
-        console.log('[Kick OAuth][callbackKick] Guardando token del broadcaster...');
-
-        // 🎯 DETECCIÓN ESPECIAL: ¿Es el broadcaster principal?
+        // 🎯 DETECCIÓN AUTOMÁTICA: ¿Es el broadcaster principal?
         const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
 
         if (isBroadcasterPrincipal) {
-            console.log('🎉🎉🎉 [BROADCASTER PRINCIPAL] ================================');
-            console.log('🎉 ¡EL BROADCASTER PRINCIPAL SE HA AUTENTICADO!');
-            console.log('🎉 Usuario:', kickUser.name, '(ID:', kickUserId, ')');
-            console.log('🎉 Este es Luisardito - ¡Los webhooks deberían funcionar ahora!');
-            console.log('🎉🎉🎉 ================================================');
-        } else {
-            console.log('👤 [Usuario Normal] Autenticado:', kickUser.name, '(ID:', kickUserId, ')');
-            console.log('👤 No es el broadcaster principal (', config.kick.broadcasterId, ')');
+            console.log('🚀 [BROADCASTER PRINCIPAL] Luisardito autenticado - Configurando webhooks...');
         }
 
         // Guardar o actualizar token
@@ -405,26 +396,15 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
 
-        // TODOS los usuarios pueden suscribirse a eventos del broadcaster principal
-        const broadcasterIdToSubscribe = config.kick.broadcasterId; // El broadcaster principal (2771761)
-
-        console.log('[Kick OAuth][callbackKick] Broadcaster a suscribir:', broadcasterIdToSubscribe);
-        console.log('[Kick OAuth][callbackKick] Token provider:', kickUserId);
-
         let autoSubscribeResult = null;
 
-        if (broadcasterIdToSubscribe) {
-            if (isBroadcasterPrincipal) {
-                console.log('🚀 [BROADCASTER PRINCIPAL] Suscribiéndose a eventos de SU PROPIO canal...');
-                console.log('🚀 Esto debería FUNCIONAR correctamente según las reglas de Kick');
-            } else {
-                console.log('⚠️ [Usuario Normal] Intentando suscribirse a eventos del broadcaster principal...');
-                console.log('⚠️ Esto puede no funcionar si Kick requiere que solo el broadcaster se suscriba a su canal');
-            }
+        // SOLO el broadcaster principal debe suscribirse a eventos
+        if (isBroadcasterPrincipal) {
+            console.log('🚀 [BROADCASTER PRINCIPAL] Configurando suscripciones de webhooks...');
 
             try {
-                // Usar el token del usuario que se conecta para suscribirse a eventos del broadcaster principal
-                autoSubscribeResult = await autoSubscribeToEvents(accessToken, broadcasterIdToSubscribe, kickUserId);
+                // Usar SU PROPIO token para suscribirse a eventos de SU canal
+                autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId, kickUserId);
 
                 await broadcasterToken.update({
                     auto_subscribed: autoSubscribeResult.success,
@@ -432,20 +412,13 @@ exports.callbackKick = async (req, res) => {
                     subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
                 });
 
-                if (isBroadcasterPrincipal) {
-                    console.log('🚀 [BROADCASTER PRINCIPAL] Auto-suscripción:', autoSubscribeResult.success ? '✅ EXITOSA' : '❌ FALLÓ');
-                    if (autoSubscribeResult.success) {
-                        console.log(`🚀 [BROADCASTER PRINCIPAL] ¡${autoSubscribeResult.totalSubscribed} eventos suscritos! Los webhooks deberían funcionar ahora.`);
-                    }
+                if (autoSubscribeResult.success) {
+                    console.log(`🚀 [BROADCASTER PRINCIPAL] ✅ ${autoSubscribeResult.totalSubscribed} eventos configurados. Sistema listo.`);
                 } else {
-                    console.log('⚠️ [Usuario Normal] Auto-suscripción:', autoSubscribeResult.success ? '✅ Exitosa' : '❌ Falló');
-                    if (autoSubscribeResult.success) {
-                        console.log(`⚠️ [Usuario Normal] ${autoSubscribeResult.totalSubscribed} eventos suscritos para broadcaster ${broadcasterIdToSubscribe} usando token de ${kickUserId}`);
-                    }
+                    console.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error en configuración:', autoSubscribeResult.error);
                 }
             } catch (subscribeError) {
-                const errorPrefix = isBroadcasterPrincipal ? '🚀 [BROADCASTER PRINCIPAL]' : '⚠️ [Usuario Normal]';
-                console.error(`${errorPrefix} Error en auto-suscripción:`, subscribeError.message);
+                console.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error crítico:', subscribeError.message);
                 await broadcasterToken.update({
                     auto_subscribed: false,
                     last_subscription_attempt: new Date(),
@@ -453,7 +426,7 @@ exports.callbackKick = async (req, res) => {
                 });
             }
         } else {
-            console.log('[Kick OAuth][callbackKick] No hay broadcaster configurado, saltando auto-suscripción');
+            console.log('👤 [Usuario Normal] Autenticado, no requiere configuración de webhooks');
         }
 
         // Generar access token y refresh token

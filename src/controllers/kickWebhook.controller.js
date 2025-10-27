@@ -220,22 +220,17 @@ exports.testCors = async (req, res) => {
  * Controlador principal para recibir webhooks de Kick
  */
 exports.handleWebhook = async (req, res) => {
-    // LOG UNIVERSAL - captura CUALQUIER petición que llegue
-    console.log('🚨 [Kick Webhook] ==========================================');
-    console.log('🚨 [Kick Webhook] PETICIÓN RECIBIDA EN /api/kick-webhook/events');
-    console.log('🚨 [Kick Webhook] Timestamp:', new Date().toISOString());
-    console.log('🚨 [Kick Webhook] Method:', req.method);
-    console.log('🚨 [Kick Webhook] URL:', req.url);
-    console.log('🚨 [Kick Webhook] Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('🚨 [Kick Webhook] Body:', JSON.stringify(req.body, null, 2));
-    console.log('🚨 [Kick Webhook] IP:', req.ip);
-    console.log('🚨 [Kick Webhook] User-Agent:', req.headers['user-agent']);
-    console.log('🚨 [Kick Webhook] ==========================================');
+    // Log optimizado para producción
+    const eventType = req.headers['kick-event-type'];
+    const messageId = req.headers['kick-event-message-id'];
+
+    if (eventType) {
+        console.log('🎯 [Kick Webhook] Evento:', eventType, 'ID:', messageId);
+    }
 
     try {
         // Si es una petición de test simple, responder inmediatamente
         if (req.body && req.body.test === true) {
-            console.log('🔧 [Kick Webhook] Petición de test detectada');
             return res.status(200).json({
                 status: 'success',
                 message: 'Test webhook received',
@@ -244,30 +239,19 @@ exports.handleWebhook = async (req, res) => {
         }
 
         // Extraer headers del webhook
-        const messageId = req.headers['kick-event-message-id'];
         const subscriptionId = req.headers['kick-event-subscription-id'];
         const signature = req.headers['kick-event-signature'];
         const timestamp = req.headers['kick-event-message-timestamp'];
-        const eventType = req.headers['kick-event-type'];
         const eventVersion = req.headers['kick-event-version'];
-
-        console.log('[Kick Webhook] Evento recibido:', {
-            messageId,
-            subscriptionId,
-            eventType,
-            eventVersion,
-            timestamp
-        });
 
         // Si faltan headers de webhook de Kick, pero hay contenido, puede ser una verificación
         if (!messageId && !eventType) {
-            console.log('⚠️ [Kick Webhook] Petición sin headers de Kick - posible verificación');
             return res.status(200).json({ message: 'Webhook endpoint ready' });
         }
 
         // Validar que existen los headers necesarios
         if (!messageId || !signature || !timestamp || !eventType) {
-            console.error('[Kick Webhook] Faltan headers requeridos');
+            console.error('[Kick Webhook] ❌ Faltan headers requeridos');
             return res.status(400).json({ error: 'Faltan headers requeridos' });
         }
 
@@ -278,11 +262,9 @@ exports.handleWebhook = async (req, res) => {
         const isValidSignature = verifyWebhookSignature(messageId, timestamp, rawBody, signature);
 
         if (!isValidSignature) {
-            console.error('[Kick Webhook] Firma inválida');
+            console.error('[Kick Webhook] ❌ Firma inválida');
             return res.status(401).json({ error: 'Firma inválida' });
         }
-
-        console.log('[Kick Webhook] Firma verificada correctamente');
 
         // Verificar si el evento ya fue procesado (idempotencia)
         const existingEvent = await KickWebhookEvent.findOne({
@@ -290,7 +272,6 @@ exports.handleWebhook = async (req, res) => {
         });
 
         if (existingEvent) {
-            console.log('[Kick Webhook] Evento duplicado, ya fue procesado:', messageId);
             return res.status(200).json({ message: 'Evento ya procesado previamente' });
         }
 
@@ -322,7 +303,7 @@ exports.handleWebhook = async (req, res) => {
         return res.status(200).json({ message: 'Webhook procesado correctamente' });
 
     } catch (error) {
-        console.error('[Kick Webhook] Error procesando webhook:', error.message);
+        console.error('[Kick Webhook] ❌ Error procesando webhook:', error.message);
         return res.status(500).json({ error: 'Error interno al procesar webhook' });
     }
 };
@@ -335,7 +316,7 @@ exports.handleWebhook = async (req, res) => {
  * @param {object} metadata - Metadatos del webhook (messageId, subscriptionId, timestamp)
  */
 async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
-    console.log(`[Kick Webhook] Procesando evento ${eventType} v${eventVersion}`, payload);
+    console.log(`[Kick Webhook] Procesando evento ${eventType}`);
 
     switch (eventType) {
         case 'chat.message.sent':
@@ -388,12 +369,7 @@ async function handleChatMessage(payload, metadata) {
         const kickUserId = String(sender.user_id);
         const kickUsername = sender.username;
 
-        console.log('[Kick Webhook][Chat Message]', {
-            messageId: payload.message_id,
-            sender: kickUsername,
-            content: payload.content,
-            broadcaster: payload.broadcaster.username
-        });
+        console.log('[Chat Message]', kickUsername, ':', payload.content);
 
         // Verificar si el usuario existe en nuestra BD
         const usuario = await Usuario.findOne({
@@ -401,7 +377,7 @@ async function handleChatMessage(payload, metadata) {
         });
 
         if (!usuario) {
-            console.log(`[Kick Webhook][Chat Message] Usuario ${kickUsername} no registrado en la BD`);
+            console.log(`[Chat Message] Usuario ${kickUsername} no registrado, ignorando`);
             return;
         }
 
@@ -425,7 +401,6 @@ async function handleChatMessage(payload, metadata) {
         const pointsToAward = configMap[pointsKey] || 0;
 
         if (pointsToAward <= 0) {
-            console.log('[Kick Webhook][Chat Message] Puntos por chat deshabilitados');
             return;
         }
 
@@ -436,7 +411,6 @@ async function handleChatMessage(payload, metadata) {
         });
 
         if (cooldown && cooldown.cooldown_expires_at > now) {
-            console.log(`[Kick Webhook][Chat Message] Usuario ${kickUsername} en cooldown hasta ${cooldown.cooldown_expires_at}`);
             return;
         }
 
@@ -466,10 +440,10 @@ async function handleChatMessage(payload, metadata) {
             cooldown_expires_at: cooldownExpiresAt
         });
 
-        console.log(`[Kick Webhook][Chat Message] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}`);
+        console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername}`);
 
     } catch (error) {
-        console.error('[Kick Webhook][Chat Message] Error:', error.message);
+        console.error('[Chat Message] ❌ Error:', error.message);
     }
 }
 
@@ -1167,6 +1141,68 @@ exports.reactivateBroadcasterToken = async (req, res) => {
 
     } catch (error) {
         console.error('🔧 [REACTIVAR] Error general:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Estado simplificado del sistema de webhooks
+ */
+exports.systemStatus = async (req, res) => {
+    try {
+        const { KickBroadcasterToken, KickEventSubscription } = require('../models');
+        const config = require('../../config');
+
+        // Verificar broadcaster principal
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: {
+                kick_user_id: config.kick.broadcasterId,
+                is_active: true
+            }
+        });
+
+        // Contar suscripciones activas
+        const subscriptions = await KickEventSubscription.count({
+            where: {
+                broadcaster_user_id: parseInt(config.kick.broadcasterId),
+                status: 'active'
+            }
+        });
+
+        const now = new Date();
+        const tokenValid = broadcasterToken &&
+            new Date(broadcasterToken.token_expires_at) > now;
+
+        const status = {
+            system_ready: broadcasterToken && tokenValid && subscriptions > 0,
+            broadcaster_authenticated: !!broadcasterToken,
+            token_valid: tokenValid,
+            subscriptions_active: subscriptions,
+            webhook_url: 'https://api.luisardito.com/api/kick-webhook/events',
+            last_check: now.toISOString()
+        };
+
+        if (broadcasterToken) {
+            status.broadcaster_username = broadcasterToken.kick_username;
+            status.token_expires_at = broadcasterToken.token_expires_at;
+            status.auto_subscribed = broadcasterToken.auto_subscribed;
+        }
+
+        const statusCode = status.system_ready ? 200 : 503;
+
+        res.status(statusCode).json({
+            success: status.system_ready,
+            status,
+            message: status.system_ready ?
+                'Sistema de webhooks operativo' :
+                'Sistema necesita configuración'
+        });
+
+    } catch (error) {
+        console.error('[System Status] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
