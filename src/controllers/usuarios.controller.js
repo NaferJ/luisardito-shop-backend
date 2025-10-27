@@ -1,4 +1,6 @@
 const { Usuario, Canje, HistorialPunto, sequelize } = require('../models');
+const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
+const { extractAvatarUrl, getKickUserData } = require('../utils/kickApi');
 
 // Mostrar datos del usuario autenticado
 exports.me = async (req, res) => {
@@ -221,5 +223,62 @@ exports.actualizarPuntos = async (req, res) => {
         await t.rollback();
         console.error('Error al actualizar puntos:', error);
         res.status(500).json({ error: 'Error interno del servidor', message: error.message });
+    }
+};
+
+/**
+ * 🔍 DEBUG: Verificar permisos del usuario actual
+ */
+exports.debugPermisos = async (req, res) => {
+    try {
+        const { Rol, Permiso, RolPermiso } = require('../models');
+
+        // Obtener información completa del usuario
+        const userWithRole = await Usuario.findByPk(req.user.id, {
+            include: [{
+                model: Rol,
+                include: [{
+                    model: Permiso,
+                    through: { attributes: [] } // Excluir tabla intermedia
+                }]
+            }]
+        });
+
+        if (!userWithRole) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const permisos = userWithRole.Rol?.Permisos?.map(p => p.nombre) || [];
+
+        res.json({
+            usuario: {
+                id: userWithRole.id,
+                nickname: userWithRole.nickname,
+                email: userWithRole.email,
+                rol_id: userWithRole.rol_id,
+                rol_nombre: userWithRole.Rol?.nombre,
+                rol_descripcion: userWithRole.Rol?.descripcion
+            },
+            permisos: permisos,
+            permisos_detalle: userWithRole.Rol?.Permisos?.map(p => ({
+                id: p.id,
+                nombre: p.nombre,
+                descripcion: p.descripcion
+            })) || [],
+            verificaciones: {
+                puede_ver_historial_puntos: permisos.includes('ver_historial_puntos'),
+                puede_canjear_productos: permisos.includes('canjear_productos'),
+                puede_ver_canjes: permisos.includes('ver_canjes'),
+                es_admin: userWithRole.rol_id >= 3
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Debug Permisos] Error:', error);
+        res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
     }
 };

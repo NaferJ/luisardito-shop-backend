@@ -22,4 +22,7 @@ router.get('/:usuarioId/canjes', auth, permiso('gestionar_canjes'), canjesCtrl.l
 // Actualizar puntos de un usuario específico (admin por permiso)
 router.put('/:id/puntos', auth, permiso('editar_puntos'), usuariosCtrl.actualizarPuntos);
 
+// 🔍 DEBUG: Verificar permisos del usuario actual
+router.get('/me/debug-permisos', auth, usuariosCtrl.debugPermisos);
+
 module.exports = router;
