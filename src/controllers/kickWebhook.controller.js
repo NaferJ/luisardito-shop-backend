@@ -1024,3 +1024,112 @@ exports.testRealWebhook = async (req, res) => {
         });
     }
 };
+
+/**
+ * 🔧 REACTIVAR: Token del broadcaster principal
+ */
+exports.reactivateBroadcasterToken = async (req, res) => {
+    try {
+        const { KickBroadcasterToken } = require('../models');
+        const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
+        const config = require('../../config');
+
+        console.log('🔧 [REACTIVAR] Buscando token de broadcaster principal...');
+
+        const broadcasterToken = await KickBroadcasterToken.findOne({
+            where: { kick_user_id: config.kick.broadcasterId }
+        });
+
+        if (!broadcasterToken) {
+            return res.status(404).json({
+                success: false,
+                error: 'No se encontró token del broadcaster principal',
+                accion: 'Luisardito debe autenticarse primero'
+            });
+        }
+
+        console.log('🔧 [REACTIVAR] Token encontrado, verificando expiración...');
+
+        // Verificar si el token está expirado
+        const now = new Date();
+        const expiresAt = new Date(broadcasterToken.token_expires_at);
+        const isExpired = expiresAt <= now;
+
+        if (isExpired) {
+            return res.status(400).json({
+                success: false,
+                error: 'Token del broadcaster principal expirado',
+                expires_at: broadcasterToken.token_expires_at,
+                accion: 'Luisardito debe re-autenticarse'
+            });
+        }
+
+        console.log('🔧 [REACTIVAR] Reactivando token...');
+
+        // Reactivar el token
+        await broadcasterToken.update({
+            is_active: true,
+            auto_subscribed: false, // Lo marcaremos true después de suscribirse
+            subscription_error: null
+        });
+
+        console.log('🔧 [REACTIVAR] Intentando auto-suscripción con token del broadcaster...');
+
+        // Intentar auto-suscripción usando SU propio token
+        try {
+            const autoSubscribeResult = await autoSubscribeToEvents(
+                broadcasterToken.access_token,
+                config.kick.broadcasterId,
+                config.kick.broadcasterId
+            );
+
+            await broadcasterToken.update({
+                auto_subscribed: autoSubscribeResult.success,
+                last_subscription_attempt: new Date(),
+                subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
+            });
+
+            console.log('🔧 [REACTIVAR] Resultado de suscripción:', autoSubscribeResult.success ? 'ÉXITO' : 'FALLO');
+
+            res.json({
+                success: true,
+                token_reactivated: true,
+                auto_subscribed: autoSubscribeResult.success,
+                broadcaster_id: config.kick.broadcasterId,
+                broadcaster_username: broadcasterToken.kick_username,
+                subscriptions_created: autoSubscribeResult.totalSubscribed || 0,
+                subscriptions_errors: autoSubscribeResult.totalErrors || 0,
+                message: autoSubscribeResult.success ?
+                    '✅ Token reactivado y suscripciones creadas. ¡Los webhooks deberían funcionar!' :
+                    '⚠️ Token reactivado pero falló la suscripción',
+                next_step: autoSubscribeResult.success ?
+                    'Probar enviando mensaje en chat de Luisardito' :
+                    'Verificar logs de error de suscripción'
+            });
+
+        } catch (subscribeError) {
+            console.error('🔧 [REACTIVAR] Error en suscripción:', subscribeError.message);
+
+            await broadcasterToken.update({
+                auto_subscribed: false,
+                subscription_error: subscribeError.message
+            });
+
+            res.json({
+                success: true,
+                token_reactivated: true,
+                auto_subscribed: false,
+                error: subscribeError.message,
+                message: '⚠️ Token reactivado pero falló la suscripción',
+                next_step: 'Verificar logs de error'
+            });
+        }
+
+    } catch (error) {
+        console.error('🔧 [REACTIVAR] Error general:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
