@@ -29,10 +29,15 @@ app.use(customCors);
 app.use(cookieParser()); // Para leer cookies
 app.use(express.json());
 
-// Middleware específico para webhooks con logging básico
+// Middleware específico para webhooks con logging optimizado
 app.use("/api/kick-webhook", (req, res, next) => {
-    console.log('🔔 [WEBHOOK] Nueva petición:', req.method, req.originalUrl);
-    console.log('🔔 [WEBHOOK] Origen:', req.headers.origin || 'SIN ORIGIN');
+    const hasKickHeaders = Object.keys(req.headers).some(key =>
+        key.toLowerCase().startsWith('kick-event')
+    );
+
+    if (hasKickHeaders) {
+        console.log('🎯 [WEBHOOK] Nueva petición de Kick:', req.method, req.originalUrl);
+    }
     next();
 });
 
