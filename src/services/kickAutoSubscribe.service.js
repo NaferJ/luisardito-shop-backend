@@ -51,41 +51,49 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
             timeout: 15000
         });
 
-        // Limpiar suscripciones existentes para este broadcaster
-        await KickEventSubscription.destroy({
-            where: {
-                broadcaster_user_id: parseInt(broadcasterUserId)
-            }
-        });
-
         // Procesar suscripciones exitosas
         const subscriptionsData = response.data.data || [];
         const createdSubscriptions = [];
         const errors = [];
 
+        console.log(`[Auto Subscribe] Procesando ${subscriptionsData.length} suscripciones recibidas de Kick`);
+
         for (const sub of subscriptionsData) {
             if (sub.subscription_id && !sub.error) {
                 try {
-                    const [localSub, created] = await KickEventSubscription.findOrCreate({
-                        where: {
-                            subscription_id: sub.subscription_id,
-                            broadcaster_user_id: parseInt(broadcasterUserId)
-                        },
-                        defaults: {
+                    // Primero verificar si ya existe
+                    let localSub = await KickEventSubscription.findOne({
+                        where: { subscription_id: sub.subscription_id }
+                    });
+
+                    if (localSub) {
+                        // Si existe, actualizar los datos
+                        await localSub.update({
+                            broadcaster_user_id: parseInt(broadcasterUserId),
+                            event_type: sub.name,
+                            event_version: sub.version,
+                            method: 'webhook',
+                            status: 'active'
+                        });
+                        console.log(`[Auto Subscribe] ✅ ${sub.name} actualizado (ID: ${localSub.id})`);
+                    } else {
+                        // Si no existe, crear nuevo
+                        localSub = await KickEventSubscription.create({
                             subscription_id: sub.subscription_id,
                             broadcaster_user_id: parseInt(broadcasterUserId),
                             event_type: sub.name,
                             event_version: sub.version,
                             method: 'webhook',
                             status: 'active'
-                        }
-                    });
+                        });
+                        console.log(`[Auto Subscribe] ✅ ${sub.name} creado (ID: ${localSub.id})`);
+                    }
 
                     createdSubscriptions.push(localSub);
-                    console.log(`[Auto Subscribe] ✅ ${sub.name} configurado`);
 
                 } catch (dbError) {
                     console.error(`[Auto Subscribe] ❌ Error DB ${sub.name}:`, dbError.message);
+                    errors.push({ event: sub.name, error: dbError.message });
                 }
             } else if (sub.error) {
                 errors.push({ event: sub.name, error: sub.error });
