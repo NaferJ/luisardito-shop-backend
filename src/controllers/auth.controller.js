@@ -391,22 +391,19 @@ exports.callbackKick = async (req, res) => {
 
         console.log('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
 
-        // LÓGICA CORREGIDA: Auto-suscribirse a eventos si el usuario tiene permisos de admin
-        // Los eventos siempre serán del broadcaster principal, independientemente de quién se conecte
-        const isAdmin = usuario.rol_id <= 3; // Roles 1 y 2 son admins
+        // TODOS los usuarios pueden suscribirse a eventos del broadcaster principal
         const broadcasterIdToSubscribe = config.kick.broadcasterId; // El broadcaster principal (2771761)
 
-        console.log('[Kick OAuth][callbackKick] ¿Es usuario admin?', isAdmin, `(rol: ${usuario.rol_id})`);
         console.log('[Kick OAuth][callbackKick] Broadcaster a suscribir:', broadcasterIdToSubscribe);
         console.log('[Kick OAuth][callbackKick] Token provider:', kickUserId);
 
         let autoSubscribeResult = null;
 
-        if (isAdmin && broadcasterIdToSubscribe) {
+        if (broadcasterIdToSubscribe) {
             console.log('[Kick OAuth][callbackKick] Iniciando auto-suscripción a eventos del broadcaster principal...');
 
             try {
-                // IMPORTANTE: Usar el token del usuario que se conecta para suscribirse a eventos del broadcaster principal
+                // Usar el token del usuario que se conecta para suscribirse a eventos del broadcaster principal
                 autoSubscribeResult = await autoSubscribeToEvents(accessToken, broadcasterIdToSubscribe, kickUserId);
 
                 await broadcasterToken.update({
@@ -427,8 +424,6 @@ exports.callbackKick = async (req, res) => {
                     subscription_error: subscribeError.message
                 });
             }
-        } else if (!isAdmin) {
-            console.log('[Kick OAuth][callbackKick] Usuario no es admin, no puede suscribirse a eventos');
         } else {
             console.log('[Kick OAuth][callbackKick] No hay broadcaster configurado, saltando auto-suscripción');
         }
