@@ -40,7 +40,8 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
         const payload = {
             broadcaster_user_id: parseInt(broadcasterUserId),
             events: DEFAULT_EVENTS,
-            method: 'webhook'
+            method: 'webhook',
+            webhook_url: 'https://api.luisardito.com/api/kick-webhook/events'
         };
 
         console.log('[Auto Subscribe] Payload:', JSON.stringify(payload, null, 2));
@@ -55,17 +56,14 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
 
         console.log('[Auto Subscribe] Respuesta de Kick:', response.data);
 
-        // Limpiar suscripciones duplicadas con broadcaster_user_id incorrecto
-        const subscriptionIds = (response.data.data || []).map(sub => sub.subscription_id).filter(Boolean);
-        if (subscriptionIds.length > 0) {
-            console.log(`[Auto Subscribe] Limpiando suscripciones duplicadas con broadcaster_user_id incorrecto...`);
-            await KickEventSubscription.destroy({
-                where: {
-                    subscription_id: subscriptionIds,
-                    broadcaster_user_id: { [require('sequelize').Op.ne]: parseInt(broadcasterUserId) }
-                }
-            });
-        }
+        // Limpiar TODAS las suscripciones existentes para este broadcaster
+        // Esto es necesario porque las suscripciones anteriores pueden tener webhook_url incorrecta
+        console.log(`[Auto Subscribe] Limpiando TODAS las suscripciones existentes para broadcaster ${broadcasterUserId}...`);
+        await KickEventSubscription.destroy({
+            where: {
+                broadcaster_user_id: parseInt(broadcasterUserId)
+            }
+        });
 
         // Almacenar las suscripciones exitosas en la base de datos local
         // NO limpiar suscripciones existentes - solo agregar nuevas
