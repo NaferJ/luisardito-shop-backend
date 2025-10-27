@@ -55,6 +55,18 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
 
         console.log('[Auto Subscribe] Respuesta de Kick:', response.data);
 
+        // Limpiar suscripciones duplicadas con broadcaster_user_id incorrecto
+        const subscriptionIds = (response.data.data || []).map(sub => sub.subscription_id).filter(Boolean);
+        if (subscriptionIds.length > 0) {
+            console.log(`[Auto Subscribe] Limpiando suscripciones duplicadas con broadcaster_user_id incorrecto...`);
+            await KickEventSubscription.destroy({
+                where: {
+                    subscription_id: subscriptionIds,
+                    broadcaster_user_id: { [require('sequelize').Op.ne]: parseInt(broadcasterUserId) }
+                }
+            });
+        }
+
         // Almacenar las suscripciones exitosas en la base de datos local
         // NO limpiar suscripciones existentes - solo agregar nuevas
         const subscriptionsData = response.data.data || [];
@@ -64,9 +76,11 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
         for (const sub of subscriptionsData) {
             if (sub.subscription_id && !sub.error) {
                 try {
+                    // Buscar por subscription_id Y broadcaster_user_id para evitar conflictos
                     const [localSub, created] = await KickEventSubscription.findOrCreate({
                         where: {
-                            subscription_id: sub.subscription_id
+                            subscription_id: sub.subscription_id,
+                            broadcaster_user_id: parseInt(broadcasterUserId)
                         },
                         defaults: {
                             subscription_id: sub.subscription_id,
@@ -80,6 +94,10 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
 
                     createdSubscriptions.push(localSub);
                     console.log(`[Auto Subscribe] ✅ Suscrito a ${sub.name} ${created ? '(nuevo)' : '(existente)'}`);
+
+                    // Log adicional para debugging
+                    console.log(`[Auto Subscribe] DB Record - ID: ${localSub.id}, BroadcasterID: ${localSub.broadcaster_user_id}, Event: ${localSub.event_type}`);
+
                 } catch (dbError) {
                     console.error(`[Auto Subscribe] Error guardando suscripción ${sub.name}:`, dbError.message);
                     console.error(`[Auto Subscribe] Datos intentados:`, {
