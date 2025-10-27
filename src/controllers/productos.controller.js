@@ -3,11 +3,11 @@ const { Producto } = require('../models');
 // Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
 exports.listar = async (req, res) => {
     const where = {};
-    if (!req.user || req.user.rol_id > 2) {
-        // streamer/developer ve todo (dejamos la lógica existente sin cambios)
-    } else {
+    if (!req.user || req.user.rol_id <= 2) {
+        // Usuario no logueado o usuarios básicos (rol 1-2) solo ven productos publicados
         where.estado = 'publicado';
     }
+    // Roles 3+ (streamer, developer, moderador) ven todos los productos
 
     // Soporte de orden: ?sort=price_desc | price_asc | precio_desc | precio_asc
     const sortParam = (req.query.sort || '').toString().toLowerCase();

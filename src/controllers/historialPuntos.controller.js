@@ -6,7 +6,9 @@ exports.listar = async (req, res) => {
         const { usuarioId } = req.params;
 
         // Usuario normal sólo ve su propio historial
-        if (req.user.rol_id > 2 && req.user.id !== +usuarioId) {
+        // Roles 1-2 (usuario, suscriptor) solo pueden ver su propio historial
+        // Roles 3+ (streamer, developer, moderador) pueden ver cualquier historial
+        if (req.user.rol_id <= 2 && req.user.id !== +usuarioId) {
             return res.status(403).json({ error: 'Sin permiso para ver este historial' });
         }
 
