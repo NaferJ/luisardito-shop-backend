@@ -10,8 +10,81 @@ const {
 const { Op } = require('sequelize');
 
 /**
- * Endpoint específico para probar CORS de webhooks
+ * 🔍 DIAGNÓSTICO: Verificar tokens y broadcaster
  */
+exports.diagnosticTokens = async (req, res) => {
+    try {
+        const { KickBroadcasterToken, KickEventSubscription } = require('../models');
+        const config = require('../../config');
+
+        console.log('🔍 [DIAGNÓSTICO] Iniciando verificación...');
+
+        // 1. Verificar el broadcaster principal configurado
+        const broadcasterPrincipal = config.kick.broadcasterId;
+        console.log('🔍 [DIAGNÓSTICO] Broadcaster principal configurado:', broadcasterPrincipal);
+
+        // 2. Obtener todos los tokens disponibles
+        const allTokens = await KickBroadcasterToken.findAll({
+            where: { is_active: true },
+            attributes: ['kick_user_id', 'auto_subscribed', 'last_subscription_attempt', 'subscription_error']
+        });
+
+        console.log('🔍 [DIAGNÓSTICO] Tokens disponibles:', allTokens.map(t => ({
+            kick_user_id: t.kick_user_id,
+            auto_subscribed: t.auto_subscribed,
+            last_attempt: t.last_subscription_attempt
+        })));
+
+        // 3. Verificar si el broadcaster principal tiene token
+        const broadcasterToken = allTokens.find(t => t.kick_user_id.toString() === broadcasterPrincipal.toString());
+        console.log('🔍 [DIAGNÓSTICO] ¿Broadcaster principal tiene token?', !!broadcasterToken);
+
+        // 4. Verificar suscripciones actuales
+        const suscripciones = await KickEventSubscription.findAll({
+            where: { broadcaster_user_id: parseInt(broadcasterPrincipal) },
+            attributes: ['event_type', 'subscription_id', 'status']
+        });
+
+        console.log('🔍 [DIAGNÓSTICO] Suscripciones del broadcaster principal:', suscripciones.length);
+
+        // 5. Verificar qué usuario es NaferJ (ID 33112734)
+        const naferToken = allTokens.find(t => t.kick_user_id.toString() === '33112734');
+        console.log('🔍 [DIAGNÓSTICO] ¿NaferJ (33112734) tiene token?', !!naferToken);
+        console.log('🔍 [DIAGNÓSTICO] ¿NaferJ ES el broadcaster principal?', broadcasterPrincipal.toString() === '33112734');
+
+        const diagnostico = {
+            broadcaster_principal_config: broadcasterPrincipal,
+            broadcaster_principal_tiene_token: !!broadcasterToken,
+            nafer_user_id: '33112734',
+            nafer_tiene_token: !!naferToken,
+            nafer_es_broadcaster_principal: broadcasterPrincipal.toString() === '33112734',
+            total_tokens_activos: allTokens.length,
+            total_suscripciones: suscripciones.length,
+            tokens_disponibles: allTokens.map(t => t.kick_user_id),
+            posible_problema: broadcasterPrincipal.toString() !== '33112734' ?
+                'El broadcaster principal NO es NaferJ, pero NaferJ está intentando suscribirse a eventos de otro broadcaster' :
+                'NaferJ ES el broadcaster principal, debería funcionar',
+            recomendacion: broadcasterPrincipal.toString() !== '33112734' ?
+                'Necesitas que el broadcaster principal (ID: ' + broadcasterPrincipal + ') se autentique y use SU token' :
+                'El setup debería estar correcto, el problema puede ser de red o configuración'
+        };
+
+        console.log('🔍 [DIAGNÓSTICO] RESUMEN:', diagnostico);
+
+        res.json({
+            success: true,
+            diagnostico,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('🔍 [DIAGNÓSTICO] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
 exports.testCors = async (req, res) => {
     console.log('🧪 [CORS Test] ==========================================');
     console.log('🧪 [CORS Test] Method:', req.method);
