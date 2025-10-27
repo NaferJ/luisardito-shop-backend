@@ -14,6 +14,13 @@ const { Op } = require('sequelize');
  */
 exports.handleWebhook = async (req, res) => {
     try {
+        console.log('[Kick Webhook] ⚡ WEBHOOK RECIBIDO');
+        console.log('[Kick Webhook] Method:', req.method);
+        console.log('[Kick Webhook] URL:', req.url);
+        console.log('[Kick Webhook] Headers completos:', req.headers);
+        console.log('[Kick Webhook] Body:', req.body);
+        console.log('[Kick Webhook] IP:', req.ip);
+
         // Extraer headers del webhook
         const messageId = req.headers['kick-event-message-id'];
         const subscriptionId = req.headers['kick-event-subscription-id'];
@@ -635,3 +642,53 @@ async function handleModerationBanned(payload, metadata) {
 
     // TODO: Implementar lógica de negocio (registrar baneo, actualizar permisos, etc.)
 }
+
+/**
+ * Endpoint simple para verificar que Kick puede alcanzar el servidor
+ * GET /webhook/test
+ */
+exports.testWebhook = async (req, res) => {
+    console.log('[Kick Webhook] Test endpoint alcanzado');
+    console.log('[Kick Webhook] Headers:', req.headers);
+    console.log('[Kick Webhook] IP:', req.ip);
+    console.log('[Kick Webhook] User-Agent:', req.headers['user-agent']);
+
+    return res.json({
+        status: 'success',
+        message: 'Webhook endpoint is reachable',
+        timestamp: new Date().toISOString(),
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+    });
+};
+
+/**
+ * Endpoint para verificar la configuración del webhook
+ * GET /webhook/debug
+ */
+exports.debugWebhook = async (req, res) => {
+    try {
+        const { KickEventSubscription } = require('../models');
+
+        const subscriptions = await KickEventSubscription.findAll({
+            where: { status: 'active' },
+            attributes: ['id', 'subscription_id', 'broadcaster_user_id', 'event_type', 'created_at']
+        });
+
+        return res.json({
+            activeSubscriptions: subscriptions.length,
+            subscriptions: subscriptions,
+            webhookUrl: 'https://api.luisardito.com/api/webhook/kick',
+            expectedHeaders: [
+                'kick-event-message-id',
+                'kick-event-subscription-id',
+                'kick-event-signature',
+                'kick-event-message-timestamp',
+                'kick-event-type',
+                'kick-event-version'
+            ]
+        });
+    } catch (error) {
+        return res.status(500).json({ error: error.message });
+    }
+};
