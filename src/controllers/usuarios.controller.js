@@ -282,3 +282,173 @@ exports.debugPermisos = async (req, res) => {
         });
     }
 };
+
+/**
+ * 🔍 DEBUG: Verificar estructura de roles y permisos en la BD (sin auth)
+ */
+exports.debugRolesPermisos = async (req, res) => {
+    try {
+        const { Rol, Permiso, RolPermiso, Usuario } = require('../models');
+
+        // 1. Obtener todos los roles
+        const roles = await Rol.findAll({
+            include: [{
+                model: Permiso,
+                through: { attributes: [] }
+            }],
+            order: [['id', 'ASC']]
+        });
+
+        // 2. Obtener todos los permisos
+        const permisos = await Permiso.findAll({
+            order: [['id', 'ASC']]
+        });
+
+        // 3. Obtener todas las relaciones rol-permiso
+        const rolPermisos = await RolPermiso.findAll({
+            order: [['rol_id', 'ASC'], ['permiso_id', 'ASC']]
+        });
+
+        // 4. Estadísticas de usuarios por rol
+        const usuariosPorRol = await Usuario.findAll({
+            attributes: [
+                'rol_id',
+                [Usuario.sequelize.fn('COUNT', Usuario.sequelize.col('id')), 'total_usuarios']
+            ],
+            group: ['rol_id'],
+            order: [['rol_id', 'ASC']]
+        });
+
+        // 5. Verificar específicamente el permiso 'ver_historial_puntos'
+        const permisoHistorial = await Permiso.findOne({
+            where: { nombre: 'ver_historial_puntos' }
+        });
+
+        const rolesConPermisoHistorial = permisoHistorial ? await RolPermiso.findAll({
+            where: { permiso_id: permisoHistorial.id },
+            include: [{ model: Rol }]
+        }) : [];
+
+        res.json({
+            debug_estructura: {
+                total_roles: roles.length,
+                total_permisos: permisos.length,
+                total_relaciones: rolPermisos.length
+            },
+            roles: roles.map(r => ({
+                id: r.id,
+                nombre: r.nombre,
+                descripcion: r.descripcion,
+                permisos: r.Permisos?.map(p => p.nombre) || [],
+                total_permisos: r.Permisos?.length || 0
+            })),
+            permisos: permisos.map(p => ({
+                id: p.id,
+                nombre: p.nombre,
+                descripcion: p.descripcion
+            })),
+            usuarios_por_rol: usuariosPorRol.map(u => ({
+                rol_id: u.rol_id,
+                total_usuarios: parseInt(u.dataValues.total_usuarios)
+            })),
+            permiso_historial_puntos: {
+                existe: !!permisoHistorial,
+                id: permisoHistorial?.id,
+                nombre: permisoHistorial?.nombre,
+                roles_que_lo_tienen: rolesConPermisoHistorial.map(rp => ({
+                    rol_id: rp.rol_id,
+                    rol_nombre: rp.Rol?.nombre
+                }))
+            },
+            verificacion_rol_1: {
+                rol_usuario_basico: roles.find(r => r.id === 1),
+                tiene_permiso_historial: roles.find(r => r.id === 1)?.Permisos?.some(p => p.nombre === 'ver_historial_puntos') || false
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Debug Roles/Permisos] Error:', error);
+        res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+
+/**
+ * 🔍 DEBUG: Verificar usuario específico por ID (sin auth)
+ */
+exports.debugUsuarioEspecifico = async (req, res) => {
+    try {
+        const { Rol, Permiso } = require('../models');
+        const { usuarioId } = req.params;
+
+        // Obtener usuario específico con rol y permisos
+        const usuario = await Usuario.findByPk(usuarioId, {
+            include: [{
+                model: Rol,
+                include: [{
+                    model: Permiso,
+                    through: { attributes: [] }
+                }]
+            }]
+        });
+
+        if (!usuario) {
+            return res.status(404).json({
+                error: 'Usuario no encontrado',
+                usuario_id: usuarioId
+            });
+        }
+
+        const permisos = usuario.Rol?.Permisos?.map(p => p.nombre) || [];
+
+        res.json({
+            usuario: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                email: usuario.email,
+                rol_id: usuario.rol_id,
+                user_id_ext: usuario.user_id_ext,
+                creado: usuario.creado,
+                actualizado: usuario.actualizado
+            },
+            rol: {
+                id: usuario.Rol?.id,
+                nombre: usuario.Rol?.nombre,
+                descripcion: usuario.Rol?.descripcion
+            },
+            permisos: permisos,
+            permisos_detalle: usuario.Rol?.Permisos?.map(p => ({
+                id: p.id,
+                nombre: p.nombre,
+                descripcion: p.descripcion
+            })) || [],
+            verificaciones: {
+                puede_ver_historial_puntos: permisos.includes('ver_historial_puntos'),
+                puede_canjear_productos: permisos.includes('canjear_productos'),
+                puede_ver_canjes: permisos.includes('ver_canjes'),
+                es_admin: usuario.rol_id >= 3,
+                puede_ver_propio_historial: true, // Siempre pueden ver su propio historial
+                puede_ver_historial_otros: usuario.rol_id >= 3 // Solo admins pueden ver de otros
+            },
+            diagnostico: {
+                problema_identificado: !permisos.includes('ver_historial_puntos') ?
+                    'Usuario NO tiene el permiso ver_historial_puntos' :
+                    'Usuario SÍ tiene el permiso ver_historial_puntos',
+                logica_esperada: usuario.rol_id <= 2 ?
+                    'Solo puede ver su propio historial (usuarios básicos)' :
+                    'Puede ver cualquier historial (administrador)'
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Debug Usuario Específico] Error:', error);
+        res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
