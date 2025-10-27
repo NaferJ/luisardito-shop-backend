@@ -1055,13 +1055,53 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         const expiresAt = new Date(broadcasterToken.token_expires_at);
         const isExpired = expiresAt <= now;
 
+        console.log('🔧 [REACTIVAR] Estado del token:', {
+            expires_at: expiresAt,
+            now: now,
+            is_expired: isExpired,
+            has_refresh_token: !!broadcasterToken.refresh_token
+        });
+
         if (isExpired) {
-            return res.status(400).json({
-                success: false,
-                error: 'Token del broadcaster principal expirado',
-                expires_at: broadcasterToken.token_expires_at,
-                accion: 'Luisardito debe re-autenticarse'
-            });
+            console.log('🔧 [REACTIVAR] Token expirado, intentando renovar con refresh_token...');
+
+            if (!broadcasterToken.refresh_token) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Token expirado y no hay refresh_token disponible',
+                    expires_at: broadcasterToken.token_expires_at,
+                    accion: 'Luisardito debe re-autenticarse completamente'
+                });
+            }
+
+            // Intentar renovar el token
+            try {
+                const { refreshAccessToken } = require('../services/kickAutoSubscribe.service');
+                console.log('🔧 [REACTIVAR] Intentando renovar token...');
+
+                const renewed = await refreshAccessToken(broadcasterToken);
+
+                if (!renewed) {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'No se pudo renovar el token expirado',
+                        expires_at: broadcasterToken.token_expires_at,
+                        accion: 'Luisardito debe re-autenticarse completamente'
+                    });
+                }
+
+                console.log('🔧 [REACTIVAR] ✅ Token renovado exitosamente');
+                await broadcasterToken.reload(); // Recargar el token actualizado
+
+            } catch (refreshError) {
+                console.error('🔧 [REACTIVAR] Error renovando token:', refreshError.message);
+                return res.status(400).json({
+                    success: false,
+                    error: 'Error renovando token: ' + refreshError.message,
+                    expires_at: broadcasterToken.token_expires_at,
+                    accion: 'Luisardito debe re-autenticarse completamente'
+                });
+            }
         }
 
         console.log('🔧 [REACTIVAR] Reactivando token...');
