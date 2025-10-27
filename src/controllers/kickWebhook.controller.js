@@ -10,6 +10,27 @@ const {
 const { Op } = require('sequelize');
 
 /**
+ * Endpoint específico para probar CORS de webhooks
+ */
+exports.testCors = async (req, res) => {
+    console.log('🧪 [CORS Test] ==========================================');
+    console.log('🧪 [CORS Test] Method:', req.method);
+    console.log('🧪 [CORS Test] Origin:', req.headers.origin || 'SIN ORIGIN');
+    console.log('🧪 [CORS Test] User-Agent:', req.headers['user-agent']);
+    console.log('🧪 [CORS Test] Headers:', Object.keys(req.headers));
+    console.log('🧪 [CORS Test] ==========================================');
+
+    res.status(200).json({
+        message: '✅ CORS funcionando correctamente para webhooks',
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        origin: req.headers.origin || 'Sin origin',
+        headers: req.headers,
+        corsEnabled: true
+    });
+};
+
+/**
  * Controlador principal para recibir webhooks de Kick
  */
 exports.handleWebhook = async (req, res) => {
@@ -757,6 +778,60 @@ exports.simulateChat = async (req, res) => {
 
     } catch (error) {
         console.error('[Webhook Simulator] Error:', error.message);
+        return res.status(500).json({
+            error: error.message,
+            stack: error.stack
+        });
+    }
+};
+
+/**
+ * Endpoint para simular un webhook REAL de Kick (con headers y todo)
+ * POST /api/kick-webhook/test-real-webhook
+ */
+exports.testRealWebhook = async (req, res) => {
+    try {
+        console.log('[Test Real Webhook] Simulando webhook REAL de Kick con headers...');
+
+        // Simular headers exactos que envía Kick
+        const mockHeaders = {
+            'kick-event-message-id': 'test_' + Date.now(),
+            'kick-event-subscription-id': '01K7JPFW2HYW4GCBQN85DVB9WG',
+            'kick-event-signature': 'test_signature_' + Date.now(),
+            'kick-event-message-timestamp': Date.now().toString(),
+            'kick-event-type': 'chat.message.sent',
+            'kick-event-version': '1',
+            'content-type': 'application/json',
+            'user-agent': 'Kick-Webhooks/1.0'
+        };
+
+        // Simular payload real de Kick
+        const mockPayload = {
+            message_id: 'real_test_' + Date.now(),
+            content: '7',
+            sender: {
+                user_id: 33112734,
+                username: 'NaferJ'
+            },
+            broadcaster: {
+                user_id: 2771761,
+                username: 'Luisardito'
+            },
+            sent_at: new Date().toISOString()
+        };
+
+        // Modificar el request para simular que viene de Kick
+        req.headers = { ...req.headers, ...mockHeaders };
+        req.body = mockPayload;
+
+        console.log('[Test Real Webhook] Headers simulados:', mockHeaders);
+        console.log('[Test Real Webhook] Payload simulado:', mockPayload);
+
+        // Llamar al handler principal como si fuera un webhook real
+        await this.handleWebhook(req, res);
+
+    } catch (error) {
+        console.error('[Test Real Webhook] Error:', error.message);
         return res.status(500).json({
             error: error.message,
             stack: error.stack
