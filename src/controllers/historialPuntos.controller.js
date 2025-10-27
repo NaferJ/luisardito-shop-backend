@@ -15,19 +15,9 @@ exports.listar = async (req, res) => {
         const registros = await HistorialPunto.findAll({
             where: {
                 usuario_id: usuarioId,
-                // Filtrar eventos de chat - solo mostrar recompensas importantes
-                [Op.or]: [
-                    // Registros sin datos de Kick (canjes, ajustes manuales, etc.)
-                    { kick_event_data: null },
-                    // Solo eventos importantes de Kick (follows, subs, etc.) - excluir chat
-                    {
-                        kick_event_data: {
-                            event_type: {
-                                [Op.ne]: 'chat.message.sent'
-                            }
-                        }
-                    }
-                ]
+                // Solo mostrar registros normales (canjes, ajustes manuales, etc.)
+                // Excluir TODOS los eventos de webhooks (kick_event_data)
+                kick_event_data: null
             },
             order: [['fecha', 'DESC']],
         });
