@@ -16,6 +16,7 @@ const KickChatCooldown = require('./kickChatCooldown.model');
 const KickUserTracking = require('./kickUserTracking.model');
 const KickBroadcasterToken = require('./kickBroadcasterToken.model');
 const RefreshToken = require('./refreshToken.model');
+const BotrixMigrationConfig = require('./botrixMigrationConfig.model');
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)

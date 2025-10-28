@@ -4,65 +4,78 @@ module.exports = {
   async up(queryInterface, Sequelize) {
     await queryInterface.createTable('botrix_migration_config', {
       id: {
-        type: Sequelize.INTEGER,
+        allowNull: false,
+        autoIncrement: true,
         primaryKey: true,
-        autoIncrement: true
+        type: Sequelize.INTEGER
       },
-      migration_enabled: {
-        type: Sequelize.BOOLEAN,
+      config_key: {
+        type: Sequelize.STRING,
         allowNull: false,
-        defaultValue: true,
-        comment: 'Activar/desactivar la migración automática de puntos de Botrix'
+        unique: true
       },
-      vip_points_enabled: {
-        type: Sequelize.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-        comment: 'Activar recompensas especiales para VIPs'
+      config_value: {
+        type: Sequelize.TEXT,
+        allowNull: true
       },
-      vip_chat_points: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 5,
-        comment: 'Puntos por mensaje de chat para VIPs'
-      },
-      vip_follow_points: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 100,
-        comment: 'Puntos por follow para VIPs'
-      },
-      vip_sub_points: {
-        type: Sequelize.INTEGER,
-        allowNull: false,
-        defaultValue: 300,
-        comment: 'Puntos por suscripción para VIPs'
+      description: {
+        type: Sequelize.STRING,
+        allowNull: true
       },
       created_at: {
-        type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP')
+        type: Sequelize.DATE
       },
       updated_at: {
-        type: Sequelize.DATE,
         allowNull: false,
-        defaultValue: Sequelize.literal('CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP')
+        type: Sequelize.DATE
       }
     });
 
-    // Insertar configuración por defecto
-    await queryInterface.bulkInsert('botrix_migration_config', [{
-      migration_enabled: true,
-      vip_points_enabled: false,
-      vip_chat_points: 5,
-      vip_follow_points: 100,
-      vip_sub_points: 300,
-      created_at: new Date(),
-      updated_at: new Date()
-    }]);
+    // Insertar configuraciones por defecto
+    await queryInterface.bulkInsert('botrix_migration_config', [
+      {
+        config_key: 'migration_enabled',
+        config_value: 'true',
+        description: 'Activar/desactivar migración automática de puntos Botrix',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        config_key: 'vip_points_enabled',
+        config_value: 'false',
+        description: 'Activar/desactivar puntos especiales para VIPs',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        config_key: 'vip_chat_points',
+        config_value: '5',
+        description: 'Puntos extra por mensaje de chat para VIPs',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        config_key: 'vip_follow_points',
+        config_value: '100',
+        description: 'Puntos extra por follow para VIPs',
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        config_key: 'vip_sub_points',
+        config_value: '300',
+        description: 'Puntos extra por suscripción para VIPs',
+        created_at: new Date(),
+        updated_at: new Date()
+      }
+    ]);
+
+    console.log('✅ Tabla botrix_migration_config creada con configuraciones por defecto');
   },
 
   async down(queryInterface, Sequelize) {
     await queryInterface.dropTable('botrix_migration_config');
+    console.log('❌ Tabla botrix_migration_config eliminada');
   }
 };
