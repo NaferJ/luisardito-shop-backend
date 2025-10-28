@@ -9,14 +9,92 @@ exports.getConfig = async (req, res) => {
             order: [['config_key', 'ASC']]
         });
 
+        console.log('🔍 [KICK POINTS DEBUG] Configuración encontrada:', {
+            total: config.length,
+            configs: config.map(c => ({ key: c.config_key, value: c.config_value, enabled: c.enabled }))
+        });
+
+        // Si no hay configuración, inicializar automáticamente
+        if (config.length === 0) {
+            console.log('⚠️ [KICK POINTS DEBUG] No hay configuración, inicializando...');
+
+            const defaultConfigs = [
+                {
+                    config_key: 'chat_points_regular',
+                    config_value: 10,
+                    description: 'Puntos por mensaje en chat (usuarios regulares)',
+                    enabled: true
+                },
+                {
+                    config_key: 'chat_points_subscriber',
+                    config_value: 20,
+                    description: 'Puntos por mensaje en chat (suscriptores)',
+                    enabled: true
+                },
+                {
+                    config_key: 'follow_points',
+                    config_value: 50,
+                    description: 'Puntos por seguir el canal (primera vez)',
+                    enabled: true
+                },
+                {
+                    config_key: 'subscription_new_points',
+                    config_value: 500,
+                    description: 'Puntos por nueva suscripción',
+                    enabled: true
+                },
+                {
+                    config_key: 'subscription_renewal_points',
+                    config_value: 300,
+                    description: 'Puntos por renovación de suscripción',
+                    enabled: true
+                },
+                {
+                    config_key: 'gift_given_points',
+                    config_value: 100,
+                    description: 'Puntos por cada suscripción regalada',
+                    enabled: true
+                },
+                {
+                    config_key: 'gift_received_points',
+                    config_value: 400,
+                    description: 'Puntos por recibir una suscripción regalada',
+                    enabled: true
+                }
+            ];
+
+            const created = [];
+            for (const configData of defaultConfigs) {
+                const newConfig = await KickPointsConfig.create(configData);
+                created.push(newConfig);
+            }
+
+            console.log('✅ [KICK POINTS DEBUG] Configuración inicializada con', created.length, 'elementos');
+
+            return res.json({
+                config: created,
+                total: created.length,
+                initialized: true,
+                message: 'Configuración inicializada automáticamente'
+            });
+        }
+
         return res.json({
             config,
-            total: config.length
+            total: config.length,
+            initialized: false
         });
 
     } catch (error) {
-        console.error('[Kick Points Config] Error obteniendo configuración:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        console.error('❌ [KICK POINTS DEBUG] Error obteniendo configuración:', error.message);
+
+        // En caso de error, retornar estructura básica para que el frontend no falle
+        return res.status(500).json({
+            error: 'Error interno del servidor',
+            config: [],
+            total: 0,
+            initialized: false
+        });
     }
 };
 

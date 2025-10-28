@@ -40,26 +40,57 @@ exports.getConfig = async (req, res) => {
  */
 exports.updateMigrationConfig = async (req, res) => {
     try {
+        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en migration config:', {
+            body: req.body,
+            bodyKeys: Object.keys(req.body),
+            migration_enabled_value: req.body.migration_enabled,
+            migration_enabled_type: typeof req.body.migration_enabled,
+            headers: {
+                'content-type': req.headers['content-type'],
+                'user-agent': req.headers['user-agent']
+            }
+        });
+
         const { migration_enabled } = req.body;
 
-        if (typeof migration_enabled !== 'boolean') {
+        // Validación más flexible para manejar strings "true"/"false"
+        let booleanValue;
+
+        if (typeof migration_enabled === 'boolean') {
+            booleanValue = migration_enabled;
+        } else if (typeof migration_enabled === 'string') {
+            if (migration_enabled.toLowerCase() === 'true') {
+                booleanValue = true;
+            } else if (migration_enabled.toLowerCase() === 'false') {
+                booleanValue = false;
+            } else {
+                console.log('❌ [KICK ADMIN DEBUG] Valor string inválido:', migration_enabled);
+                return res.status(400).json({
+                    success: false,
+                    error: 'migration_enabled debe ser un booleano o "true"/"false"'
+                });
+            }
+        } else {
+            console.log('❌ [KICK ADMIN DEBUG] Tipo inválido:', typeof migration_enabled, 'valor:', migration_enabled);
             return res.status(400).json({
                 success: false,
                 error: 'migration_enabled debe ser un booleano'
             });
         }
 
-        await BotrixMigrationConfig.setConfig('migration_enabled', migration_enabled);
+        console.log('✅ [KICK ADMIN DEBUG] Valor procesado:', booleanValue);
+
+        await BotrixMigrationConfig.setConfig('migration_enabled', booleanValue);
 
         res.json({
             success: true,
-            message: `Migración de Botrix ${migration_enabled ? 'activada' : 'desactivada'}`,
+            message: `Migración de Botrix ${booleanValue ? 'activada' : 'desactivada'}`,
             config: {
-                migration_enabled: migration_enabled
+                migration_enabled: booleanValue
             }
         });
     } catch (error) {
-        console.error('Error actualizando configuración de migración:', error);
+        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración de migración:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -72,13 +103,77 @@ exports.updateMigrationConfig = async (req, res) => {
  */
 exports.updateVipConfig = async (req, res) => {
     try {
+        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en VIP config:', {
+            body: req.body,
+            bodyKeys: Object.keys(req.body),
+            types: {
+                vip_points_enabled: typeof req.body.vip_points_enabled,
+                vip_chat_points: typeof req.body.vip_chat_points,
+                vip_follow_points: typeof req.body.vip_follow_points,
+                vip_sub_points: typeof req.body.vip_sub_points
+            }
+        });
+
         const { vip_points_enabled, vip_chat_points, vip_follow_points, vip_sub_points } = req.body;
 
         const updateData = {};
-        if (typeof vip_points_enabled === 'boolean') updateData.vip_points_enabled = vip_points_enabled;
-        if (typeof vip_chat_points === 'number') updateData.vip_chat_points = vip_chat_points;
-        if (typeof vip_follow_points === 'number') updateData.vip_follow_points = vip_follow_points;
-        if (typeof vip_sub_points === 'number') updateData.vip_sub_points = vip_sub_points;
+
+        // Validar y convertir vip_points_enabled
+        if (vip_points_enabled !== undefined) {
+            if (typeof vip_points_enabled === 'boolean') {
+                updateData.vip_points_enabled = vip_points_enabled;
+            } else if (typeof vip_points_enabled === 'string') {
+                if (vip_points_enabled.toLowerCase() === 'true') {
+                    updateData.vip_points_enabled = true;
+                } else if (vip_points_enabled.toLowerCase() === 'false') {
+                    updateData.vip_points_enabled = false;
+                } else {
+                    return res.status(400).json({
+                        success: false,
+                        error: 'vip_points_enabled debe ser un booleano'
+                    });
+                }
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    error: 'vip_points_enabled debe ser un booleano'
+                });
+            }
+        }
+
+        // Validar y convertir números
+        if (vip_chat_points !== undefined) {
+            const num = Number(vip_chat_points);
+            if (isNaN(num) || num < 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'vip_chat_points debe ser un número positivo'
+                });
+            }
+            updateData.vip_chat_points = num;
+        }
+
+        if (vip_follow_points !== undefined) {
+            const num = Number(vip_follow_points);
+            if (isNaN(num) || num < 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'vip_follow_points debe ser un número positivo'
+                });
+            }
+            updateData.vip_follow_points = num;
+        }
+
+        if (vip_sub_points !== undefined) {
+            const num = Number(vip_sub_points);
+            if (isNaN(num) || num < 0) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'vip_sub_points debe ser un número positivo'
+                });
+            }
+            updateData.vip_sub_points = num;
+        }
 
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
@@ -86,6 +181,8 @@ exports.updateVipConfig = async (req, res) => {
                 error: 'No se proporcionaron datos válidos para actualizar'
             });
         }
+
+        console.log('✅ [KICK ADMIN DEBUG] Datos a actualizar:', updateData);
 
         // Actualizar cada configuración
         for (const [key, value] of Object.entries(updateData)) {
@@ -98,7 +195,7 @@ exports.updateVipConfig = async (req, res) => {
             config: updateData
         });
     } catch (error) {
-        console.error('Error actualizando configuración VIP:', error);
+        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración VIP:', error);
         res.status(500).json({
             success: false,
             error: error.message
