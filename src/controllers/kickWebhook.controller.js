@@ -5,7 +5,8 @@ const {
     KickChatCooldown,
     KickUserTracking,
     Usuario,
-    HistorialPunto
+    HistorialPunto,
+    sequelize
 } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
@@ -436,8 +437,9 @@ async function handleChatMessage(payload, metadata) {
 
         // Verificar cooldown (5 minutos) con lock atómico para evitar race conditions
         const now = new Date();
+        console.log(`🔒 [COOLDOWN] Iniciando verificación para ${kickUsername} (${kickUserId})`);
 
-        const transaction = await Usuario.sequelize.transaction();
+        const transaction = await sequelize.transaction();
         try {
             // Verificar cooldown con lock
             const cooldown = await KickChatCooldown.findOne({
@@ -446,8 +448,17 @@ async function handleChatMessage(payload, metadata) {
                 lock: transaction.LOCK.UPDATE
             });
 
+            console.log(`🔍 [COOLDOWN] ${kickUsername} - Cooldown encontrado:`, !!cooldown);
+            if (cooldown) {
+                const isActive = cooldown.cooldown_expires_at > now;
+                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+                console.log(`🔍 [COOLDOWN] ${kickUsername} - Expira: ${cooldown.cooldown_expires_at}, Ahora: ${now}, Activo: ${isActive}, Restante: ${Math.ceil(remainingMs/1000)}s`);
+            }
+
             if (cooldown && cooldown.cooldown_expires_at > now) {
                 await transaction.rollback();
+                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO por ${Math.ceil(remainingMs/1000)}s`);
                 return; // En cooldown, no otorgar puntos
             }
 
@@ -459,6 +470,8 @@ async function handleChatMessage(payload, metadata) {
                 last_message_at: now,
                 cooldown_expires_at: cooldownExpiresAt
             }, { transaction });
+
+            console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown actualizado - expira: ${cooldownExpiresAt}`);
 
             // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward }, { transaction });
@@ -481,11 +494,11 @@ async function handleChatMessage(payload, metadata) {
             }, { transaction });
 
             await transaction.commit();
-            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
+            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType}) [TRANSACCIÓN EXITOSA]`);
 
         } catch (transactionError) {
             await transaction.rollback();
-            console.error('[Chat Message] ❌ Error:', transactionError.message);
+            console.error(`[Chat Message] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
         }
 
     } catch (error) {
