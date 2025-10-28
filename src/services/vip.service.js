@@ -43,7 +43,7 @@ class VipService {
             await HistorialPunto.create({
                 usuario_id: usuarioId,
                 puntos: 0, // No se otorgan puntos, solo se registra el evento
-                tipo: 'evento',
+                tipo: 'ajuste', // Usar 'ajuste' que es válido en el ENUM
                 concepto: 'VIP otorgado',
                 motivo: `VIP otorgado por canje #${canjeId}${vipExpiresAt ? ` (expira: ${vipExpiresAt.toLocaleDateString()})` : ' (permanente)'}`,
                 kick_event_data: {
@@ -102,7 +102,7 @@ class VipService {
             await HistorialPunto.create({
                 usuario_id: usuarioId,
                 puntos: 0,
-                tipo: 'evento',
+                tipo: 'ajuste', // Usar 'ajuste' que es válido en el ENUM
                 concepto: 'VIP removido',
                 motivo: `VIP removido: ${reason}`,
                 kick_event_data: {
