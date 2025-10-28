@@ -449,21 +449,30 @@ async function handleChatMessage(payload, metadata) {
             });
 
             console.log(`🔍 [COOLDOWN] ${kickUsername} - Cooldown encontrado:`, !!cooldown);
+
             if (cooldown) {
-                const isActive = cooldown.cooldown_expires_at > now;
-                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-                console.log(`🔍 [COOLDOWN] ${kickUsername} - Expira: ${cooldown.cooldown_expires_at}, Ahora: ${now}, Activo: ${isActive}, Restante: ${Math.ceil(remainingMs/1000)}s`);
+                // Validar que la fecha no sea demasiado futura (más de 24 horas)
+                const maxValidDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+                if (cooldown.cooldown_expires_at > maxValidDate) {
+                    console.log(`⚠️ [COOLDOWN] ${kickUsername} - Fecha sospechosamente futura: ${cooldown.cooldown_expires_at}, eliminando...`);
+                    await cooldown.destroy({ transaction });
+                    // Continuar como si no hubiera cooldown
+                } else {
+                    const isActive = cooldown.cooldown_expires_at > now;
+                    const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+                    console.log(`🔍 [COOLDOWN] ${kickUsername} - Expira: ${cooldown.cooldown_expires_at}, Ahora: ${now}, Activo: ${isActive}, Restante: ${Math.ceil(remainingMs/1000)}s`);
+
+                    if (isActive) {
+                        await transaction.rollback();
+                        console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO por ${Math.ceil(remainingMs/1000)}s`);
+                        return; // En cooldown, no otorgar puntos
+                    }
+                }
             }
 
-            if (cooldown && cooldown.cooldown_expires_at > now) {
-                await transaction.rollback();
-                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO por ${Math.ceil(remainingMs/1000)}s`);
-                return; // En cooldown, no otorgar puntos
-            }
+            // Actualizar cooldown inmediatamente con fecha válida
+            const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutos desde ahora
 
-            // Actualizar cooldown inmediatamente
-            const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
             await KickChatCooldown.upsert({
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
