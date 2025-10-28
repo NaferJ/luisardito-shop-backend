@@ -1,5 +1,5 @@
 const { Canje, Producto, Usuario, HistorialPunto } = require('../models');
-// const VipService = require('../services/vip.service');
+const VipService = require('../services/vip.service');
 
 exports.crear = async (req, res) => {
     const t = await Canje.sequelize.transaction();
@@ -121,26 +121,50 @@ exports.actualizarEstado = async (req, res) => {
         // Actualizar estado del canje
         await canje.update({ estado }, { transaction: t });
 
-        // 🌟 FUNCIONALIDAD VIP: Si se marca como entregado y el producto contiene "VIP" (TEMPORAL: Deshabilitado)
+        // 🌟 FUNCIONALIDAD VIP: Si se marca como entregado y el producto contiene "VIP"
         if (estado === 'entregado' && canje.Producto && canje.Producto.nombre.toLowerCase().includes('vip')) {
-            console.log(`🌟 [VIP GRANT] Detectado producto VIP entregado: ${canje.Producto.nombre} - Funcionalidad temporalmente deshabilitada`);
+            console.log(`🌟 [VIP GRANT] Detectado producto VIP entregado: ${canje.Producto.nombre}`);
 
-            // TODO: Implementar cuando VipService esté disponible
-            // try {
-            //     await VipService.grantVipFromCanje(canje.id, canje.usuario_id, vipConfig);
-            //     console.log(`✅ [VIP GRANT] VIP otorgado a ${canje.Usuario.nickname}`);
-            // } catch (vipError) {
-            //     console.error(`❌ [VIP GRANT] Error otorgando VIP:`, vipError);
-            // }
+            // Verificar si el usuario ya es VIP activo
+            const now = new Date();
+            const isAlreadyVip = canje.Usuario.is_vip &&
+                (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now);
+
+            if (!isAlreadyVip) {
+                try {
+                    // Configuración VIP por defecto (puedes ajustar según el producto)
+                    const vipConfig = {
+                        duration_days: null // VIP permanente por defecto, ajustar según necesidad
+                    };
+
+                    await VipService.grantVipFromCanje(canje.id, canje.usuario_id, vipConfig);
+                    console.log(`✅ [VIP GRANT] VIP otorgado a ${canje.Usuario.nickname} por canje #${canje.id}`);
+                } catch (vipError) {
+                    console.error(`❌ [VIP GRANT] Error otorgando VIP:`, vipError);
+                }
+            } else {
+                console.log(`⚠️ [VIP GRANT] ${canje.Usuario.nickname} ya es VIP activo, no se otorga nuevamente`);
+            }
         }
 
         await t.commit();
+
+        // Verificar si se debería otorgar VIP para la respuesta
+        const shouldGrantVip = estado === 'entregado' &&
+            canje.Producto?.nombre.toLowerCase().includes('vip');
+
+        const isAlreadyVip = canje.Usuario?.is_vip &&
+            (!canje.Usuario?.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > new Date());
 
         res.json({
             message: 'Estado actualizado',
             id: canje.id,
             estado: canje.estado,
-            vip_granted: estado === 'entregado' && canje.Producto?.nombre.toLowerCase().includes('vip') && !canje.Usuario?.is_vip
+            vip_info: shouldGrantVip ? {
+                product_grants_vip: true,
+                user_already_vip: isAlreadyVip,
+                vip_granted: shouldGrantVip && !isAlreadyVip
+            } : null
         });
 
     } catch (err) {
