@@ -10,7 +10,7 @@ const {
 } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
-const { Op } = require('sequelize');
+const { Op, Transaction } = require('sequelize');
 
 /**
  * 🔍 DIAGNÓSTICO: Verificar tokens guardados en BD
@@ -445,7 +445,7 @@ async function handleChatMessage(payload, metadata) {
 
         // Iniciar transacción con nivel de aislamiento adecuado
         const transaction = await sequelize.transaction({
-            isolationLevel: sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
+            isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
         });
 
         try {
