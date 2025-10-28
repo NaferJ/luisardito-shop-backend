@@ -7,8 +7,8 @@ const {
     Usuario,
     HistorialPunto
 } = require('../models');
-const BotrixMigrationService = require('../services/botrixMigration.service');
-const VipService = require('../services/vip.service');
+// const BotrixMigrationService = require('../services/botrixMigration.service');
+// const VipService = require('../services/vip.service');
 const { Op } = require('sequelize');
 
 /**
@@ -373,12 +373,12 @@ async function handleChatMessage(payload, metadata) {
 
         console.log('[Chat Message]', kickUsername, ':', payload.content);
 
-        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix
-        const botrixResult = await BotrixMigrationService.processChatMessage(payload);
-        if (botrixResult.processed) {
-            console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
-            return; // No procesar como mensaje normal
-        }
+        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix (TEMPORAL: Deshabilitado)
+        // const botrixResult = await BotrixMigrationService.processChatMessage(payload);
+        // if (botrixResult.processed) {
+        //     console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
+        //     return; // No procesar como mensaje normal
+        // }
 
         // Verificar si el usuario existe en nuestra BD
         const usuario = await Usuario.findOne({
@@ -407,9 +407,9 @@ async function handleChatMessage(payload, metadata) {
 
         const isSubscriber = userTracking?.is_subscribed || false;
 
-        // 🌟 Calcular puntos considerando VIP
+        // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
         let basePoints = isSubscriber ? (configMap['chat_points_subscriber'] || 0) : (configMap['chat_points_regular'] || 0);
-        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'chat', basePoints);
+        const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'chat', basePoints);
 
         if (pointsToAward <= 0) {
             return;
@@ -429,7 +429,7 @@ async function handleChatMessage(payload, metadata) {
         await usuario.increment('puntos', { by: pointsToAward });
 
         // Determinar tipo de usuario para el concepto
-        const userType = usuario.getUserType();
+        const userType = isSubscriber ? 'sub' : 'regular'; // usuario.getUserType();
         const conceptoTexto = `Mensaje en chat (${userType})`;
 
         // Registrar en historial
@@ -444,7 +444,7 @@ async function handleChatMessage(payload, metadata) {
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
                 user_type: userType,
-                is_vip: usuario.isVipActive(),
+                is_vip: false, // usuario.isVipActive(),
                 is_subscriber: isSubscriber
             }
         });
@@ -509,8 +509,8 @@ async function handleChannelFollowed(payload, metadata) {
 
         const basePoints = config?.config_value || 0;
 
-        // 🌟 Calcular puntos considerando VIP
-        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
+        // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
+        const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
 
         if (pointsToAward <= 0) {
             console.log('[Kick Webhook][Channel Followed] Puntos por follow deshabilitados');
@@ -521,7 +521,7 @@ async function handleChannelFollowed(payload, metadata) {
         await usuario.increment('puntos', { by: pointsToAward });
 
         // Determinar tipo de usuario
-        const userType = usuario.getUserType();
+        const userType = 'regular'; // usuario.getUserType();
 
         // Registrar en historial
         await HistorialPunto.create({
@@ -534,7 +534,7 @@ async function handleChannelFollowed(payload, metadata) {
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
                 user_type: userType,
-                is_vip: usuario.isVipActive()
+                is_vip: false // usuario.isVipActive()
             }
         });
 
@@ -600,15 +600,15 @@ async function handleNewSubscription(payload, metadata) {
 
         const basePoints = config?.config_value || 0;
 
-        // 🌟 Calcular puntos considerando VIP
-        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'sub', basePoints);
+        // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
+        const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'sub', basePoints);
 
         if (pointsToAward > 0) {
             // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward });
 
             // Determinar tipo de usuario
-            const userType = usuario.getUserType();
+            const userType = 'sub'; // usuario.getUserType();
 
             // Registrar en historial
             await HistorialPunto.create({
@@ -623,7 +623,7 @@ async function handleNewSubscription(payload, metadata) {
                     duration,
                     expires_at: expiresAt,
                     user_type: userType,
-                    is_vip: usuario.isVipActive()
+                    is_vip: false // usuario.isVipActive()
                 }
             });
         }
@@ -1782,26 +1782,12 @@ exports.debugBotrixMigration = async (req, res) => {
             });
         }
 
-        // Simular mensaje de BotRix
-        const simulatedPayload = {
-            sender: {
-                user_id: 'botrix_user_id',
-                username: 'BotRix'
-            },
-            content: `@${kick_username} tiene ${points_amount} puntos.`,
-            broadcaster: {
-                user_id: require('../../config').kick.broadcasterId,
-                username: 'Luisardito'
-            }
-        };
-
-        const result = await BotrixMigrationService.processChatMessage(simulatedPayload);
-
+        // TODO: Implementar cuando BotrixMigrationService esté disponible
         res.json({
-            success: true,
-            simulation: 'Migración de Botrix',
-            input: { kick_username, points_amount },
-            result: result
+            success: false,
+            error: 'Función en desarrollo - Botrix migration service no implementado aún',
+            simulation: 'Migración de Botrix (temporal)',
+            input: { kick_username, points_amount }
         });
 
     } catch (error) {
@@ -1820,15 +1806,13 @@ exports.debugSystemInfo = async (req, res) => {
     try {
         const { BotrixMigrationConfig } = require('../models');
         const config = await BotrixMigrationConfig.getConfig();
-        const migrationStats = await BotrixMigrationService.getMigrationStats();
-        const vipStats = await VipService.getVipStats();
 
         res.json({
             success: true,
             system_info: {
                 migration: {
                     enabled: config.migration_enabled,
-                    stats: migrationStats
+                    stats: { migrated_users: 0, total_points: 0 } // TODO: Implementar stats reales
                 },
                 vip: {
                     points_enabled: config.vip_points_enabled,
@@ -1837,7 +1821,7 @@ exports.debugSystemInfo = async (req, res) => {
                         follow_points: config.vip_follow_points,
                         sub_points: config.vip_sub_points
                     },
-                    stats: vipStats
+                    stats: { active_vips: 0, expired_vips: 0 } // TODO: Implementar stats reales
                 }
             },
             timestamp: new Date().toISOString()

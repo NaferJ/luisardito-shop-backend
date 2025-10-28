@@ -12,33 +12,42 @@ exports.listar = async (req, res) => {
             return res.status(403).json({ error: 'Sin permiso para ver este historial' });
         }
 
-        const registros = await HistorialPunto.findAll({
-            where: {
-                usuario_id: usuarioId,
-                [Op.or]: [
-                    // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales)
-                    { kick_event_data: null },
-                    // Mostrar eventos importantes específicos
-                    {
-                        kick_event_data: {
-                            [Op.or]: [
-                                // Migración de Botrix (importante para el usuario)
-                                { event_type: 'botrix_migration' },
-                                // Eventos VIP (importantes)
-                                { event_type: 'vip_granted' },
-                                { event_type: 'vip_removed' },
-                                // Primer follow (evento único)
-                                { event_type: 'channel.followed' },
-                                // Suscripciones (eventos importantes)
-                                { event_type: 'channel.subscription.new' },
-                                { event_type: 'channel.subscription.renewal' },
-                                { event_type: 'channel.subscription.gifts' }
-                            ]
-                        }
+        const { include_all = 'false' } = req.query;
+        const isAdmin = req.user.rol_id >= 3;
+        const showAllEvents = include_all === 'true' && isAdmin;
+
+        let whereClause = { usuario_id: usuarioId };
+
+        // Si no es admin o no solicita ver todo, filtrar eventos
+        if (!showAllEvents) {
+            whereClause[Op.or] = [
+                // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales, etc.)
+                { kick_event_data: null },
+                // Mostrar eventos importantes específicos con kick_event_data
+                {
+                    kick_event_data: {
+                        [Op.or]: [
+                            // Migración de Botrix (importante para el usuario)
+                            { event_type: 'botrix_migration' },
+                            // Eventos VIP (importantes)
+                            { event_type: 'vip_granted' },
+                            { event_type: 'vip_removed' },
+                            // Primer follow (evento único e importante)
+                            { event_type: 'channel.followed' },
+                            // Suscripciones (eventos importantes)
+                            { event_type: 'channel.subscription.new' },
+                            { event_type: 'channel.subscription.renewal' },
+                            { event_type: 'channel.subscription.gifts' }
+                            // Los eventos de chat (chat.message.sent) se excluyen por defecto
+                        ]
                     }
-                ]
-            },
-            order: [['fecha', 'DESC']],
+                }
+            ];
+        }
+
+        const registros = await HistorialPunto.findAll({
+            where: whereClause,
+            order: [['fecha', 'DESC']]
         });
 
         res.json(registros);

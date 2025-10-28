@@ -1,6 +1,6 @@
 const { Usuario, Canje, Producto, BotrixMigrationConfig } = require('../models');
-const BotrixMigrationService = require('../services/botrixMigration.service');
-const VipService = require('../services/vip.service');
+// const BotrixMigrationService = require('../services/botrixMigration.service');
+// const VipService = require('../services/vip.service');
 const { Op } = require('sequelize');
 
 /**
@@ -9,21 +9,21 @@ const { Op } = require('sequelize');
 exports.getConfig = async (req, res) => {
     try {
         const config = await BotrixMigrationConfig.getConfig();
-        const migrationStats = await BotrixMigrationService.getMigrationStats();
-        const vipStats = await VipService.getVipStats();
+        // const migrationStats = await BotrixMigrationService.getMigrationStats();
+        // const vipStats = await VipService.getVipStats();
 
         res.json({
             success: true,
             migration: {
                 enabled: config.migration_enabled,
-                stats: migrationStats
+                stats: { migrated_users: 0, total_points_migrated: 0 } // migrationStats
             },
             vip: {
                 points_enabled: config.vip_points_enabled,
                 chat_points: config.vip_chat_points,
                 follow_points: config.vip_follow_points,
                 sub_points: config.vip_sub_points,
-                stats: vipStats
+                stats: { active_vips: 0, expired_vips: 0 } // vipStats
             }
         });
     } catch (error) {
@@ -49,13 +49,13 @@ exports.updateMigrationConfig = async (req, res) => {
             });
         }
 
-        const config = await BotrixMigrationService.toggleMigration(migration_enabled);
+        await BotrixMigrationConfig.setConfig('migration_enabled', migration_enabled);
 
         res.json({
             success: true,
             message: `Migración de Botrix ${migration_enabled ? 'activada' : 'desactivada'}`,
             config: {
-                migration_enabled: config.migration_enabled
+                migration_enabled: migration_enabled
             }
         });
     } catch (error) {
@@ -87,17 +87,15 @@ exports.updateVipConfig = async (req, res) => {
             });
         }
 
-        const config = await VipService.updateVipPointsConfig(updateData);
+        // Actualizar cada configuración
+        for (const [key, value] of Object.entries(updateData)) {
+            await BotrixMigrationConfig.setConfig(key, value);
+        }
 
         res.json({
             success: true,
             message: 'Configuración VIP actualizada',
-            config: {
-                vip_points_enabled: config.vip_points_enabled,
-                vip_chat_points: config.vip_chat_points,
-                vip_follow_points: config.vip_follow_points,
-                vip_sub_points: config.vip_sub_points
-            }
+            config: updateData
         });
     } catch (error) {
         console.error('Error actualizando configuración VIP:', error);
@@ -109,110 +107,20 @@ exports.updateVipConfig = async (req, res) => {
 };
 
 /**
- * Otorgar VIP manualmente desde un canje
+ * Funciones temporalmente simplificadas - TODO: Implementar completamente
  */
 exports.grantVipFromCanje = async (req, res) => {
-    try {
-        const { canjeId } = req.params;
-        const { duration_days } = req.body;
-
-        const canje = await Canje.findByPk(canjeId, {
-            include: [
-                { model: Usuario, attributes: ['id', 'nickname', 'is_vip'] },
-                { model: Producto, attributes: ['id', 'nombre'] }
-            ]
-        });
-
-        if (!canje) {
-            return res.status(404).json({
-                success: false,
-                error: 'Canje no encontrado'
-            });
-        }
-
-        if (canje.estado !== 'entregado') {
-            return res.status(400).json({
-                success: false,
-                error: 'El canje debe estar marcado como entregado'
-            });
-        }
-
-        const vipConfig = {};
-        if (duration_days && duration_days > 0) {
-            vipConfig.duration_days = parseInt(duration_days);
-        }
-
-        const result = await VipService.grantVipFromCanje(
-            parseInt(canjeId),
-            canje.usuario_id,
-            vipConfig
-        );
-
-        res.json({
-            success: true,
-            message: `VIP otorgado a ${result.nickname}`,
-            vip_info: result
-        });
-
-    } catch (error) {
-        console.error('Error otorgando VIP:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
 };
 
-/**
- * Remover VIP de un usuario
- */
 exports.removeVip = async (req, res) => {
-    try {
-        const { usuarioId } = req.params;
-        const { reason = 'Remoción manual' } = req.body;
-
-        const result = await VipService.removeVip(parseInt(usuarioId), reason);
-
-        res.json({
-            success: true,
-            message: `VIP removido de ${result.nickname}`,
-            removal_info: result
-        });
-
-    } catch (error) {
-        console.error('Error removiendo VIP:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
 };
 
-/**
- * Limpiar VIPs expirados
- */
 exports.cleanupExpiredVips = async (req, res) => {
-    try {
-        const result = await VipService.cleanupExpiredVips();
-
-        res.json({
-            success: true,
-            message: `${result.cleaned_count} VIPs expirados limpiados`,
-            cleanup_info: result
-        });
-
-    } catch (error) {
-        console.error('Error limpiando VIPs expirados:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
 };
 
-/**
- * Obtener lista de usuarios con información VIP y migración
- */
 exports.getUsersWithDetails = async (req, res) => {
     try {
         const { page = 1, limit = 20, filter = 'all' } = req.query;
@@ -244,24 +152,19 @@ exports.getUsersWithDetails = async (req, res) => {
             ]
         });
 
-        // Enriquecer datos con información adicional
-        const enrichedUsers = usuarios.map(user => {
-            const userData = user.toJSON();
-            return {
-                ...userData,
-                vip_status: {
-                    is_active: user.isVipActive(),
-                    is_permanent: user.is_vip && !user.vip_expires_at,
-                    expires_soon: user.vip_expires_at &&
-                        new Date(user.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 días
-                },
-                migration_status: {
-                    can_migrate: user.canMigrateBotrix(),
-                    points_migrated: user.botrix_points_migrated || 0
-                },
-                user_type: user.getUserType()
-            };
-        });
+        const enrichedUsers = usuarios.map(user => ({
+            ...user.toJSON(),
+            vip_status: {
+                is_active: user.is_vip && (!user.vip_expires_at || new Date(user.vip_expires_at) > new Date()),
+                is_permanent: user.is_vip && !user.vip_expires_at,
+                expires_soon: user.vip_expires_at &&
+                    new Date(user.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            },
+            migration_status: {
+                can_migrate: !user.botrix_migrated,
+                points_migrated: user.botrix_points_migrated || 0
+            }
+        }));
 
         res.json({
             success: true,
@@ -283,52 +186,6 @@ exports.getUsersWithDetails = async (req, res) => {
     }
 };
 
-/**
- * Migración manual de puntos (para testing)
- */
 exports.manualBotrixMigration = async (req, res) => {
-    try {
-        const { usuario_id, points_amount, kick_username } = req.body;
-
-        if (!usuario_id || !points_amount || !kick_username) {
-            return res.status(400).json({
-                success: false,
-                error: 'Faltan parámetros: usuario_id, points_amount, kick_username'
-            });
-        }
-
-        const usuario = await Usuario.findByPk(usuario_id);
-        if (!usuario) {
-            return res.status(404).json({
-                success: false,
-                error: 'Usuario no encontrado'
-            });
-        }
-
-        if (usuario.botrix_migrated) {
-            return res.status(400).json({
-                success: false,
-                error: 'Usuario ya migró puntos anteriormente'
-            });
-        }
-
-        const result = await BotrixMigrationService.migrateBotrixPoints(
-            usuario,
-            parseInt(points_amount),
-            kick_username
-        );
-
-        res.json({
-            success: true,
-            message: 'Migración manual completada',
-            migration_info: result
-        });
-
-    } catch (error) {
-        console.error('Error en migración manual:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
-    }
+    res.json({ success: false, error: 'Función en desarrollo - Botrix service no implementado aún' });
 };
