@@ -436,56 +436,81 @@ async function handleChatMessage(payload, metadata) {
         }
 
         // ============================================================================
-        // COOLDOWN: Verificar y bloquear spam (5 minutos)
+        // COOLDOWN: Verificar y bloquear spam (5 minutos) - CON LOCK DEFINITIVO
         // ============================================================================
         const now = new Date();
         const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
 
         console.log(`🔒 [COOLDOWN] Iniciando verificación para ${kickUsername} (${kickUserId})`);
 
-        // PASO 1: Verificar cooldown FUERA de transacción (lectura simple)
-        const cooldown = await KickChatCooldown.findOne({
-            where: { kick_user_id: kickUserId }
-            // ← SIN transaction, SIN lock
+        // Iniciar transacción con nivel de aislamiento adecuado
+        const transaction = await sequelize.transaction({
+            isolationLevel: sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
         });
 
-        // PASO 2: Si hay cooldown activo, BLOQUEAR INMEDIATAMENTE
-        if (cooldown && cooldown.cooldown_expires_at > now) {
-            const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-            const remainingSecs = Math.ceil(remainingMs / 1000);
-
-            console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
-            console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s para poder enviar otro mensaje`);
-            console.log(`⏰ [COOLDOWN] Expira: ${cooldown.cooldown_expires_at.toISOString()}`);
-
-            return; // ← NO CONTINUAR - NO DAR PUNTOS
-        }
-
-        // PASO 3: Si llegamos aquí, procesar mensaje
-        console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
-
-        const transaction = await sequelize.transaction();
         try {
+            // SELECT FOR UPDATE: Crea un LOCK exclusivo en la fila del usuario
+            // Otros webhooks del mismo usuario ESPERARÁN hasta que este termine
+            const [cooldownRows] = await sequelize.query(`
+                SELECT * FROM kick_chat_cooldowns 
+                WHERE kick_user_id = :kick_user_id 
+                FOR UPDATE
+            `, {
+                replacements: { kick_user_id: kickUserId },
+                transaction,
+                type: sequelize.QueryTypes.SELECT
+            });
+
+            const cooldown = cooldownRows[0];
+
+            // Verificar si hay cooldown activo
+            if (cooldown && new Date(cooldown.cooldown_expires_at) > now) {
+                const remainingMs = new Date(cooldown.cooldown_expires_at).getTime() - now.getTime();
+                const remainingSecs = Math.ceil(remainingMs / 1000);
+
+                await transaction.rollback();
+
+                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
+                console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s (expira: ${cooldown.cooldown_expires_at})`);
+
+                return; // ← NO CONTINUAR - NO DAR PUNTOS
+            }
+
+            // Si llegamos aquí: NO hay cooldown o ya expiró
+            console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
+
             const newExpiresAt = new Date(now.getTime() + COOLDOWN_MS);
 
             console.log(`📅 [COOLDOWN] Ahora: ${now.toISOString()}`);
             console.log(`📅 [COOLDOWN] Nueva expiración: ${newExpiresAt.toISOString()}`);
-            console.log(`📅 [COOLDOWN] Duración: ${COOLDOWN_MS / 60000} minutos`);
 
-            // Actualizar/crear cooldown DENTRO de transacción
-            await KickChatCooldown.upsert({
-                kick_user_id: kickUserId,
-                kick_username: kickUsername,
-                last_message_at: now,
-                cooldown_expires_at: newExpiresAt
-            }, { transaction });
+            // Crear o actualizar cooldown usando SQL directo
+            await sequelize.query(`
+                INSERT INTO kick_chat_cooldowns 
+                    (kick_user_id, kick_username, last_message_at, cooldown_expires_at, created_at, updated_at)
+                VALUES 
+                    (:kick_user_id, :kick_username, :now, :expires_at, :now, :now)
+                ON DUPLICATE KEY UPDATE
+                    kick_username = :kick_username,
+                    last_message_at = :now,
+                    cooldown_expires_at = :expires_at,
+                    updated_at = :now
+            `, {
+                replacements: {
+                    kick_user_id: kickUserId,
+                    kick_username: kickUsername,
+                    now: now,
+                    expires_at: newExpiresAt
+                },
+                transaction,
+                type: sequelize.QueryTypes.INSERT
+            });
 
             console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown ACTIVADO hasta ${newExpiresAt.toISOString()}`);
 
             // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward }, { transaction });
 
-            // Registrar en historial
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsToAward,

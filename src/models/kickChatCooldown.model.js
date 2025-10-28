@@ -34,10 +34,15 @@ const KickChatCooldown = sequelize.define('KickChatCooldown', {
     updatedAt: 'updated_at',
     indexes: [
         {
-            fields: ['kick_user_id']
+            fields: ['kick_user_id'],
+            unique: true,
+            name: 'idx_kick_user_id_unique',
+            comment: 'UNIQUE constraint necesario para SELECT FOR UPDATE sin race conditions'
         },
         {
-            fields: ['cooldown_expires_at']
+            fields: ['cooldown_expires_at'],
+            name: 'idx_cooldown_expires_at',
+            comment: 'Índice para consultas de limpieza de cooldowns expirados'
         }
     ]
 });
