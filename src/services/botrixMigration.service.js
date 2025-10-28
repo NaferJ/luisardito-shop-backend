@@ -1,5 +1,6 @@
 const { Usuario, HistorialPunto, BotrixMigrationConfig } = require('../models');
 const { sequelize } = require('../models/database');
+const { Op } = require('sequelize');
 
 class BotrixMigrationService {
     /**
@@ -38,7 +39,7 @@ class BotrixMigrationService {
             const usuario = await Usuario.findOne({
                 where: {
                     // Buscar por kick_data.username o nickname
-                    [sequelize.Op.or]: [
+                    [Op.or]: [
                         sequelize.literal(`JSON_EXTRACT(kick_data, '$.username') = '${targetUsername}'`),
                         { nickname: targetUsername }
                     ]

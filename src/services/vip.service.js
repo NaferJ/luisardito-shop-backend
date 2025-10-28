@@ -1,5 +1,6 @@
 const { Usuario, Canje, HistorialPunto, BotrixMigrationConfig } = require('../models');
 const { sequelize } = require('../models/database');
+const { Op } = require('sequelize');
 
 class VipService {
     /**
@@ -135,7 +136,7 @@ class VipService {
             where: {
                 is_vip: true,
                 vip_expires_at: {
-                    [sequelize.Op.lt]: new Date()
+                    [Op.lt]: new Date()
                 }
             }
         });
@@ -233,7 +234,7 @@ class VipService {
             where: {
                 is_vip: true,
                 vip_expires_at: {
-                    [sequelize.Op.lt]: new Date()
+                    [Op.lt]: new Date()
                 }
             }
         });
