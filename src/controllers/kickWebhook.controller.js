@@ -726,6 +726,7 @@ async function handleSubscriptionGifts(payload, metadata) {
             });
 
             if (gifterUsuario) {
+                console.log('🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos');
                 const totalPoints = pointsForGifter * giftees.length;
                 await gifterUsuario.increment('puntos', { by: totalPoints });
 
@@ -790,7 +791,8 @@ async function handleSubscriptionGifts(payload, metadata) {
                         total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
                     });
 
-                    console.log(`[Kick Webhook][Subscription Gifts] ✅ ${pointsForGiftee} puntos a ${gifteeUsername} por recibir sub regalada`);
+                    console.log('🎯 [Subscription Gifts] ✅', pointsForGiftee, 'puntos a', gifteeUsername, 'por recibir sub regalada');
+                    console.log('🎯 [Subscription Gifts] 💰 Total puntos del receptor:', (await gifteeUsuario.reload()).puntos);
                 }
             }
         }
