@@ -35,9 +35,7 @@ const KickChatCooldown = sequelize.define('KickChatCooldown', {
     indexes: [
         {
             fields: ['kick_user_id'],
-            unique: true,
-            name: 'idx_kick_user_id_unique',
-            comment: 'UNIQUE constraint necesario para SELECT FOR UPDATE sin race conditions'
+            name: 'idx_kick_user_id'
         },
         {
             fields: ['cooldown_expires_at'],
