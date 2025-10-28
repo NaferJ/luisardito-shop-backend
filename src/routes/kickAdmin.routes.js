@@ -52,6 +52,15 @@ router.post('/canje/:canjeId/grant-vip',
 );
 
 /**
+ * POST /api/kick-admin/usuario/:usuarioId/vip
+ * Otorgar VIP manualmente a un usuario
+ */
+router.post('/usuario/:usuarioId/vip',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.grantVipManually
+);
+
+/**
  * DELETE /api/kick-admin/usuario/:usuarioId/vip
  * Remover VIP de un usuario
  */

@@ -107,18 +107,245 @@ exports.updateVipConfig = async (req, res) => {
 };
 
 /**
- * Funciones temporalmente simplificadas - TODO: Implementar completamente
+ * Otorgar VIP desde canje entregado
  */
 exports.grantVipFromCanje = async (req, res) => {
-    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
+    try {
+        const { canjeId } = req.params;
+        const { duration_days } = req.body;
+
+        // Buscar el canje
+        const canje = await Canje.findByPk(canjeId, {
+            include: [{ model: Usuario }, { model: Producto }]
+        });
+
+        if (!canje) {
+            return res.status(404).json({
+                success: false,
+                error: 'Canje no encontrado'
+            });
+        }
+
+        if (canje.estado !== 'entregado') {
+            return res.status(400).json({
+                success: false,
+                error: 'El canje debe estar en estado "entregado" para otorgar VIP'
+            });
+        }
+
+        // Verificar si el producto otorga VIP
+        if (!canje.Producto.nombre.toLowerCase().includes('vip')) {
+            return res.status(400).json({
+                success: false,
+                error: 'Este producto no otorga VIP'
+            });
+        }
+
+        // Calcular fecha de expiración
+        let vip_expires_at = null;
+        if (duration_days && duration_days > 0) {
+            vip_expires_at = new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000);
+        }
+
+        // Otorgar VIP al usuario
+        await canje.Usuario.update({
+            is_vip: true,
+            vip_granted_at: new Date(),
+            vip_expires_at,
+            vip_granted_by_canje_id: canjeId
+        });
+
+        res.json({
+            success: true,
+            message: 'VIP otorgado exitosamente',
+            user_id: canje.Usuario.id,
+            duration: duration_days ? `${duration_days} días` : 'Permanente'
+        });
+
+    } catch (error) {
+        console.error('Error otorgando VIP desde canje:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 };
 
+/**
+ * Otorgar VIP manualmente a un usuario
+ */
+exports.grantVipManually = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { duration_days, reason } = req.body;
+
+        // Buscar el usuario
+        const usuario = await Usuario.findByPk(usuarioId);
+
+        if (!usuario) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        // Verificar si ya es VIP activo
+        if (usuario.is_vip && (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > new Date())) {
+            return res.status(400).json({
+                success: false,
+                error: 'El usuario ya tiene VIP activo'
+            });
+        }
+
+        // Calcular fecha de expiración
+        let vip_expires_at = null;
+        if (duration_days && duration_days > 0) {
+            vip_expires_at = new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000);
+        }
+
+        // Otorgar VIP al usuario
+        await usuario.update({
+            is_vip: true,
+            vip_granted_at: new Date(),
+            vip_expires_at,
+            vip_granted_by_canje_id: null // Es manual
+        });
+
+        res.json({
+            success: true,
+            message: 'VIP otorgado exitosamente',
+            user: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                vip_granted_at: new Date(),
+                vip_expires_at,
+                duration: duration_days ? `${duration_days} días` : 'Permanente'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error otorgando VIP manualmente:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Remover VIP de un usuario
+ */
 exports.removeVip = async (req, res) => {
-    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
+    try {
+        const { usuarioId } = req.params;
+        const { reason } = req.body;
+
+        // Buscar el usuario
+        const usuario = await Usuario.findByPk(usuarioId);
+
+        if (!usuario) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        if (!usuario.is_vip) {
+            return res.status(400).json({
+                success: false,
+                error: 'El usuario no tiene VIP'
+            });
+        }
+
+        // Remover VIP
+        await usuario.update({
+            is_vip: false,
+            vip_granted_at: null,
+            vip_expires_at: null,
+            vip_granted_by_canje_id: null
+        });
+
+        res.json({
+            success: true,
+            message: 'VIP removido exitosamente',
+            user: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                vip_removed_at: new Date(),
+                reason: reason || 'Removido manualmente'
+            }
+        });
+
+    } catch (error) {
+        console.error('Error removiendo VIP:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 };
 
+/**
+ * Limpiar VIPs expirados
+ */
 exports.cleanupExpiredVips = async (req, res) => {
-    res.json({ success: false, error: 'Función en desarrollo - VIP service no implementado aún' });
+    try {
+        const now = new Date();
+
+        // Buscar usuarios con VIP expirado
+        const expiredVips = await Usuario.findAll({
+            where: {
+                is_vip: true,
+                vip_expires_at: {
+                    [Op.lt]: now
+                }
+            }
+        });
+
+        if (expiredVips.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No hay VIPs expirados para limpiar',
+                cleaned: 0
+            });
+        }
+
+        // Actualizar usuarios expirados
+        await Usuario.update(
+            {
+                is_vip: false,
+                vip_granted_at: null,
+                vip_expires_at: null,
+                vip_granted_by_canje_id: null
+            },
+            {
+                where: {
+                    is_vip: true,
+                    vip_expires_at: {
+                        [Op.lt]: now
+                    }
+                }
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `${expiredVips.length} VIPs expirados limpiados exitosamente`,
+            cleaned: expiredVips.length,
+            users: expiredVips.map(u => ({
+                id: u.id,
+                nickname: u.nickname,
+                expired_at: u.vip_expires_at
+            }))
+        });
+
+    } catch (error) {
+        console.error('Error limpiando VIPs expirados:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 };
 
 exports.getUsersWithDetails = async (req, res) => {
