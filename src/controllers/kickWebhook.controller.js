@@ -412,9 +412,23 @@ async function handleChatMessage(payload, metadata) {
 
         const isSubscriber = userTracking?.is_subscribed || false;
 
-        // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
+        // 🌟 Calcular puntos considerando VIP
         let basePoints = isSubscriber ? (configMap['chat_points_subscriber'] || 0) : (configMap['chat_points_regular'] || 0);
-        const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'chat', basePoints);
+
+        // Verificar si el usuario es VIP y usar puntos VIP si corresponde
+        const isVipActive = usuario.is_vip && (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > now);
+
+        let pointsToAward = basePoints;
+        let userType = 'regular';
+
+        if (isVipActive && configMap['chat_points_vip']) {
+            pointsToAward = configMap['chat_points_vip'];
+            userType = 'vip';
+        } else if (isSubscriber) {
+            userType = 'subscriber';
+        }
+
+        console.log(`🎯 [CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Tipo: ${userType}, Puntos: ${pointsToAward}`);
 
         if (pointsToAward <= 0) {
             return;
@@ -426,18 +440,26 @@ async function handleChatMessage(payload, metadata) {
             where: { kick_user_id: kickUserId }
         });
 
+        console.log(`🕒 [COOLDOWN DEBUG] ${kickUsername} (ID: ${kickUserId}, Rol: ${usuario.rol_id}):`, {
+            cooldown_exists: !!cooldown,
+            cooldown_expires: cooldown?.cooldown_expires_at,
+            now: now,
+            is_expired: cooldown ? cooldown.cooldown_expires_at <= now : true,
+            bypass_developer: usuario.rol_id === 4 ? 'DEVELOPER - NO BYPASS CONFIGURED' : 'not developer'
+        });
+
         if (cooldown && cooldown.cooldown_expires_at > now) {
+            const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+            const remainingSeconds = Math.ceil(remainingMs / 1000);
+            console.log(`⏰ [COOLDOWN] ${kickUsername} aún en cooldown por ${remainingSeconds}s`);
             return;
         }
 
         // Otorgar puntos
         await usuario.increment('puntos', { by: pointsToAward });
 
-        // Determinar tipo de usuario para el concepto
-        const userType = isSubscriber ? 'sub' : 'regular'; // usuario.getUserType();
-        const conceptoTexto = `Mensaje en chat (${userType})`;
-
         // Registrar en historial
+        const conceptoTexto = `Mensaje en chat (${userType})`;
         await HistorialPunto.create({
             usuario_id: usuario.id,
             puntos: pointsToAward,
@@ -449,7 +471,7 @@ async function handleChatMessage(payload, metadata) {
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
                 user_type: userType,
-                is_vip: false, // usuario.isVipActive(),
+                is_vip: isVipActive,
                 is_subscriber: isSubscriber
             }
         });

@@ -29,6 +29,12 @@ async function initializeKickConfigs() {
                 enabled: true
             },
             {
+                config_key: 'chat_points_vip',
+                config_value: 30,
+                description: 'Puntos por mensaje en chat (usuarios VIP)',
+                enabled: true
+            },
+            {
                 config_key: 'follow_points',
                 config_value: 50,
                 description: 'Puntos por seguir el canal (primera vez)',
