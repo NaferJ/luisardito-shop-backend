@@ -6,6 +6,7 @@ const config = require("./config");
 
 // Servicios
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
+const VipCleanupTask = require("./src/services/vipCleanup.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -17,6 +18,7 @@ const kickWebhookRoutes = require("./src/routes/kickWebhook.routes");
 const kickSubscriptionRoutes = require("./src/routes/kickSubscription.routes");
 const kickPointsConfigRoutes = require("./src/routes/kickPointsConfig.routes");
 const kickBroadcasterRoutes = require("./src/routes/kickBroadcaster.routes");
+const kickAdminRoutes = require("./src/routes/kickAdmin.routes");
 
 const app = express();
 
@@ -51,6 +53,7 @@ app.use("/api/kick-webhook", kickWebhookRoutes);
 app.use("/api/kick", kickSubscriptionRoutes);
 app.use("/api/kick", kickPointsConfigRoutes);
 app.use("/api/kick", kickBroadcasterRoutes);
+app.use("/api/kick-admin", kickAdminRoutes);
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {
@@ -90,6 +93,9 @@ const start = async () => {
 
     // Iniciar el servicio de refresh automático de tokens
     tokenRefreshService.start();
+
+    // Iniciar limpieza automática de VIPs expirados
+    VipCleanupTask.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto

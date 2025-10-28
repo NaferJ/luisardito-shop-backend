@@ -22,16 +22,13 @@ router.get('/:usuarioId/canjes', auth, permiso('gestionar_canjes'), canjesCtrl.l
 // Actualizar puntos de un usuario específico (admin por permiso)
 router.put('/:id/puntos', auth, permiso('editar_puntos'), usuariosCtrl.actualizarPuntos);
 
-// 🔍 DEBUG: Verificar permisos del usuario actual
-router.get('/me/debug-permisos', auth, usuariosCtrl.debugPermisos);
-
-// 🔍 DEBUG: Verificar estructura de roles y permisos (sin auth)
+// 🔍 DEBUG: Verificar estructura de roles y permisos
 router.get('/debug/roles-permisos', usuariosCtrl.debugRolesPermisos);
 
-// 🔍 DEBUG: Verificar usuario específico por ID (sin auth)
-router.get('/debug/:usuarioId', usuariosCtrl.debugUsuarioEspecifico);
+// 🔍 DEBUG: Verificar usuario específico por ID
+router.get('/debug/:usuarioId', usuariosCtrl.debugUsuario);
 
 // 🔧 HOTFIX: Actualizar rol de usuario específico (temporal)
-router.put('/hotfix/:usuarioId/rol/:nuevoRol', usuariosCtrl.hotfixActualizarRol);
+router.put('/hotfix/:usuarioId/rol/:nuevoRolId', usuariosCtrl.hotfixActualizarRol);
 
 module.exports = router;

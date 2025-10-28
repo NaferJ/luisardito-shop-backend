@@ -4,21 +4,61 @@ const { extractAvatarUrl, getKickUserData } = require('../utils/kickApi');
 
 // Mostrar datos del usuario autenticado
 exports.me = async (req, res) => {
-    const { id, nickname, email, puntos, rol_id, kick_data, creado, actualizado } = req.user;
-    res.json({ id, nickname, email, puntos, rol_id, kick_data, creado, actualizado });
+    const user = req.user;
+    const {
+        id, nickname, email, puntos, rol_id, kick_data, discord_username,
+        is_vip, vip_granted_at, vip_expires_at, vip_granted_by_canje_id,
+        botrix_migrated, botrix_migrated_at, botrix_points_migrated,
+        creado, actualizado
+    } = user;
+
+    res.json({
+        id, nickname, email, puntos, rol_id, kick_data, discord_username,
+        vip_info: {
+            is_vip,
+            is_active: user.isVipActive(),
+            granted_at: vip_granted_at,
+            expires_at: vip_expires_at,
+            granted_by_canje_id: vip_granted_by_canje_id,
+            is_permanent: is_vip && !vip_expires_at
+        },
+        botrix_info: {
+            migrated: botrix_migrated,
+            migrated_at: botrix_migrated_at,
+            points_migrated: botrix_points_migrated,
+            can_migrate: user.canMigrateBotrix()
+        },
+        user_type: user.getUserType(),
+        creado, actualizado
+    });
 };
 
 // Opcional: editar perfil
 exports.updateMe = async (req, res) => {
     try {
         const updates = req.body;
-        if (updates.password) {
+        const allowedFields = ['discord_username', 'password'];
+
+        // Filtrar solo campos permitidos
+        const filteredUpdates = {};
+        Object.keys(updates).forEach(key => {
+            if (allowedFields.includes(key) || key === 'password') {
+                filteredUpdates[key] = updates[key];
+            }
+        });
+
+        if (filteredUpdates.password) {
             const bcrypt = require('bcryptjs');
-            updates.password_hash = await bcrypt.hash(updates.password, 10);
-            delete updates.password;
+            filteredUpdates.password_hash = await bcrypt.hash(filteredUpdates.password, 10);
+            delete filteredUpdates.password;
         }
-        await req.user.update(updates);
-        res.json({ message: 'Perfil actualizado' });
+
+        await req.user.update(filteredUpdates);
+
+        res.json({
+            message: 'Perfil actualizado',
+            updated_fields: Object.keys(filteredUpdates)
+        });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
@@ -38,6 +78,15 @@ exports.listarUsuarios = async (req, res) => {
                 'puntos',
                 'rol_id',
                 'user_id_ext',
+                'discord_username',
+                'is_vip',
+                'vip_granted_at',
+                'vip_expires_at',
+                'vip_granted_by_canje_id',
+                'botrix_migrated',
+                'botrix_migrated_at',
+                'botrix_points_migrated',
+                'kick_data',
                 'creado',
                 'actualizado',
                 [
@@ -58,10 +107,282 @@ exports.listarUsuarios = async (req, res) => {
             offset
         });
 
-        res.json(usuarios);
+        // Enriquecer datos con información adicional
+        const enrichedUsers = usuarios.map(user => {
+            const userData = user.toJSON();
+            const userInstance = Usuario.build(userData);
+
+            return {
+                ...userData,
+                vip_status: {
+                    is_active: userInstance.isVipActive(),
+                    is_permanent: userData.is_vip && !userData.vip_expires_at,
+                    expires_soon: userData.vip_expires_at &&
+                        new Date(userData.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 días
+                },
+                migration_status: {
+                    can_migrate: userInstance.canMigrateBotrix(),
+                    points_migrated: userData.botrix_points_migrated || 0
+                },
+                user_type: userInstance.getUserType()
+            };
+        });
+
+        res.json(enrichedUsers);
     } catch (error) {
         console.error('Error al listar usuarios:', error);
         res.status(500).json({ error: 'Error interno del servidor', message: error.message });
+    }
+};
+
+// ============================================================================
+// ENDPOINTS DE DEBUG
+// ============================================================================
+
+/**
+ * DEBUG: Obtener información completa de un usuario específico
+ */
+exports.debugUsuario = async (req, res) => {
+    try {
+        const { usuarioId } = req.params;
+        const { Rol, Permiso, RolPermiso } = require('../models');
+
+        const usuario = await Usuario.findByPk(usuarioId, {
+            include: [
+                {
+                    model: Rol,
+                    include: [
+                        {
+                            model: RolPermiso,
+                            include: [Permiso]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        if (!usuario) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        const permisos = usuario.Rol?.RolPermisos?.map(rp => rp.Permiso.nombre) || [];
+        const permisosDetalle = usuario.Rol?.RolPermisos?.map(rp => ({
+            id: rp.Permiso.id,
+            nombre: rp.Permiso.nombre,
+            descripcion: rp.Permiso.descripcion
+        })) || [];
+
+        const userInstance = Usuario.build(usuario.toJSON());
+
+        res.json({
+            usuario: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                email: usuario.email,
+                rol_id: usuario.rol_id,
+                user_id_ext: usuario.user_id_ext,
+                creado: usuario.creado,
+                actualizado: usuario.actualizado
+            },
+            rol: usuario.Rol ? {
+                id: usuario.Rol.id,
+                nombre: usuario.Rol.nombre,
+                descripcion: usuario.Rol.descripcion
+            } : null,
+            permisos: permisos,
+            permisos_detalle: permisosDetalle,
+            verificaciones: {
+                puede_ver_historial_puntos: permisos.includes('ver_historial_puntos'),
+                puede_canjear_productos: permisos.includes('canjear_productos'),
+                puede_ver_canjes: permisos.includes('ver_canjes'),
+                es_admin: usuario.rol_id >= 3,
+                puede_ver_propio_historial: usuario.rol_id >= 1,
+                puede_ver_historial_otros: permisos.includes('editar_puntos')
+            },
+            vip_info: {
+                is_vip: usuario.is_vip,
+                is_active: userInstance.isVipActive(),
+                granted_at: usuario.vip_granted_at,
+                expires_at: usuario.vip_expires_at,
+                granted_by_canje_id: usuario.vip_granted_by_canje_id,
+                is_permanent: usuario.is_vip && !usuario.vip_expires_at
+            },
+            botrix_info: {
+                migrated: usuario.botrix_migrated,
+                migrated_at: usuario.botrix_migrated_at,
+                points_migrated: usuario.botrix_points_migrated,
+                can_migrate: userInstance.canMigrateBotrix()
+            },
+            user_type: userInstance.getUserType(),
+            diagnostico: {
+                problema_identificado: permisos.includes('ver_historial_puntos') ?
+                    'Usuario SÍ tiene el permiso ver_historial_puntos' :
+                    'Usuario NO tiene el permiso ver_historial_puntos',
+                logica_esperada: usuario.rol_id <= 2 ?
+                    'Solo puede ver su propio historial (usuarios básicos)' :
+                    'Puede ver historial de cualquier usuario (admin)'
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('Error en debug de usuario:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * DEBUG: Información completa del sistema de roles y permisos
+ */
+exports.debugRolesPermisos = async (req, res) => {
+    try {
+        const { Rol, Permiso, RolPermiso } = require('../models');
+
+        // Obtener todos los roles con sus permisos
+        const roles = await Rol.findAll({
+            include: [
+                {
+                    model: RolPermiso,
+                    include: [Permiso]
+                }
+            ]
+        });
+
+        // Obtener todos los permisos
+        const permisos = await Permiso.findAll({
+            order: [['id', 'ASC']]
+        });
+
+        // Contar usuarios por rol
+        const usuariosPorRol = await Usuario.findAll({
+            attributes: [
+                'rol_id',
+                [Usuario.sequelize.fn('COUNT', Usuario.sequelize.col('id')), 'total_usuarios']
+            ],
+            group: ['rol_id']
+        });
+
+        // Verificar específicamente el permiso ver_historial_puntos
+        const permisoHistorial = await Permiso.findOne({
+            where: { nombre: 'ver_historial_puntos' },
+            include: [
+                {
+                    model: RolPermiso,
+                    include: [Rol]
+                }
+            ]
+        });
+
+        // Verificar rol 1 (usuario básico) específicamente
+        const rolUsuario = await Rol.findByPk(1, {
+            include: [
+                {
+                    model: RolPermiso,
+                    include: [Permiso]
+                }
+            ]
+        });
+
+        res.json({
+            debug_estructura: {
+                total_roles: roles.length,
+                total_permisos: permisos.length,
+                total_relaciones: await RolPermiso.count()
+            },
+            roles: roles.map(rol => ({
+                id: rol.id,
+                nombre: rol.nombre,
+                descripcion: rol.descripcion,
+                permisos: rol.RolPermisos.map(rp => rp.Permiso.nombre),
+                total_permisos: rol.RolPermisos.length
+            })),
+            permisos: permisos.map(permiso => ({
+                id: permiso.id,
+                nombre: permiso.nombre,
+                descripcion: permiso.descripcion
+            })),
+            usuarios_por_rol: usuariosPorRol.map(u => ({
+                rol_id: u.rol_id,
+                total_usuarios: parseInt(u.getDataValue('total_usuarios'))
+            })),
+            permiso_historial_puntos: permisoHistorial ? {
+                existe: true,
+                id: permisoHistorial.id,
+                nombre: permisoHistorial.nombre,
+                roles_que_lo_tienen: permisoHistorial.RolPermisos.map(rp => ({
+                    rol_id: rp.Rol.id,
+                    rol_nombre: rp.Rol.nombre
+                }))
+            } : { existe: false },
+            verificacion_rol_1: {
+                rol_usuario_basico: rolUsuario ? {
+                    id: rolUsuario.id,
+                    nombre: rolUsuario.nombre,
+                    descripcion: rolUsuario.descripcion,
+                    Permisos: rolUsuario.RolPermisos.map(rp => ({
+                        id: rp.Permiso.id,
+                        nombre: rp.Permiso.nombre,
+                        descripcion: rp.Permiso.descripcion
+                    }))
+                } : null,
+                tiene_permiso_historial: rolUsuario ?
+                    rolUsuario.RolPermisos.some(rp => rp.Permiso.nombre === 'ver_historial_puntos') :
+                    false
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('Error en debug de roles y permisos:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * HOTFIX: Actualizar rol de un usuario (temporal para correcciones)
+ */
+exports.hotfixActualizarRol = async (req, res) => {
+    try {
+        const { usuarioId, nuevoRolId } = req.params;
+
+        const usuario = await Usuario.findByPk(usuarioId);
+        if (!usuario) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        const rolAnterior = usuario.rol_id;
+        await usuario.update({ rol_id: parseInt(nuevoRolId) });
+
+        res.json({
+            success: true,
+            mensaje: `Rol actualizado para ${usuario.nickname}`,
+            usuario: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                rol_anterior: rolAnterior,
+                rol_nuevo: parseInt(nuevoRolId)
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('Error en hotfix de rol:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 };
 

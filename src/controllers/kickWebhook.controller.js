@@ -7,6 +7,8 @@ const {
     Usuario,
     HistorialPunto
 } = require('../models');
+const BotrixMigrationService = require('../services/botrixMigration.service');
+const VipService = require('../services/vip.service');
 const { Op } = require('sequelize');
 
 /**
@@ -371,6 +373,13 @@ async function handleChatMessage(payload, metadata) {
 
         console.log('[Chat Message]', kickUsername, ':', payload.content);
 
+        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix
+        const botrixResult = await BotrixMigrationService.processChatMessage(payload);
+        if (botrixResult.processed) {
+            console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
+            return; // No procesar como mensaje normal
+        }
+
         // Verificar si el usuario existe en nuestra BD
         const usuario = await Usuario.findOne({
             where: { user_id_ext: kickUserId }
@@ -397,8 +406,10 @@ async function handleChatMessage(payload, metadata) {
         });
 
         const isSubscriber = userTracking?.is_subscribed || false;
-        const pointsKey = isSubscriber ? 'chat_points_subscriber' : 'chat_points_regular';
-        const pointsToAward = configMap[pointsKey] || 0;
+
+        // 🌟 Calcular puntos considerando VIP
+        let basePoints = isSubscriber ? (configMap['chat_points_subscriber'] || 0) : (configMap['chat_points_regular'] || 0);
+        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'chat', basePoints);
 
         if (pointsToAward <= 0) {
             return;
@@ -417,17 +428,24 @@ async function handleChatMessage(payload, metadata) {
         // Otorgar puntos
         await usuario.increment('puntos', { by: pointsToAward });
 
+        // Determinar tipo de usuario para el concepto
+        const userType = usuario.getUserType();
+        const conceptoTexto = `Mensaje en chat (${userType})`;
+
         // Registrar en historial
         await HistorialPunto.create({
             usuario_id: usuario.id,
             puntos: pointsToAward,
             tipo: 'ganado',
-            concepto: `Mensaje en chat (${isSubscriber ? 'suscriptor' : 'regular'})`,
+            concepto: conceptoTexto,
             kick_event_data: {
                 event_type: 'chat.message.sent',
                 message_id: payload.message_id,
                 kick_user_id: kickUserId,
-                kick_username: kickUsername
+                kick_username: kickUsername,
+                user_type: userType,
+                is_vip: usuario.isVipActive(),
+                is_subscriber: isSubscriber
             }
         });
 
@@ -440,7 +458,7 @@ async function handleChatMessage(payload, metadata) {
             cooldown_expires_at: cooldownExpiresAt
         });
 
-        console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername}`);
+        console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
 
     } catch (error) {
         console.error('[Chat Message] ❌ Error:', error.message);
@@ -489,7 +507,10 @@ async function handleChannelFollowed(payload, metadata) {
             }
         });
 
-        const pointsToAward = config?.config_value || 0;
+        const basePoints = config?.config_value || 0;
+
+        // 🌟 Calcular puntos considerando VIP
+        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
 
         if (pointsToAward <= 0) {
             console.log('[Kick Webhook][Channel Followed] Puntos por follow deshabilitados');
@@ -499,16 +520,21 @@ async function handleChannelFollowed(payload, metadata) {
         // Otorgar puntos
         await usuario.increment('puntos', { by: pointsToAward });
 
+        // Determinar tipo de usuario
+        const userType = usuario.getUserType();
+
         // Registrar en historial
         await HistorialPunto.create({
             usuario_id: usuario.id,
             puntos: pointsToAward,
             tipo: 'ganado',
-            concepto: 'Primer follow al canal',
+            concepto: `Primer follow al canal (${userType})`,
             kick_event_data: {
                 event_type: 'channel.followed',
                 kick_user_id: kickUserId,
-                kick_username: kickUsername
+                kick_username: kickUsername,
+                user_type: userType,
+                is_vip: usuario.isVipActive()
             }
         });
 
@@ -529,7 +555,7 @@ async function handleChannelFollowed(payload, metadata) {
             });
         }
 
-        console.log(`[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow)`);
+        console.log(`[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow - ${userType})`);
 
     } catch (error) {
         console.error('[Kick Webhook][Channel Followed] Error:', error.message);
@@ -572,24 +598,32 @@ async function handleNewSubscription(payload, metadata) {
             }
         });
 
-        const pointsToAward = config?.config_value || 0;
+        const basePoints = config?.config_value || 0;
+
+        // 🌟 Calcular puntos considerando VIP
+        const pointsToAward = await VipService.calculatePointsForUser(usuario, 'sub', basePoints);
 
         if (pointsToAward > 0) {
             // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward });
+
+            // Determinar tipo de usuario
+            const userType = usuario.getUserType();
 
             // Registrar en historial
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsToAward,
                 tipo: 'ganado',
-                concepto: `Nueva suscripción (${duration} ${duration === 1 ? 'mes' : 'meses'})`,
+                concepto: `Nueva suscripción (${duration} ${duration === 1 ? 'mes' : 'meses'}) - ${userType}`,
                 kick_event_data: {
                     event_type: 'channel.subscription.new',
                     kick_user_id: kickUserId,
                     kick_username: kickUsername,
                     duration,
-                    expires_at: expiresAt
+                    expires_at: expiresAt,
+                    user_type: userType,
+                    is_vip: usuario.isVipActive()
                 }
             });
         }
@@ -1723,6 +1757,94 @@ exports.compareTokenTypes = async (req, res) => {
 
     } catch (error) {
         console.error('🔄 [Compare Tokens] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+// ============================================================================
+// ENDPOINTS DE DEBUG PARA NUEVAS FUNCIONALIDADES
+// ============================================================================
+
+/**
+ * 🧪 DEBUG: Simular migración de Botrix
+ */
+exports.debugBotrixMigration = async (req, res) => {
+    try {
+        const { kick_username, points_amount } = req.body;
+
+        if (!kick_username || !points_amount) {
+            return res.status(400).json({
+                success: false,
+                error: 'Faltan parámetros: kick_username, points_amount'
+            });
+        }
+
+        // Simular mensaje de BotRix
+        const simulatedPayload = {
+            sender: {
+                user_id: 'botrix_user_id',
+                username: 'BotRix'
+            },
+            content: `@${kick_username} tiene ${points_amount} puntos.`,
+            broadcaster: {
+                user_id: require('../../config').kick.broadcasterId,
+                username: 'Luisardito'
+            }
+        };
+
+        const result = await BotrixMigrationService.processChatMessage(simulatedPayload);
+
+        res.json({
+            success: true,
+            simulation: 'Migración de Botrix',
+            input: { kick_username, points_amount },
+            result: result
+        });
+
+    } catch (error) {
+        console.error('Error en simulación de migración Botrix:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * 🧪 DEBUG: Información de configuración VIP y migración
+ */
+exports.debugSystemInfo = async (req, res) => {
+    try {
+        const { BotrixMigrationConfig } = require('../models');
+        const config = await BotrixMigrationConfig.getConfig();
+        const migrationStats = await BotrixMigrationService.getMigrationStats();
+        const vipStats = await VipService.getVipStats();
+
+        res.json({
+            success: true,
+            system_info: {
+                migration: {
+                    enabled: config.migration_enabled,
+                    stats: migrationStats
+                },
+                vip: {
+                    points_enabled: config.vip_points_enabled,
+                    config: {
+                        chat_points: config.vip_chat_points,
+                        follow_points: config.vip_follow_points,
+                        sub_points: config.vip_sub_points
+                    },
+                    stats: vipStats
+                }
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('Error obteniendo información del sistema:', error);
         res.status(500).json({
             success: false,
             error: error.message

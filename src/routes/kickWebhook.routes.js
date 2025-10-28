@@ -42,4 +42,8 @@ router.get('/compare-token-types', kickWebhookCtrl.compareTokenTypes);
 // 📊 ESTADO: Sistema de webhooks
 router.get('/status', kickWebhookCtrl.systemStatus);
 
+// 🧪 DEBUG: Nuevas funcionalidades
+router.post('/debug-botrix-migration', kickWebhookCtrl.debugBotrixMigration);
+router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
+
 module.exports = router;

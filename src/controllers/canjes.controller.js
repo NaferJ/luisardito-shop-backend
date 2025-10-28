@@ -1,4 +1,5 @@
 const { Canje, Producto, Usuario, HistorialPunto } = require('../models');
+const VipService = require('../services/vip.service');
 
 exports.crear = async (req, res) => {
     const t = await Canje.sequelize.transaction();
@@ -91,18 +92,81 @@ exports.listarPorUsuario = async (req, res) => {
 };
 
 exports.actualizarEstado = async (req, res) => {
+    const t = await Canje.sequelize.transaction();
     try {
         const { id } = req.params;
         const { estado } = req.body;
         const estadosPermitidos = ['pendiente', 'entregado', 'cancelado'];
+
         if (!estadosPermitidos.includes(estado)) {
-            return res.status(400).json({ error: `Estado inválido. Permitidos: ${estadosPermitidos.join(', ')}. Para devolver use PUT /api/canjes/:id/devolver.` });
+            await t.rollback();
+            return res.status(400).json({
+                error: `Estado inválido. Permitidos: ${estadosPermitidos.join(', ')}. Para devolver use PUT /api/canjes/:id/devolver.`
+            });
         }
-        const canje = await Canje.findByPk(id);
-        if (!canje) return res.status(404).json({ error: 'No encontrado' });
-        await canje.update({ estado });
-        res.json({ message: 'Estado actualizado', id: canje.id, estado: canje.estado });
+
+        const canje = await Canje.findByPk(id, {
+            include: [
+                { model: Usuario, attributes: ['id', 'nickname', 'is_vip'] },
+                { model: Producto, attributes: ['id', 'nombre', 'descripcion'] }
+            ],
+            transaction: t
+        });
+
+        if (!canje) {
+            await t.rollback();
+            return res.status(404).json({ error: 'No encontrado' });
+        }
+
+        // Actualizar estado del canje
+        await canje.update({ estado }, { transaction: t });
+
+        // 🌟 FUNCIONALIDAD VIP: Si se marca como entregado y el producto contiene "VIP"
+        if (estado === 'entregado' && canje.Producto && canje.Producto.nombre.toLowerCase().includes('vip')) {
+            try {
+                console.log(`🌟 [VIP GRANT] Detectado producto VIP entregado: ${canje.Producto.nombre}`);
+
+                // Verificar si el usuario ya es VIP
+                if (!canje.Usuario.is_vip) {
+                    // Detectar duración del VIP desde el nombre del producto
+                    let durationDays = null;
+                    const productName = canje.Producto.nombre.toLowerCase();
+
+                    if (productName.includes('30 días') || productName.includes('1 mes')) {
+                        durationDays = 30;
+                    } else if (productName.includes('15 días')) {
+                        durationDays = 15;
+                    } else if (productName.includes('7 días')) {
+                        durationDays = 7;
+                    }
+                    // Si no se especifica duración, será permanente (null)
+
+                    const vipConfig = durationDays ? { duration_days: durationDays } : {};
+
+                    await VipService.grantVipFromCanje(canje.id, canje.usuario_id, vipConfig);
+
+                    console.log(`✅ [VIP GRANT] VIP otorgado a ${canje.Usuario.nickname} por canje #${canje.id}${durationDays ? ` (${durationDays} días)` : ' (permanente)'}`);
+                } else {
+                    console.log(`⚠️ [VIP GRANT] Usuario ${canje.Usuario.nickname} ya es VIP`);
+                }
+            } catch (vipError) {
+                console.error(`❌ [VIP GRANT] Error otorgando VIP para canje #${canje.id}:`, vipError);
+                // No cancelamos la transacción por error de VIP, solo logueamos
+            }
+        }
+
+        await t.commit();
+
+        res.json({
+            message: 'Estado actualizado',
+            id: canje.id,
+            estado: canje.estado,
+            vip_granted: estado === 'entregado' && canje.Producto?.nombre.toLowerCase().includes('vip') && !canje.Usuario?.is_vip
+        });
+
     } catch (err) {
+        await t.rollback();
+        console.error('Error actualizando estado de canje:', err);
         res.status(400).json({ error: err.message });
     }
 };

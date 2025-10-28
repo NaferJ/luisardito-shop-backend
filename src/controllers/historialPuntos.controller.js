@@ -15,9 +15,28 @@ exports.listar = async (req, res) => {
         const registros = await HistorialPunto.findAll({
             where: {
                 usuario_id: usuarioId,
-                // Solo mostrar registros normales (canjes, ajustes manuales, etc.)
-                // Excluir TODOS los eventos de webhooks (kick_event_data)
-                kick_event_data: null
+                [Op.or]: [
+                    // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales)
+                    { kick_event_data: null },
+                    // Mostrar eventos importantes específicos
+                    {
+                        kick_event_data: {
+                            [Op.or]: [
+                                // Migración de Botrix (importante para el usuario)
+                                { event_type: 'botrix_migration' },
+                                // Eventos VIP (importantes)
+                                { event_type: 'vip_granted' },
+                                { event_type: 'vip_removed' },
+                                // Primer follow (evento único)
+                                { event_type: 'channel.followed' },
+                                // Suscripciones (eventos importantes)
+                                { event_type: 'channel.subscription.new' },
+                                { event_type: 'channel.subscription.renewal' },
+                                { event_type: 'channel.subscription.gifts' }
+                            ]
+                        }
+                    }
+                ]
             },
             order: [['fecha', 'DESC']],
         });

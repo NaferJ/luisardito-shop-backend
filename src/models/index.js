@@ -72,5 +72,6 @@ module.exports = {
     KickChatCooldown,
     KickUserTracking,
     KickBroadcasterToken,
-    RefreshToken
+    RefreshToken,
+    BotrixMigrationConfig
 };
