@@ -438,45 +438,41 @@ async function handleChatMessage(payload, metadata) {
         // ============================================================================
         // COOLDOWN: Verificar y bloquear spam (5 minutos)
         // ============================================================================
-        const now = new Date(); // JavaScript Date() usa UTC por defecto
-        const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos = 300,000 milisegundos
+        const now = new Date();
+        const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
 
         console.log(`🔒 [COOLDOWN] Iniciando verificación para ${kickUsername} (${kickUserId})`);
 
+        // PASO 1: Verificar cooldown FUERA de transacción (lectura simple)
+        const cooldown = await KickChatCooldown.findOne({
+            where: { kick_user_id: kickUserId }
+            // ← SIN transaction, SIN lock
+        });
+
+        // PASO 2: Si hay cooldown activo, BLOQUEAR INMEDIATAMENTE
+        if (cooldown && cooldown.cooldown_expires_at > now) {
+            const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+            const remainingSecs = Math.ceil(remainingMs / 1000);
+
+            console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
+            console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s para poder enviar otro mensaje`);
+            console.log(`⏰ [COOLDOWN] Expira: ${cooldown.cooldown_expires_at.toISOString()}`);
+
+            return; // ← NO CONTINUAR - NO DAR PUNTOS
+        }
+
+        // PASO 3: Si llegamos aquí, procesar mensaje
+        console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
+
         const transaction = await sequelize.transaction();
         try {
-            // Obtener cooldown con lock atómico para evitar race conditions
-            const cooldown = await KickChatCooldown.findOne({
-                where: { kick_user_id: kickUserId },
-                transaction,
-                lock: transaction.LOCK.UPDATE
-            });
-
-            // ⛔ VERIFICACIÓN CRÍTICA: Si está en cooldown, BLOQUEAR INMEDIATAMENTE
-            if (cooldown && cooldown.cooldown_expires_at > now) {
-                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-                const remainingSecs = Math.ceil(remainingMs / 1000);
-
-                await transaction.rollback();
-
-                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
-                console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s para poder enviar otro mensaje`);
-                console.log(`⏰ [COOLDOWN] Expira: ${cooldown.cooldown_expires_at.toISOString()}`);
-
-                return; // ← CRÍTICO: NO CONTINUAR - NO DAR PUNTOS
-            }
-
-            // ✅ Si llegamos aquí: NO hay cooldown activo O ya expiró
-            console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
-
-            // Calcular nueva fecha de expiración
             const newExpiresAt = new Date(now.getTime() + COOLDOWN_MS);
 
             console.log(`📅 [COOLDOWN] Ahora: ${now.toISOString()}`);
             console.log(`📅 [COOLDOWN] Nueva expiración: ${newExpiresAt.toISOString()}`);
             console.log(`📅 [COOLDOWN] Duración: ${COOLDOWN_MS / 60000} minutos`);
 
-            // Actualizar/crear cooldown ANTES de otorgar puntos
+            // Actualizar/crear cooldown DENTRO de transacción
             await KickChatCooldown.upsert({
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
@@ -486,12 +482,10 @@ async function handleChatMessage(payload, metadata) {
 
             console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown ACTIVADO hasta ${newExpiresAt.toISOString()}`);
 
-            // ============================================================================
-            // OTORGAR PUNTOS (solo si pasó la verificación de cooldown)
-            // ============================================================================
-
+            // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward }, { transaction });
 
+            // Registrar en historial
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsToAward,
