@@ -435,57 +435,63 @@ async function handleChatMessage(payload, metadata) {
             return;
         }
 
-        // Verificar cooldown (5 minutos) con lock atómico para evitar race conditions
-        const now = new Date();
+        // ============================================================================
+        // COOLDOWN: Verificar y bloquear spam (5 minutos)
+        // ============================================================================
+        const now = new Date(); // JavaScript Date() usa UTC por defecto
+        const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos = 300,000 milisegundos
+
         console.log(`🔒 [COOLDOWN] Iniciando verificación para ${kickUsername} (${kickUserId})`);
 
         const transaction = await sequelize.transaction();
         try {
-            // Verificar cooldown con lock
+            // Obtener cooldown con lock atómico para evitar race conditions
             const cooldown = await KickChatCooldown.findOne({
                 where: { kick_user_id: kickUserId },
                 transaction,
                 lock: transaction.LOCK.UPDATE
             });
 
-            console.log(`🔍 [COOLDOWN] ${kickUsername} - Cooldown encontrado:`, !!cooldown);
+            // ⛔ VERIFICACIÓN CRÍTICA: Si está en cooldown, BLOQUEAR INMEDIATAMENTE
+            if (cooldown && cooldown.cooldown_expires_at > now) {
+                const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
+                const remainingSecs = Math.ceil(remainingMs / 1000);
 
-            if (cooldown) {
-                // Validar que la fecha no sea demasiado futura (más de 24 horas)
-                const maxValidDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-                if (cooldown.cooldown_expires_at > maxValidDate) {
-                    console.log(`⚠️ [COOLDOWN] ${kickUsername} - Fecha sospechosamente futura: ${cooldown.cooldown_expires_at}, eliminando...`);
-                    await cooldown.destroy({ transaction });
-                    // Continuar como si no hubiera cooldown
-                } else {
-                    const isActive = cooldown.cooldown_expires_at > now;
-                    const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-                    console.log(`🔍 [COOLDOWN] ${kickUsername} - Expira: ${cooldown.cooldown_expires_at}, Ahora: ${now}, Activo: ${isActive}, Restante: ${Math.ceil(remainingMs/1000)}s`);
+                await transaction.rollback();
 
-                    if (isActive) {
-                        await transaction.rollback();
-                        console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO por ${Math.ceil(remainingMs/1000)}s`);
-                        return; // En cooldown, no otorgar puntos
-                    }
-                }
+                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
+                console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s para poder enviar otro mensaje`);
+                console.log(`⏰ [COOLDOWN] Expira: ${cooldown.cooldown_expires_at.toISOString()}`);
+
+                return; // ← CRÍTICO: NO CONTINUAR - NO DAR PUNTOS
             }
 
-            // Actualizar cooldown inmediatamente con fecha válida
-            const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutos desde ahora
+            // ✅ Si llegamos aquí: NO hay cooldown activo O ya expiró
+            console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
 
+            // Calcular nueva fecha de expiración
+            const newExpiresAt = new Date(now.getTime() + COOLDOWN_MS);
+
+            console.log(`📅 [COOLDOWN] Ahora: ${now.toISOString()}`);
+            console.log(`📅 [COOLDOWN] Nueva expiración: ${newExpiresAt.toISOString()}`);
+            console.log(`📅 [COOLDOWN] Duración: ${COOLDOWN_MS / 60000} minutos`);
+
+            // Actualizar/crear cooldown ANTES de otorgar puntos
             await KickChatCooldown.upsert({
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
                 last_message_at: now,
-                cooldown_expires_at: cooldownExpiresAt
+                cooldown_expires_at: newExpiresAt
             }, { transaction });
 
-            console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown actualizado - expira: ${cooldownExpiresAt}`);
+            console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown ACTIVADO hasta ${newExpiresAt.toISOString()}`);
 
-            // Otorgar puntos
+            // ============================================================================
+            // OTORGAR PUNTOS (solo si pasó la verificación de cooldown)
+            // ============================================================================
+
             await usuario.increment('puntos', { by: pointsToAward }, { transaction });
 
-            // Registrar en historial
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsToAward,
@@ -503,11 +509,14 @@ async function handleChatMessage(payload, metadata) {
             }, { transaction });
 
             await transaction.commit();
-            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType}) [TRANSACCIÓN EXITOSA]`);
+
+            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
+            console.log(`[Chat Message] 💰 Próximo mensaje permitido: ${newExpiresAt.toISOString()}`);
 
         } catch (transactionError) {
             await transaction.rollback();
             console.error(`[Chat Message] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
+            throw transactionError;
         }
 
     } catch (error) {
