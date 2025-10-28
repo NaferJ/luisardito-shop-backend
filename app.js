@@ -6,7 +6,7 @@ const config = require("./config");
 
 // Servicios
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
-// const VipCleanupTask = require("./src/services/vipCleanup.task");
+const VipCleanupTask = require("./src/services/vipCleanup.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -94,8 +94,8 @@ const start = async () => {
     // Iniciar el servicio de refresh automático de tokens
     tokenRefreshService.start();
 
-    // Iniciar limpieza automática de VIPs expirados (TEMPORAL: Deshabilitado)
-    // VipCleanupTask.start();
+    // Iniciar limpieza automática de VIPs expirados
+    VipCleanupTask.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto

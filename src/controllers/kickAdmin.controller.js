@@ -1,6 +1,6 @@
-const { Usuario, Canje, Producto, BotrixMigrationConfig } = require('../models');
-// const BotrixMigrationService = require('../services/botrixMigration.service');
-// const VipService = require('../services/vip.service');
+const { Usuario, Canje, Producto, BotrixMigrationConfig, sequelize } = require('../models');
+const BotrixMigrationService = require('../services/botrixMigration.service');
+const VipService = require('../services/vip.service');
 const { Op } = require('sequelize');
 
 /**
@@ -9,25 +9,67 @@ const { Op } = require('sequelize');
 exports.getConfig = async (req, res) => {
     try {
         const config = await BotrixMigrationConfig.getConfig();
-        // const migrationStats = await BotrixMigrationService.getMigrationStats();
-        // const vipStats = await VipService.getVipStats();
+
+        // Obtener estadísticas reales de migración
+        const migrationStats = await Usuario.findAll({
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.col('id')), 'migrated_users'],
+                [sequelize.fn('SUM', sequelize.col('botrix_points_migrated')), 'total_points_migrated']
+            ],
+            where: {
+                botrix_migrated: true,
+                botrix_points_migrated: { [Op.gt]: 0 }
+            },
+            raw: true
+        });
+
+        // Obtener estadísticas reales de VIP
+        const now = new Date();
+
+        const activeVips = await Usuario.count({
+            where: {
+                is_vip: true,
+                [Op.or]: [
+                    { vip_expires_at: null }, // VIP permanente
+                    { vip_expires_at: { [Op.gt]: now } } // VIP no expirado
+                ]
+            }
+        });
+
+        const expiredVips = await Usuario.count({
+            where: {
+                is_vip: true,
+                vip_expires_at: { [Op.lt]: now } // VIP expirado
+            }
+        });
+
+        console.log('📊 [KICK ADMIN DEBUG] Estadísticas calculadas:', {
+            migration: migrationStats[0],
+            vip: { activeVips, expiredVips }
+        });
 
         res.json({
             success: true,
             migration: {
                 enabled: config.migration_enabled,
-                stats: { migrated_users: 0, total_points_migrated: 0 } // migrationStats
+                stats: {
+                    migrated_users: parseInt(migrationStats[0]?.migrated_users || 0),
+                    total_points_migrated: parseInt(migrationStats[0]?.total_points_migrated || 0)
+                }
             },
             vip: {
                 points_enabled: config.vip_points_enabled,
                 chat_points: config.vip_chat_points,
                 follow_points: config.vip_follow_points,
                 sub_points: config.vip_sub_points,
-                stats: { active_vips: 0, expired_vips: 0 } // vipStats
+                stats: {
+                    active_vips: activeVips,
+                    expired_vips: expiredVips
+                }
             }
         });
     } catch (error) {
-        console.error('Error obteniendo configuración:', error);
+        console.error('❌ [KICK ADMIN DEBUG] Error obteniendo configuración:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -511,5 +553,56 @@ exports.getUsersWithDetails = async (req, res) => {
 };
 
 exports.manualBotrixMigration = async (req, res) => {
-    res.json({ success: false, error: 'Función en desarrollo - Botrix service no implementado aún' });
+    try {
+        const { usuarioId, points } = req.body;
+
+        if (!usuarioId || !points) {
+            return res.status(400).json({
+                success: false,
+                error: 'usuarioId y points son requeridos'
+            });
+        }
+
+        // Buscar el usuario
+        const usuario = await Usuario.findByPk(usuarioId);
+
+        if (!usuario) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuario no encontrado'
+            });
+        }
+
+        // Verificar si ya migró
+        if (usuario.botrix_migrated) {
+            return res.status(400).json({
+                success: false,
+                error: 'El usuario ya tiene puntos migrados de Botrix',
+                details: {
+                    migrated_at: usuario.botrix_migrated_at,
+                    points_migrated: usuario.botrix_points_migrated
+                }
+            });
+        }
+
+        // Realizar migración manual usando el servicio
+        const result = await BotrixMigrationService.migrateBotrixPoints(
+            usuario,
+            parseInt(points),
+            usuario.nickname || `Manual-${usuario.id}`
+        );
+
+        res.json({
+            success: true,
+            message: 'Migración manual completada exitosamente',
+            migration: result
+        });
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error en migración manual:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 };

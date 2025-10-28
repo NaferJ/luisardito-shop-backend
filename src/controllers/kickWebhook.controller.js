@@ -7,8 +7,8 @@ const {
     Usuario,
     HistorialPunto
 } = require('../models');
-// const BotrixMigrationService = require('../services/botrixMigration.service');
-// const VipService = require('../services/vip.service');
+const BotrixMigrationService = require('../services/botrixMigration.service');
+const VipService = require('../services/vip.service');
 const { Op } = require('sequelize');
 
 /**
@@ -373,12 +373,17 @@ async function handleChatMessage(payload, metadata) {
 
         console.log('[Chat Message]', kickUsername, ':', payload.content);
 
-        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix (TEMPORAL: Deshabilitado)
-        // const botrixResult = await BotrixMigrationService.processChatMessage(payload);
-        // if (botrixResult.processed) {
-        //     console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
-        //     return; // No procesar como mensaje normal
-        // }
+        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix
+        console.log('🔍 [BOTRIX DEBUG] Verificando mensaje para migración...');
+        const botrixResult = await BotrixMigrationService.processChatMessage(payload);
+        console.log('🔍 [BOTRIX DEBUG] Resultado procesamiento:', botrixResult);
+
+        if (botrixResult.processed) {
+            console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
+            return; // No procesar como mensaje normal
+        } else {
+            console.log(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+        }
 
         // Verificar si el usuario existe en nuestra BD
         const usuario = await Usuario.findOne({
@@ -1782,16 +1787,33 @@ exports.debugBotrixMigration = async (req, res) => {
             });
         }
 
-        // TODO: Implementar cuando BotrixMigrationService esté disponible
+        console.log(`🧪 [DEBUG BOTRIX] Simulando migración: ${kick_username} con ${points_amount} puntos`);
+
+        // Crear mensaje simulado de BotRix
+        const mockMessage = {
+            sender: {
+                username: 'BotRix',
+                user_id: 'debug_botrix'
+            },
+            content: `@${kick_username} tiene ${points_amount} puntos.`,
+            broadcaster: {
+                user_id: parseInt(process.env.KICK_BROADCASTER_ID || '2771761')
+            }
+        };
+
+        // Procesar con el servicio real
+        const result = await BotrixMigrationService.processChatMessage(mockMessage);
+
         res.json({
-            success: false,
-            error: 'Función en desarrollo - Botrix migration service no implementado aún',
-            simulation: 'Migración de Botrix (temporal)',
-            input: { kick_username, points_amount }
+            success: true,
+            message: 'Simulación de migración completada',
+            input: { kick_username, points_amount },
+            result: result,
+            mock_message: mockMessage.content
         });
 
     } catch (error) {
-        console.error('Error en simulación de migración Botrix:', error);
+        console.error('❌ [DEBUG BOTRIX] Error en simulación:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -1807,12 +1829,23 @@ exports.debugSystemInfo = async (req, res) => {
         const { BotrixMigrationConfig } = require('../models');
         const config = await BotrixMigrationConfig.getConfig();
 
+        // Obtener estadísticas reales de migración
+        const migrationStats = await BotrixMigrationService.getMigrationStats();
+
+        // Obtener estadísticas reales de VIP usando el servicio importado
+        const vipStats = await VipService.getVipStats();
+
         res.json({
             success: true,
             system_info: {
                 migration: {
                     enabled: config.migration_enabled,
-                    stats: { migrated_users: 0, total_points: 0 } // TODO: Implementar stats reales
+                    stats: {
+                        migrated_users: migrationStats.migrated_users,
+                        total_points_migrated: migrationStats.total_migrated_points,
+                        pending_users: migrationStats.pending_users,
+                        migration_percentage: migrationStats.migration_percentage
+                    }
                 },
                 vip: {
                     points_enabled: config.vip_points_enabled,
@@ -1821,7 +1854,13 @@ exports.debugSystemInfo = async (req, res) => {
                         follow_points: config.vip_follow_points,
                         sub_points: config.vip_sub_points
                     },
-                    stats: { active_vips: 0, expired_vips: 0 } // TODO: Implementar stats reales
+                    stats: {
+                        total_vips: vipStats.total_vips,
+                        active_vips: vipStats.active_vips,
+                        expired_vips: vipStats.expired_vips,
+                        permanent_vips: vipStats.permanent_vips,
+                        temporary_vips: vipStats.temporary_vips
+                    }
                 }
             },
             timestamp: new Date().toISOString()
