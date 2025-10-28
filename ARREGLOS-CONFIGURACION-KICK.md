@@ -28,17 +28,26 @@
 
 ## 📋 Instrucciones para Aplicar los Cambios
 
-### Paso 1: Ejecutar Seeders (IMPORTANTE)
+### Paso 1: Ejecutar Inicialización de Configuraciones (IMPORTANTE)
+
+**Opción A - Script automático (Recomendado):**
 ```bash
-# En el contenedor o servidor de producción
+# En el servidor de producción
 cd ~/apps/luisardito-shop-backend
-node run-config-seeders.js
+bash run-init-configs.sh
 ```
 
-O manualmente:
+**Opción B - Manual dentro del contenedor:**
 ```bash
-npx sequelize-cli db:seed --seed 20251028190000-seed-kick-points-config.js
-npx sequelize-cli db:seed --seed 20251028190001-seed-botrix-migration-config.js
+# Ejecutar directamente en el contenedor
+docker exec luisardito-backend node init-kick-configs.js
+```
+
+**Opción C - Seeders tradicionales (si no usas Docker):**
+```bash
+# Solo si NO usas Docker
+cd ~/apps/luisardito-shop-backend
+node run-config-seeders.js
 ```
 
 ### Paso 2: Reiniciar el Backend
@@ -97,3 +106,56 @@ Después de aplicar estos cambios:
 - ✅ Configuración de puntos carga correctamente desde el primer uso
 - ✅ Toggles y ajustes numéricos funcionan sin problemas
 - ✅ Sistema más robusto y tolerante a diferentes formatos de datos
+
+## 🔧 Troubleshooting
+
+### Si el script de inicialización falla:
+
+**1. Verificar que el contenedor esté corriendo:**
+```bash
+docker ps | grep luisardito-backend
+```
+
+**2. Ver logs del contenedor:**
+```bash
+docker logs luisardito-backend
+```
+
+**3. Ejecutar directamente en el contenedor:**
+```bash
+docker exec -it luisardito-backend bash
+node init-kick-configs.js
+exit
+```
+
+**4. Verificar conexión a la base de datos:**
+```bash
+docker exec luisardito-backend node -e "
+const { sequelize } = require('./src/models');
+sequelize.authenticate()
+  .then(() => console.log('✅ Conexión DB OK'))
+  .catch(err => console.error('❌ Error DB:', err.message));
+"
+```
+
+### Comandos útiles para debug:
+
+**Ver configuración actual:**
+```bash
+# Desde fuera del contenedor
+curl http://localhost:3001/api/kick/points-config
+
+# Verificar migración config
+curl http://localhost:3001/api/kick-admin/config \
+  -H "Authorization: Bearer TU_TOKEN_AQUI"
+```
+
+**Verificar tablas en la base de datos:**
+```bash
+docker exec luisardito-mysql mysql -u root -p luisardito_shop \
+  -e "SELECT COUNT(*) as total FROM kick_points_config;"
+  
+docker exec luisardito-mysql mysql -u root -p luisardito_shop \
+  -e "SELECT * FROM botrix_migration_config;"
+```
+
