@@ -434,58 +434,59 @@ async function handleChatMessage(payload, metadata) {
             return;
         }
 
-        // Verificar cooldown (5 minutos)
+        // Verificar cooldown (5 minutos) con lock atómico para evitar race conditions
         const now = new Date();
-        const cooldown = await KickChatCooldown.findOne({
-            where: { kick_user_id: kickUserId }
-        });
 
-        console.log(`🕒 [COOLDOWN DEBUG] ${kickUsername} (ID: ${kickUserId}, Rol: ${usuario.rol_id}):`, {
-            cooldown_exists: !!cooldown,
-            cooldown_expires: cooldown?.cooldown_expires_at,
-            now: now,
-            is_expired: cooldown ? cooldown.cooldown_expires_at <= now : true,
-            bypass_developer: usuario.rol_id === 4 ? 'DEVELOPER - NO BYPASS CONFIGURED' : 'not developer'
-        });
+        const transaction = await Usuario.sequelize.transaction();
+        try {
+            // Verificar cooldown con lock
+            const cooldown = await KickChatCooldown.findOne({
+                where: { kick_user_id: kickUserId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
 
-        if (cooldown && cooldown.cooldown_expires_at > now) {
-            const remainingMs = cooldown.cooldown_expires_at.getTime() - now.getTime();
-            const remainingSeconds = Math.ceil(remainingMs / 1000);
-            console.log(`⏰ [COOLDOWN] ${kickUsername} aún en cooldown por ${remainingSeconds}s`);
-            return;
-        }
+            if (cooldown && cooldown.cooldown_expires_at > now) {
+                await transaction.rollback();
+                return; // En cooldown, no otorgar puntos
+            }
 
-        // Otorgar puntos
-        await usuario.increment('puntos', { by: pointsToAward });
-
-        // Registrar en historial
-        const conceptoTexto = `Mensaje en chat (${userType})`;
-        await HistorialPunto.create({
-            usuario_id: usuario.id,
-            puntos: pointsToAward,
-            tipo: 'ganado',
-            concepto: conceptoTexto,
-            kick_event_data: {
-                event_type: 'chat.message.sent',
-                message_id: payload.message_id,
+            // Actualizar cooldown inmediatamente
+            const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000);
+            await KickChatCooldown.upsert({
                 kick_user_id: kickUserId,
                 kick_username: kickUsername,
-                user_type: userType,
-                is_vip: isVipActive,
-                is_subscriber: isSubscriber
-            }
-        });
+                last_message_at: now,
+                cooldown_expires_at: cooldownExpiresAt
+            }, { transaction });
 
-        // Actualizar o crear cooldown
-        const cooldownExpiresAt = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutos
-        await KickChatCooldown.upsert({
-            kick_user_id: kickUserId,
-            kick_username: kickUsername,
-            last_message_at: now,
-            cooldown_expires_at: cooldownExpiresAt
-        });
+            // Otorgar puntos
+            await usuario.increment('puntos', { by: pointsToAward }, { transaction });
 
-        console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
+            // Registrar en historial
+            await HistorialPunto.create({
+                usuario_id: usuario.id,
+                puntos: pointsToAward,
+                tipo: 'ganado',
+                concepto: `Mensaje en chat (${userType})`,
+                kick_event_data: {
+                    event_type: 'chat.message.sent',
+                    message_id: payload.message_id,
+                    kick_user_id: kickUserId,
+                    kick_username: kickUsername,
+                    user_type: userType,
+                    is_vip: isVipActive,
+                    is_subscriber: isSubscriber
+                }
+            }, { transaction });
+
+            await transaction.commit();
+            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
+
+        } catch (transactionError) {
+            await transaction.rollback();
+            console.error('[Chat Message] ❌ Error:', transactionError.message);
+        }
 
     } catch (error) {
         console.error('[Chat Message] ❌ Error:', error.message);
