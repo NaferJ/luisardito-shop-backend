@@ -7,18 +7,30 @@ const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
         primaryKey: true,
         autoIncrement: true
     },
-    config_key: {
-        type: DataTypes.STRING,
+    migration_enabled: {
+        type: DataTypes.BOOLEAN,
         allowNull: false,
-        unique: true
+        defaultValue: true
     },
-    config_value: {
-        type: DataTypes.TEXT,
-        allowNull: true
+    vip_points_enabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
     },
-    description: {
-        type: DataTypes.STRING,
-        allowNull: true
+    vip_chat_points: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 5
+    },
+    vip_follow_points: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 100
+    },
+    vip_sub_points: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 300
     }
 }, {
     tableName: 'botrix_migration_config',
@@ -27,51 +39,62 @@ const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
     updatedAt: 'updated_at'
 });
 
-// Métodos estáticos para facilitar el acceso a configuraciones
+// Métodos estáticos simplificados para funcionar con la estructura actual
 BotrixMigrationConfig.getConfig = async function() {
-    const configs = await this.findAll();
-    const configMap = {};
+    try {
+        const config = await this.findByPk(1);
 
-    configs.forEach(config => {
-        const key = config.config_key;
-        let value = config.config_value;
+        if (!config) {
+            // Crear configuración por defecto si no existe
+            const defaultConfig = await this.create({
+                migration_enabled: true,
+                vip_points_enabled: false,
+                vip_chat_points: 5,
+                vip_follow_points: 100,
+                vip_sub_points: 300
+            });
+            return defaultConfig.toJSON();
+        }
 
-        // Convertir valores según el tipo
-        if (value === 'true') value = true;
-        else if (value === 'false') value = false;
-        else if (!isNaN(value) && value !== '') value = Number(value);
-
-        configMap[key] = value;
-    });
-
-    // Valores por defecto si no existen
-    const defaults = {
-        migration_enabled: true,
-        vip_points_enabled: false,
-        vip_chat_points: 5,
-        vip_follow_points: 100,
-        vip_sub_points: 300
-    };
-
-    return { ...defaults, ...configMap };
+        return config.toJSON();
+    } catch (error) {
+        console.error('Error obteniendo configuración:', error);
+        // Retornar valores por defecto en caso de error
+        return {
+            migration_enabled: true,
+            vip_points_enabled: false,
+            vip_chat_points: 5,
+            vip_follow_points: 100,
+            vip_sub_points: 300
+        };
+    }
 };
 
 BotrixMigrationConfig.setConfig = async function(key, value) {
-    const stringValue = typeof value === 'boolean' ? value.toString() : value.toString();
+    try {
+        let config = await this.findByPk(1);
 
-    const [config, created] = await this.findOrCreate({
-        where: { config_key: key },
-        defaults: {
-            config_key: key,
-            config_value: stringValue
+        if (!config) {
+            // Crear configuración si no existe
+            const updateData = {
+                migration_enabled: true,
+                vip_points_enabled: false,
+                vip_chat_points: 5,
+                vip_follow_points: 100,
+                vip_sub_points: 300
+            };
+            updateData[key] = value;
+            config = await this.create(updateData);
+        } else {
+            // Actualizar configuración existente
+            await config.update({ [key]: value });
         }
-    });
 
-    if (!created) {
-        await config.update({ config_value: stringValue });
+        return config;
+    } catch (error) {
+        console.error('Error actualizando configuración:', error);
+        throw error;
     }
-
-    return config;
 };
 
 module.exports = BotrixMigrationConfig;

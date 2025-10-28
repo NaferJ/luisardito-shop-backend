@@ -1,5 +1,6 @@
 const { HistorialPunto } = require('../models');
 const { Op } = require('sequelize');
+const { sequelize } = require('../models/database');
 
 exports.listar = async (req, res) => {
     try {
@@ -20,29 +21,28 @@ exports.listar = async (req, res) => {
 
         // Si no es admin o no solicita ver todo, filtrar eventos
         if (!showAllEvents) {
-            whereClause[Op.or] = [
-                // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales, etc.)
-                { kick_event_data: null },
-                // Mostrar eventos importantes específicos con kick_event_data
-                {
-                    kick_event_data: {
-                        [Op.or]: [
-                            // Migración de Botrix (importante para el usuario)
-                            { event_type: 'botrix_migration' },
-                            // Eventos VIP (importantes)
-                            { event_type: 'vip_granted' },
-                            { event_type: 'vip_removed' },
-                            // Primer follow (evento único e importante)
-                            { event_type: 'channel.followed' },
-                            // Suscripciones (eventos importantes)
-                            { event_type: 'channel.subscription.new' },
-                            { event_type: 'channel.subscription.renewal' },
-                            { event_type: 'channel.subscription.gifts' }
-                            // Los eventos de chat (chat.message.sent) se excluyen por defecto
+            // Filtro simplificado: mostrar todo excepto mensajes de chat automáticos
+            whereClause = {
+                usuario_id: usuarioId,
+                [Op.or]: [
+                    // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales, etc.)
+                    { kick_event_data: null },
+                    // Mostrar eventos importantes, excluir chat automático
+                    {
+                        [Op.and]: [
+                            { kick_event_data: { [Op.ne]: null } },
+                            {
+                                [Op.or]: [
+                                    // MySQL JSON syntax para excluir chat messages
+                                    sequelize.literal(`JSON_EXTRACT(kick_event_data, '$.event_type') != 'chat.message.sent'`),
+                                    // Si no tiene event_type, mostrar
+                                    sequelize.literal(`JSON_EXTRACT(kick_event_data, '$.event_type') IS NULL`)
+                                ]
+                            }
                         ]
                     }
-                }
-            ];
+                ]
+            };
         }
 
         const registros = await HistorialPunto.findAll({
