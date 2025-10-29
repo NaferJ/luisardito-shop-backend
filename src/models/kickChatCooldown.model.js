@@ -34,6 +34,7 @@ const KickChatCooldown = sequelize.define('KickChatCooldown', {
     updatedAt: 'updated_at',
     indexes: [
         {
+            unique: true,
             fields: ['kick_user_id'],
             name: 'idx_kick_user_id'
         },

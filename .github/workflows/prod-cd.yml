@@ -83,6 +83,13 @@ jobs:
             echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
             echo "KICK_BROADCASTER_ID=${{ secrets.KICK_BROADCASTER_ID }}" >> "$ENV_PATH"
+            
+            # Redis configuration
+            echo "REDIS_HOST=redis" >> "$ENV_PATH"
+            echo "REDIS_PORT=6379" >> "$ENV_PATH"
+            echo "REDIS_PASSWORD=" >> "$ENV_PATH"
+            echo "REDIS_DB=0" >> "$ENV_PATH"
+            
             # Cookie configuration for cross-domain
             echo "COOKIE_DOMAIN=.luisardito.com" >> "$ENV_PATH"
             # Cloudinary configuration (optional - uncomment when ready to use)

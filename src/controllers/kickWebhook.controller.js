@@ -11,6 +11,50 @@ const {
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
 const { Op, Transaction } = require('sequelize');
+const { getRedisClient } = require('../config/redis.config');
+
+/**
+ * 🔍 DIAGNÓSTICO: monitorear Redis
+ */
+
+exports.debugRedisCooldowns = async (req, res) => {
+    try {
+        const { getRedisClient } = require('../config/redis.config');
+        const redis = getRedisClient();
+
+        // Obtener todas las claves de cooldown
+        const keys = await redis.keys('chat_cooldown:*');
+
+        const cooldowns = [];
+        for (const key of keys) {
+            const ttl = await redis.pttl(key);
+            const value = await redis.get(key);
+            const userId = key.replace('chat_cooldown:', '');
+
+            cooldowns.push({
+                kick_user_id: userId,
+                created_at: value,
+                expires_in_seconds: Math.ceil(ttl / 1000),
+                expires_in_minutes: Math.ceil(ttl / 60000)
+            });
+        }
+
+        res.json({
+            success: true,
+            total_active_cooldowns: cooldowns.length,
+            cooldowns: cooldowns.sort((a, b) => a.expires_in_seconds - b.expires_in_seconds),
+            redis_status: redis.status,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Debug Redis] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
 
 /**
  * 🔍 DIAGNÓSTICO: Verificar tokens guardados en BD
@@ -374,14 +418,14 @@ async function handleChatMessage(payload, metadata) {
 
         console.log('[Chat Message]', kickUsername, ':', payload.content);
 
-        // 🔄 PRIORIDAD 1: Verificar si es migración de Botrix
+        // PRIORIDAD 1: Verificar si es migración de Botrix
         console.log('🔍 [BOTRIX DEBUG] Verificando mensaje para migración...');
         const botrixResult = await BotrixMigrationService.processChatMessage(payload);
         console.log('🔍 [BOTRIX DEBUG] Resultado procesamiento:', botrixResult);
 
         if (botrixResult.processed) {
-            console.log(`🔄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
-            return; // No procesar como mensaje normal
+            console.log(`📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
+            return;
         } else {
             console.log(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
         }
@@ -413,10 +457,9 @@ async function handleChatMessage(payload, metadata) {
 
         const isSubscriber = userTracking?.is_subscribed || false;
 
-        // 🌟 Calcular puntos considerando VIP
+        const now = new Date();
         let basePoints = isSubscriber ? (configMap['chat_points_subscriber'] || 0) : (configMap['chat_points_regular'] || 0);
 
-        // Verificar si el usuario es VIP y usar puntos VIP si corresponde
         const isVipActive = usuario.is_vip && (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > now);
 
         let pointsToAward = basePoints;
@@ -436,81 +479,60 @@ async function handleChatMessage(payload, metadata) {
         }
 
         // ============================================================================
-        // COOLDOWN: Verificar y bloquear spam (5 minutos) - CON LOCK DEFINITIVO
+        // 🚀 COOLDOWN CON REDIS: Ultra-rápido y atómico (para 1000 msg/min)
         // ============================================================================
-        const now = new Date();
         const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
+        const cooldownKey = `chat_cooldown:${kickUserId}`;
 
-        console.log(`🔒 [COOLDOWN] Iniciando verificación para ${kickUsername} (${kickUserId})`);
+        console.log(`🚀 [REDIS COOLDOWN] Verificando para ${kickUsername} (${kickUserId})`);
 
-        // Iniciar transacción con nivel de aislamiento adecuado
+        try {
+            const redis = getRedisClient();
+
+            // 🔒 SET NX PX: SET si NO existe, con expiración automática
+            // Retorna "OK" si se creó la clave, null si ya existía
+            const wasSet = await redis.set(
+                cooldownKey,
+                now.toISOString(),
+                'PX', // Milisegundos
+                COOLDOWN_MS,
+                'NX' // Solo si NO existe
+            );
+
+            if (!wasSet) {
+                // La clave ya existe = cooldown activo
+                const ttl = await redis.pttl(cooldownKey); // TTL en milisegundos
+                const remainingSecs = Math.ceil(ttl / 1000);
+
+                console.log(`⏰ [REDIS COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
+                console.log(`⏰ [REDIS COOLDOWN] Faltan ${remainingSecs}s (${Math.ceil(ttl/60000)} minutos)`);
+
+                return; // ❌ NO CONTINUAR - NO DAR PUNTOS
+            }
+
+            // ✅ Si llegamos aquí: clave creada exitosamente = puede recibir puntos
+            console.log(`✅ [REDIS COOLDOWN] ${kickUsername} puede recibir puntos`);
+            console.log(`📅 [REDIS COOLDOWN] Próximo mensaje permitido en: ${COOLDOWN_MS/1000}s (${COOLDOWN_MS/60000} minutos)`);
+
+        } catch (redisError) {
+            console.error(`❌ [REDIS COOLDOWN] Error de Redis:`, redisError.message);
+            console.log(`⚠️  [REDIS COOLDOWN] Fallback: continuando sin cooldown por error de Redis`);
+            // Para máxima disponibilidad: continuar
+            // Para máxima consistencia: return;
+        }
+
+        // ============================================================================
+        // 💰 OTORGAR PUNTOS (solo si pasó el cooldown de Redis)
+        // ============================================================================
         const transaction = await sequelize.transaction({
             isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
         });
 
         try {
-            // SELECT FOR UPDATE: Crea un LOCK exclusivo en la fila del usuario
-            // Otros webhooks del mismo usuario ESPERARÁN hasta que este termine
-            const [cooldownRows] = await sequelize.query(`
-                SELECT * FROM kick_chat_cooldowns 
-                WHERE kick_user_id = :kick_user_id 
-                FOR UPDATE
-            `, {
-                replacements: { kick_user_id: kickUserId },
-                transaction,
-                type: sequelize.QueryTypes.SELECT
-            });
-
-            const cooldown = cooldownRows[0];
-
-            // Verificar si hay cooldown activo
-            if (cooldown && new Date(cooldown.cooldown_expires_at) > now) {
-                const remainingMs = new Date(cooldown.cooldown_expires_at).getTime() - now.getTime();
-                const remainingSecs = Math.ceil(remainingMs / 1000);
-
-                await transaction.rollback();
-
-                console.log(`⏰ [COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
-                console.log(`⏰ [COOLDOWN] Faltan ${remainingSecs}s (expira: ${cooldown.cooldown_expires_at})`);
-
-                return; // ← NO CONTINUAR - NO DAR PUNTOS
-            }
-
-            // Si llegamos aquí: NO hay cooldown o ya expiró
-            console.log(`✅ [COOLDOWN] ${kickUsername} puede recibir puntos`);
-
-            const newExpiresAt = new Date(now.getTime() + COOLDOWN_MS);
-
-            console.log(`📅 [COOLDOWN] Ahora: ${now.toISOString()}`);
-            console.log(`📅 [COOLDOWN] Nueva expiración: ${newExpiresAt.toISOString()}`);
-
-            // Crear o actualizar cooldown usando SQL directo
-            await sequelize.query(`
-                INSERT INTO kick_chat_cooldowns 
-                    (kick_user_id, kick_username, last_message_at, cooldown_expires_at, created_at, updated_at)
-                VALUES 
-                    (:kick_user_id, :kick_username, :now, :expires_at, :now, :now)
-                ON DUPLICATE KEY UPDATE
-                    kick_username = :kick_username,
-                    last_message_at = :now,
-                    cooldown_expires_at = :expires_at,
-                    updated_at = :now
-            `, {
-                replacements: {
-                    kick_user_id: kickUserId,
-                    kick_username: kickUsername,
-                    now: now,
-                    expires_at: newExpiresAt
-                },
-                transaction,
-                type: sequelize.QueryTypes.INSERT
-            });
-
-            console.log(`🔒 [COOLDOWN] ${kickUsername} cooldown ACTIVADO hasta ${newExpiresAt.toISOString()}`);
-
             // Otorgar puntos
             await usuario.increment('puntos', { by: pointsToAward }, { transaction });
 
+            // Registrar en historial
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsToAward,
@@ -530,11 +552,21 @@ async function handleChatMessage(payload, metadata) {
             await transaction.commit();
 
             console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
-            console.log(`[Chat Message] 💰 Próximo mensaje permitido: ${newExpiresAt.toISOString()}`);
+            console.log(`[Chat Message] 💰 Total puntos usuario: ${(await usuario.reload()).puntos}`);
 
         } catch (transactionError) {
             await transaction.rollback();
             console.error(`[Chat Message] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
+
+            // Si falla la DB, eliminar el cooldown de Redis para permitir retry
+            try {
+                const redis = getRedisClient();
+                await redis.del(cooldownKey);
+                console.log(`🔄 [REDIS COOLDOWN] Cooldown eliminado por error de DB - permitir retry`);
+            } catch (redisCleanupError) {
+                console.error(`❌ [REDIS COOLDOWN] Error limpiando cooldown:`, redisCleanupError.message);
+            }
+
             throw transactionError;
         }
 
