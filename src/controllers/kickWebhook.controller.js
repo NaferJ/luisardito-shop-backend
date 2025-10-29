@@ -471,14 +471,32 @@ async function handleChatMessage(payload, metadata) {
             configMap[c.config_key] = c.config_value;
         });
 
-        // Determinar si es suscriptor
+        // Determinar si es suscriptor (validando expiración)
         const userTracking = await KickUserTracking.findOne({
             where: { kick_user_id: kickUserId }
         });
 
-        const isSubscriber = userTracking?.is_subscribed || false;
-
         const now = new Date();
+        let isSubscriber = false;
+        if (userTracking?.is_subscribed) {
+            const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+            if (expiresAt && expiresAt > now) {
+                isSubscriber = true;
+            } else {
+                // Suscripción expirada: desactivar flag para no dar puntos de sub
+                try {
+                    await KickUserTracking.update(
+                        { is_subscribed: false },
+                        { where: { kick_user_id: kickUserId } }
+                    );
+                    console.log(`[CHAT] Suscripción expirada para ${kickUsername} - is_subscribed=false`);
+                } catch (e) {
+                    console.error('[CHAT] Error desactivando suscripción expirada:', e.message);
+                }
+                isSubscriber = false;
+            }
+        }
+
         let basePoints = isSubscriber ? (configMap['chat_points_subscriber'] || 0) : (configMap['chat_points_regular'] || 0);
 
         const isVipActive = usuario.is_vip && (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > now);
