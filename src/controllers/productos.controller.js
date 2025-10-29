@@ -1,4 +1,4 @@
-const { Producto } = require('../models');
+const { Producto, sequelize } = require('../models');
 
 // Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
 exports.listar = async (req, res) => {
@@ -37,7 +37,18 @@ exports.listar = async (req, res) => {
             break;
     }
 
-    const productos = await Producto.findAll({ where, order });
+    const productos = await Producto.findAll({
+        where,
+        order,
+        attributes: {
+            include: [
+                [
+                    sequelize.literal("(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"),
+                    'canjes_count'
+                ]
+            ]
+        }
+    });
 
     // Debug: Log productos encontrados
     console.log('🔍 [PRODUCTOS DEBUG] Productos encontrados:', {
@@ -54,7 +65,16 @@ exports.listar = async (req, res) => {
 };
 
 exports.obtener = async (req, res) => {
-    const producto = await Producto.findByPk(req.params.id);
+    const producto = await Producto.findByPk(req.params.id, {
+        attributes: {
+            include: [
+                [
+                    sequelize.literal("(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"),
+                    'canjes_count'
+                ]
+            ]
+        }
+    });
     if (!producto) return res.status(404).json({ error: 'No encontrado' });
     res.json(producto);
 };
@@ -110,7 +130,15 @@ exports.eliminar = async (req, res) => {
 exports.debugListar = async (req, res) => {
     try {
         const productos = await Producto.findAll({
-            order: [['id', 'ASC']]
+            order: [['id', 'ASC']],
+            attributes: {
+                include: [
+                    [
+                        sequelize.literal("(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"),
+                        'canjes_count'
+                    ]
+                ]
+            }
         });
 
         console.log('🔍 [DEBUG] Todos los productos en DB:', productos.length);
@@ -123,6 +151,7 @@ exports.debugListar = async (req, res) => {
                 estado: p.estado,
                 precio: p.precio,
                 stock: p.stock,
+                canjes_count: (p.get ? p.get('canjes_count') : p.canjes_count),
                 creado: p.creado,
                 actualizado: p.actualizado
             }))
@@ -131,5 +160,21 @@ exports.debugListar = async (req, res) => {
         console.error('❌ [DEBUG] Error:', error.message);
         res.status(500).json({ error: error.message });
     }
+};
+
+// Endpoint ADMIN: lista todos los productos con canjes_count (requiere auth/permiso a nivel de ruta)
+exports.listarAdmin = async (_req, res) => {
+    const productos = await Producto.findAll({
+        order: [['id', 'ASC']],
+        attributes: {
+            include: [
+                [
+                    sequelize.literal("(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"),
+                    'canjes_count'
+                ]
+            ]
+        }
+    });
+    res.json(productos);
 };
 
