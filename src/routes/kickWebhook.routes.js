@@ -47,6 +47,6 @@ router.post('/debug-botrix-migration', kickWebhookCtrl.debugBotrixMigration);
 router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
 
 // Stream
-router.get('/debug-stream-status', webhookController.debugStreamStatus);
+router.get('/debug-stream-status', kickWebhookCtrl.debugStreamStatus);
 
 module.exports = router;
