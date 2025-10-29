@@ -410,6 +410,9 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 /**
  * Maneja mensajes de chat
  */
+/**
+ * Maneja mensajes de chat
+ */
 async function handleChatMessage(payload, metadata) {
     try {
         const sender = payload.sender;
@@ -428,6 +431,24 @@ async function handleChatMessage(payload, metadata) {
             return;
         } else {
             console.log(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+        }
+
+        // 🎥 PRIORIDAD 2: Verificar si el stream está en vivo
+        try {
+            const redis = getRedisClient();
+            const isLive = await redis.get('stream:is_live');
+
+            if (isLive !== 'true') {
+                console.log(`🔴 [STREAM] OFFLINE - No se otorgan puntos a ${kickUsername}`);
+                return; // ❌ NO CONTINUAR
+            }
+
+            console.log(`🟢 [STREAM] EN VIVO - Procesando puntos para ${kickUsername}`);
+
+        } catch (redisError) {
+            console.error(`❌ [STREAM] Error verificando estado:`, redisError.message);
+            console.log(`⚠️  [STREAM] Asumiendo EN VIVO por error de Redis`);
+            // Fallback: continuar si Redis falla (para no romper el sistema)
         }
 
         // Verificar si el usuario existe en nuestra BD
@@ -950,15 +971,29 @@ async function handleSubscriptionGifts(payload, metadata) {
  * Maneja cambios de estado de transmisión
  */
 async function handleLivestreamStatusUpdated(payload, metadata) {
-    console.log('[Kick Webhook][Livestream Status]', {
-        broadcaster: payload.broadcaster.username,
-        is_live: payload.is_live,
-        title: payload.title,
-        started_at: payload.started_at,
-        ended_at: payload.ended_at
-    });
+    try {
+        const isLive = payload.is_live;
 
-    // TODO: Implementar lógica de negocio (notificar usuarios, actualizar estado, etc.)
+        console.log('[Kick Webhook][Livestream Status]', {
+            broadcaster: payload.broadcaster.username,
+            is_live: isLive,
+            title: payload.title,
+            started_at: payload.started_at,
+            ended_at: payload.ended_at
+        });
+
+        // 🎥 Actualizar estado en Redis
+        const redis = getRedisClient();
+        await redis.set('stream:is_live', isLive ? 'true' : 'false');
+
+        console.log(isLive ?
+            '🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS' :
+            '🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS'
+        );
+
+    } catch (error) {
+        console.error('[Kick Webhook][Livestream Status] Error:', error.message);
+    }
 }
 
 /**
@@ -1973,6 +2008,36 @@ exports.debugSystemInfo = async (req, res) => {
 
     } catch (error) {
         console.error('Error obteniendo información del sistema:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * 🎥 DEBUG: Verificar estado del stream
+ */
+exports.debugStreamStatus = async (req, res) => {
+    try {
+        const redis = getRedisClient();
+        const isLive = await redis.get('stream:is_live');
+
+        res.json({
+            success: true,
+            stream: {
+                is_live: isLive === 'true',
+                redis_value: isLive || 'not_set',
+                points_enabled: isLive === 'true',
+                message: isLive === 'true' ?
+                    '🟢 Stream EN VIVO - Puntos activados' :
+                    '🔴 Stream OFFLINE - Puntos desactivados'
+            },
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        console.error('[Stream Status] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
