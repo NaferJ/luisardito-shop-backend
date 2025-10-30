@@ -52,6 +52,17 @@ async function getKickUserData(userIdOrToken) {
                 });
                 
                 return userData;
+            } catch (error) {
+                console.error('[Kick API] Error en la petición con token:', {
+                    message: error.message,
+                    response: {
+                        status: error.response?.status,
+                        data: error.response?.data,
+                        headers: error.response?.headers
+                    }
+                });
+                throw error;
+            }
         }
 
         // Si es un ID de usuario, usar endpoint público (si existe)
@@ -60,7 +71,8 @@ async function getKickUserData(userIdOrToken) {
         try {
             const response = await axios.get(`https://kick.com/api/v1/users/${userIdOrToken}`, {
                 headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Accept': 'application/json'
                 },
                 timeout: 10000
             });
@@ -69,12 +81,20 @@ async function getKickUserData(userIdOrToken) {
             return response.data;
 
         } catch (publicApiError) {
-            console.warn('[Kick API] Endpoint público no disponible:', publicApiError.message);
+            console.warn('[Kick API] Endpoint público no disponible:', {
+                message: publicApiError.message,
+                status: publicApiError.response?.status,
+                data: publicApiError.response?.data
+            });
             throw new Error('No se pudieron obtener datos del usuario de Kick');
         }
 
     } catch (error) {
-        console.error('[Kick API] Error obteniendo datos:', error.message);
+        console.error('[Kick API] Error obteniendo datos:', {
+            message: error.message,
+            stack: error.stack,
+            response: error.response?.data
+        });
         throw error;
     }
 }
