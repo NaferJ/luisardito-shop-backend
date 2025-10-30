@@ -58,41 +58,60 @@ class KickBotService {
         return null;
     }
 
-    async sendMessage(channelId, message) {
+    /**
+     * Envía un mensaje al chat como bot
+     * @param {string} message - El mensaje a enviar (máx 500 caracteres)
+     * @returns {Promise<{ok: boolean, data?: Object, error?: string}>} Resultado de la operación
+     */
+    async sendMessage(message) {
         const token = await this.resolveAccessToken();
         if (!token) {
             console.error('[KickBot] ❌ No hay access token disponible (config ni DB)');
             return { ok: false, error: 'missing_access_token' };
         }
-        if (!channelId) {
-            console.error('[KickBot] ❌ channelId requerido para enviar mensajes');
-            return { ok: false, error: 'missing_channel_id' };
-        }
+        
         if (!message || !String(message).trim()) {
             return { ok: false, error: 'empty_message' };
         }
 
-        // Endpoint tentativo para mensajes de chat
-        // Nota: Ajustar si Kick cambia/expone otro endpoint público
-        const url = `${this.apiBase}/public/v1/channels/${channelId}/messages`;
+        const url = `${this.apiBase}/public/v1/chat`;
+        const payload = {
+            type: 'bot',  // Envía como bot
+            content: String(message).trim().substring(0, 500)  // Asegura que no exceda el límite
+        };
 
         try {
+            console.log(`[KickBot] Enviando mensaje: ${payload.content}`);
             const response = await axios.post(
                 url,
-                { content: message, type: 'message' },
+                payload,
                 {
                     headers: {
                         'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
                     timeout: 10000
                 }
             );
 
-            return { ok: true, data: response.data };
+            console.log('[KickBot] ✅ Mensaje enviado exitosamente:', response.data);
+            return { 
+                ok: true, 
+                data: {
+                    messageId: response.data.data?.message_id,
+                    isSent: response.data.data?.is_sent === true,
+                    raw: response.data
+                }
+            };
         } catch (error) {
-            console.error('[KickBot] ❌ Error enviando mensaje:', error.response?.data || error.message);
-            return { ok: false, error: error.response?.data || error.message };
+            const errorData = error.response?.data || error.message;
+            console.error('[KickBot] ❌ Error enviando mensaje:', errorData);
+            return { 
+                ok: false, 
+                error: typeof errorData === 'object' ? JSON.stringify(errorData) : errorData,
+                status: error.response?.status
+            };
         }
     }
 }
