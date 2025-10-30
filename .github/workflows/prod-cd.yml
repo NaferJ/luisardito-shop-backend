@@ -83,6 +83,12 @@ jobs:
             echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
             echo "KICK_BROADCASTER_ID=${{ secrets.KICK_BROADCASTER_ID }}" >> "$ENV_PATH"
+
+            # Kick BOT application
+            echo "KICK_BOT_CLIENT_SECRET=${{ secrets.KICK_BOT_CLIENT_SECRET }}" >> "$ENV_PATH"
+            echo "KICK_BOT_CLIENT_ID=${{ secrets.KICK_BOT_CLIENT_ID }}" >> "$ENV_PATH"
+            echo "KICK_BOT_REDIRECT_URI=${{ secrets.KICK_BOT_REDIRECT_URI }}" >> "$ENV_PATH"
+            echo "KICK_BOT_USERNAME=${{ secrets.KICK_BOT_USERNAME }}" >> "$ENV_PATH"
             
             # Redis configuration
             echo "REDIS_HOST=redis" >> "$ENV_PATH"

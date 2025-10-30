@@ -433,7 +433,58 @@ async function handleChatMessage(payload, metadata) {
             console.log(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
         }
 
-        // 🎥 PRIORIDAD 2: Verificar si el stream está en vivo
+        // ==========================================
+        // 🤖 Comandos del BOT (!tienda/!shop, !puntos)
+        // Se responden SIEMPRE, independientemente del estado del stream
+        // ==========================================
+        try {
+            const content = String(payload.content || '').trim();
+            if (content.startsWith('!')) {
+                const channelId = String(payload.channel_id || payload?.broadcaster?.id || payload?.channel?.id || '');
+                const bot = require('../services/kickBot.service');
+
+                // !tienda | !shop
+                if (/^!(tienda|shop)\b/i.test(content)) {
+                    const reply = `${kickUsername} tienda del canal: https://shop.luisardito.com/`;
+                    const targetChannelId = channelId || String(require('../../config').kick.broadcasterId || '');
+                    if (targetChannelId) {
+                        await bot.sendMessage(targetChannelId, reply);
+                    } else {
+                        console.warn('[Chat Command] No se pudo resolver channelId para respuesta !tienda/!shop');
+                    }
+                }
+
+                // !puntos [username?]
+                if (/^!puntos\b/i.test(content)) {
+                    const parts = content.split(/\s+/);
+                    const lookupName = parts[1] ? parts[1].replace(/^@/, '') : kickUsername;
+
+                    const { Usuario } = require('../models');
+                    const { Op } = require('sequelize');
+                    const targetUser = await Usuario.findOne({
+                        where: {
+                            nickname: { [Op.like]: lookupName }
+                        }
+                    });
+
+                    const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
+                    const reply = puntos !== null
+                        ? `${lookupName} tiene ${puntos} puntos`
+                        : `${lookupName} no existe o no tiene puntos registrados`;
+
+                    const targetChannelId = channelId || String(require('../../config').kick.broadcasterId || '');
+                    if (targetChannelId) {
+                        await bot.sendMessage(targetChannelId, reply);
+                    } else {
+                        console.warn('[Chat Command] No se pudo resolver channelId para respuesta !puntos');
+                    }
+                }
+            }
+        } catch (cmdErr) {
+            console.error('[Chat Command] ❌ Error manejando comandos:', cmdErr.message);
+        }
+
+        // 🎥 PRIORIDAD 2: Verificar si el stream está en vivo (para puntos, no para comandos)
         try {
             const redis = getRedisClient();
             const isLive = await redis.get('stream:is_live');

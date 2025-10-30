@@ -15,6 +15,10 @@ router.get('/kick',      authCtrl.redirectKick);
 router.get('/kick-callback', authCtrl.callbackKick);
 router.post('/store-tokens', authCtrl.storeTokens);
 
+// OAuth de Kick - BOT
+router.get('/kick-bot', authCtrl.redirectKickBot);
+router.get('/kick-bot-callback', authCtrl.callbackKickBot);
+
 // Debugging de cookies
 router.get('/cookie-status', authCtrl.cookieStatus);
 

@@ -35,6 +35,16 @@ module.exports = {
         oauthToken:     process.env.KICK_OAUTH_TOKEN_URL     || 'https://id.kick.com/oauth/token',
         oauthRevoke:    process.env.KICK_OAUTH_REVOKE_URL    || 'https://id.kick.com/oauth/revoke'
     },
+    // Configuración específica del BOT de chat (aplicación separada)
+    kickBot: {
+        clientId:       process.env.KICK_BOT_CLIENT_ID,
+        clientSecret:   process.env.KICK_BOT_CLIENT_SECRET,
+        redirectUri:    process.env.KICK_BOT_REDIRECT_URI,
+        // Para simplificar el envío de mensajes, usaremos un Access Token del bot (user token)
+        accessToken:    process.env.KICK_BOT_ACCESS_TOKEN,
+        // Opcional: username del bot para logs/diagnóstico
+        username:       process.env.KICK_BOT_USERNAME
+    },
     cloudinary: {
         cloudName: process.env.CLOUDINARY_CLOUD_NAME,
         apiKey: process.env.CLOUDINARY_API_KEY,
