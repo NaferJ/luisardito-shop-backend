@@ -95,13 +95,24 @@ async function getKickUserData(userIdOrToken) {
                     throw new Error('No se encontraron datos de usuario en la respuesta');
                 }
 
+                // Normalizar la estructura de datos (la API devuelve user_id y name)
+                const normalizedData = {
+                    id: userData.user_id || userData.id,
+                    username: userData.name || userData.username,
+                    email: userData.email,
+                    profile_picture: userData.profile_picture,
+                    // Mantener campos originales por compatibilidad
+                    user_id: userData.user_id,
+                    name: userData.name
+                };
+
                 console.log('[Kick API] ✅ Datos del usuario obtenidos:', {
-                    id: userData.id,
-                    username: userData.username,
-                    isLive: userData.is_live
+                    id: normalizedData.id,
+                    username: normalizedData.username,
+                    email: normalizedData.email
                 });
                 
-                return userData;
+                return normalizedData;
             } catch (error) {
                 console.error('[Kick API] Error en la petición con token:', {
                     message: error.message,
