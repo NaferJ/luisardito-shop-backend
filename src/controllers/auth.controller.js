@@ -605,7 +605,11 @@ exports.callbackKickBot = async (req, res) => {
         });
 
         console.log(`[Kick OAuth][callbackKickBot] Token del bot guardado para el usuario: ${botUser.username}`);
-        return res.redirect('/dashboard?bot_connected=true');
+        
+        // Redirigir al frontend
+        const frontendUrl = config.frontendUrl || 'http://localhost:5173';
+        const message = encodeURIComponent('Bot conectado correctamente');
+        return res.redirect(`${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`);
     } catch (err) {
         console.error('[Kick OAuth][callbackKickBot] Error:', err);
         return res.status(500).json({ 
