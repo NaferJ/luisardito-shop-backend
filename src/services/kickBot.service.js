@@ -19,20 +19,42 @@ class KickBotService {
      * @param {string} message - Contenido del mensaje
      */
     async resolveAccessToken() {
-        if (this.accessToken && String(this.accessToken).length > 10) return this.accessToken;
+        console.log('[KickBot] 🔍 Resolviendo access token...');
+        console.log('[KickBot] 🔍 Token en config:', this.accessToken ? `${this.accessToken.substring(0, 10)}...` : 'NO CONFIGURADO');
+        console.log('[KickBot] 🔍 Bot username en config:', this.botUsername);
+        
+        if (this.accessToken && String(this.accessToken).length > 10) {
+            console.log('[KickBot] ✅ Usando token de configuración');
+            return this.accessToken;
+        }
 
         // Buscar token almacenado del bot en la tabla kick_bot_tokens
         try {
             const where = this.botUsername ? { kick_username: this.botUsername, is_active: true } : { is_active: true };
+            console.log('[KickBot] 🔍 Buscando en DB con where:', where);
+            
             const record = await KickBotToken.findOne({ where, order: [['updated_at', 'DESC']] });
+            console.log('[KickBot] 🔍 Registro encontrado:', record ? {
+                id: record.id,
+                kick_username: record.kick_username,
+                is_active: record.is_active,
+                has_token: !!record.access_token,
+                token_preview: record.access_token ? `${record.access_token.substring(0, 10)}...` : 'NO TOKEN'
+            } : 'NO ENCONTRADO');
+            
             if (record?.access_token) {
                 this.accessToken = record.access_token;
+                console.log('[KickBot] ✅ Token obtenido de DB exitosamente');
                 return this.accessToken;
+            } else {
+                console.log('[KickBot] ❌ No se encontró token en el registro');
             }
         } catch (e) {
-            console.error('[KickBot] Error resolviendo token desde DB:', e.message);
+            console.error('[KickBot] ❌ Error resolviendo token desde DB:', e.message);
+            console.error('[KickBot] ❌ Stack:', e.stack);
         }
 
+        console.log('[KickBot] ❌ No hay token disponible');
         return null;
     }
 
