@@ -8,27 +8,50 @@ const config = require('../../config');
  */
 async function getKickUserData(userIdOrToken) {
     try {
-        console.log('[Kick API] Obteniendo datos del usuario:', typeof userIdOrToken);
+        console.log('[Kick API] Obteniendo datos del usuario. Tipo:', typeof userIdOrToken);
+        console.log('[Kick API] Token/ID recibido (primeros 10 caracteres):', 
+            typeof userIdOrToken === 'string' ? 
+            `${userIdOrToken.substring(0, 10)}... (longitud: ${userIdOrToken.length})` : 'No es string');
 
         // Si es un token (string largo), obtener datos del usuario autenticado
         if (typeof userIdOrToken === 'string' && userIdOrToken.length > 20) {
-            console.log('[Kick API] Usando token de acceso para obtener datos');
+            console.log('[Kick API] Detectado token de acceso. Iniciando petición...');
 
             const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-            const userUrl = `${userApiBase}/public/v1/users`;
-
-            const response = await axios.get(userUrl, {
-                headers: {
-                    'Authorization': `Bearer ${userIdOrToken}`,
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                },
-                timeout: 10000
+            const userUrl = `${userApiBase}/v1/user`;  // Cambiado a /v1/user según documentación
+            
+            console.log('[Kick API] URL de la API:', userUrl);
+            console.log('[Kick API] Configuración de Kick:', {
+                apiBaseUrl: config.kick.apiBaseUrl,
+                oauthAuthorize: config.kick.oauthAuthorize,
+                oauthToken: config.kick.oauthToken
             });
 
-            // La respuesta puede venir en diferentes formatos
-            const userData = Array.isArray(response.data.data) ? response.data.data[0] : response.data;
-            console.log('[Kick API] ✅ Datos obtenidos con token:', userData?.name);
-            return userData;
+            try {
+                const response = await axios.get(userUrl, {
+                    headers: {
+                        'Authorization': `Bearer ${userIdOrToken}`,
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                        'Accept': 'application/json'
+                    },
+                    timeout: 10000
+                });
+
+                console.log('[Kick API] ✅ Respuesta de la API:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    headers: response.headers,
+                    data: response.data ? 'Datos recibidos' : 'Sin datos en la respuesta'
+                });
+
+                const userData = response.data;
+                console.log('[Kick API] ✅ Datos del usuario obtenidos:', {
+                    id: userData?.id,
+                    username: userData?.username,
+                    isLive: userData?.is_live
+                });
+                
+                return userData;
         }
 
         // Si es un ID de usuario, usar endpoint público (si existe)
