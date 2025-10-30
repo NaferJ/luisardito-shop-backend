@@ -163,9 +163,24 @@ exports.debugListar = async (req, res) => {
 };
 
 // Endpoint ADMIN: lista todos los productos con canjes_count (requiere auth/permiso a nivel de ruta)
-exports.listarAdmin = async (_req, res) => {
+exports.listarAdmin = async (req, res) => {
+    // Soporte de orden como en público
+    const sortParam = (req.query.sort || '').toString().toLowerCase();
+    let order;
+    switch (sortParam) {
+        case 'price_asc':
+        case 'precio_asc':
+            order = [['precio', 'ASC']];
+            break;
+        case 'price_desc':
+        case 'precio_desc':
+        default:
+            order = [['precio', 'DESC']];
+            break;
+    }
+
     const productos = await Producto.findAll({
-        order: [['id', 'ASC']],
+        order,
         attributes: {
             include: [
                 [
