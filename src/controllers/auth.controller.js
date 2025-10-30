@@ -5,6 +5,7 @@ const https  = require('https');
 const config = require('../../config');
 const { Usuario, KickBroadcasterToken, sequelize } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
+const { getKickUserData } = require('../utils/kickApi');
 const { Op } = require('sequelize');
 const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
 const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
