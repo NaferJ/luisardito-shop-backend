@@ -174,7 +174,7 @@ exports.redirectKickBot = (req, res) => {
             response_type: 'code',
             client_id: String(config.kickBot.clientId || ''),
             redirect_uri: String(config.kickBot.redirectUri || ''),
-            scope: 'chat:write channel:read channel:write',
+            scope: 'user:read chat:write channel:read channel:write',
             code_challenge: code_challenge,
             code_challenge_method: 'S256',
             state

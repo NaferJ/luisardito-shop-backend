@@ -2,11 +2,6 @@ const axios = require('axios');
 const config = require('../../config');
 
 /**
- * Obtiene datos del usuario de Kick usando diferentes métodos
- * @param {string} userIdOrToken - ID del usuario o token de acceso
- * @returns {Promise<Object>} - Datos del usuario de Kick
- */
-/**
  * Valida un token de acceso de Kick usando el endpoint de introspección
  * @param {string} accessToken - Token de acceso a validar
  * @returns {Promise<Object>} - Información del token
@@ -46,6 +41,11 @@ async function validateKickToken(accessToken) {
     }
 }
 
+/**
+ * Obtiene datos del usuario de Kick usando diferentes métodos
+ * @param {string} userIdOrToken - ID del usuario o token de acceso
+ * @returns {Promise<Object>} - Datos del usuario de Kick
+ */
 async function getKickUserData(userIdOrToken) {
     try {
         console.log('[Kick API] Obteniendo datos del usuario. Tipo:', typeof userIdOrToken);
