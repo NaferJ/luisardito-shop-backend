@@ -11,6 +11,7 @@ const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service
 const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl } = require('../utils/kickApi');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
+const KickBotTokenService = require('../services/kickBotToken.service');
 const {
     generateAccessToken,
     createRefreshToken,
@@ -549,100 +550,68 @@ exports.callbackKick = async (req, res) => {
 exports.callbackKickBot = async (req, res) => {
     try {
         const { code, state } = req.query || {};
+        console.log('[Kick OAuth][callbackKickBot] Parámetros recibidos:', { code, state });
+
         if (!code || !state) {
+            console.log('[Kick OAuth][callbackKickBot] Faltan parámetros code/state');
             return res.status(400).json({ error: 'Faltan parámetros code/state' });
         }
 
-        let decoded;
+        // Validar el estado
+        let decodedState;
         try {
-            decoded = jwt.verify(String(state), config.jwtSecret);
-        } catch (e) {
-            return res.status(400).json({ error: 'state inválido o expirado' });
+            decodedState = jwt.verify(state, config.jwtSecret);
+            console.log('[Kick OAuth][callbackKickBot] Estado decodificado:', decodedState);
+        } catch (err) {
+            console.error('[Kick OAuth][callbackKickBot] Error al decodificar el estado:', err);
+            return res.status(400).json({ error: 'Estado inválido o expirado' });
         }
 
-        const code_verifier = decoded?.cv;
-        const finalRedirectUri = decoded?.ruri || config.kickBot.redirectUri;
-        if (!code_verifier || !finalRedirectUri) {
-            return res.status(400).json({ error: 'PKCE o redirect_uri inválidos' });
-        }
-
-        const tokenUrl = config.kick.oauthToken;
-        const clientId = config.kickBot.clientId;
-        const clientSecret = config.kickBot.clientSecret;
-
-        if (!clientId || !clientSecret) {
-            return res.status(500).json({ error: 'Faltan credenciales del BOT' });
-        }
-
-        // Intercambiar code por tokens
-        const form = new URLSearchParams();
-        form.append('grant_type', 'authorization_code');
-        form.append('client_id', clientId);
-        form.append('client_secret', clientSecret);
-        form.append('code', String(code));
-        form.append('redirect_uri', finalRedirectUri);
-        form.append('code_verifier', code_verifier);
-
-        const tokenResp = await axios.post(tokenUrl, form, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 15000
-        });
-
-        const accessToken = tokenResp.data?.access_token;
-        const refreshToken = tokenResp.data?.refresh_token;
-        const expiresIn = tokenResp.data?.expires_in;
-
-        if (!accessToken) {
-            return res.status(500).json({ error: 'Kick no devolvió access_token para BOT' });
-        }
-
-        // Obtener datos del usuario del BOT
-        const botUser = await getKickUserData(accessToken);
-        const botKickUserId = botUser?.user_id || botUser?.id || null;
-        const botKickUsername = botUser?.name || config.kickBot.username || 'Bot';
-
-        if (!botKickUserId) {
-            console.warn('[Kick OAuth][callbackKickBot] No se pudo determinar kick_user_id del bot');
-        }
-
-        let tokenExpiresAt = null;
-        if (expiresIn) {
-            tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
-        }
-
-        // Guardar/actualizar en KickBroadcasterToken (reuso de tabla)
-        const [botRecord, created] = await KickBroadcasterToken.findOrCreate({
-            where: { kick_user_id: String(botKickUserId || 'bot-unknown') },
-            defaults: {
-                kick_user_id: String(botKickUserId || 'bot-unknown'),
-                kick_username: String(botKickUsername),
-                access_token: accessToken,
-                refresh_token: refreshToken || null,
-                token_expires_at: tokenExpiresAt,
-                is_active: true,
-                auto_subscribed: false,
-                scopes: ['chat:write', 'channel:read']
+        // Obtener tokens de acceso
+        const tokenResponse = await axios.post(
+            config.kick.oauthToken,
+            new URLSearchParams({
+                grant_type: 'authorization_code',
+                client_id: String(config.kickBot.clientId || ''),
+                client_secret: String(config.kickBot.clientSecret || ''),
+                code,
+                redirect_uri: String(decodedState.ruri || ''),
+                code_verifier: decodedState.cv
+            }),
+            {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
             }
-        });
+        );
 
-        if (!created) {
-            await botRecord.update({
-                kick_username: String(botKickUsername),
-                access_token: accessToken,
-                refresh_token: refreshToken || null,
-                token_expires_at: tokenExpiresAt,
-                is_active: true
-            });
+        const { access_token, refresh_token, expires_in } = tokenResponse.data;
+        const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000));
+
+        // Obtener datos del bot
+        const botUser = await getKickUserData(access_token);
+        if (!botUser || !botUser.id) {
+            throw new Error('No se pudieron obtener los datos del bot desde Kick');
         }
 
-        // Redirigir a una página simple de éxito (puede ser el panel)
-        const frontendUrl = config.frontendUrl || 'http://localhost:5173';
-        const message = encodeURIComponent('Bot conectado correctamente');
-        return res.redirect(`${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`);
+        // Guardar token del bot
+        await KickBotTokenService.saveBotToken({
+            kick_user_id: String(botUser.id),
+            kick_username: String(botUser.username || `bot-${botUser.id}`),
+            access_token,
+            refresh_token,
+            token_expires_at: tokenExpiresAt,
+            scopes: ['user:read', 'chat:write', 'channel:read', 'channel:write']
+        });
 
-    } catch (error) {
-        console.error('[Kick OAuth][callbackKickBot] Error:', error.response?.data || error.message);
-        return res.status(500).json({ error: 'Error conectando el BOT con Kick', details: error.response?.data || error.message });
+        console.log(`[Kick OAuth][callbackKickBot] Token del bot guardado para el usuario: ${botUser.username}`);
+        return res.redirect('/dashboard?bot_connected=true');
+    } catch (err) {
+        console.error('[Kick OAuth][callbackKickBot] Error:', err);
+        return res.status(500).json({ 
+            error: 'Error en el callback de autenticación del bot',
+            details: err.message 
+        });
     }
 };
 

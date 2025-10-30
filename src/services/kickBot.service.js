@@ -1,6 +1,6 @@
 const axios = require('axios');
 const config = require('../../config');
-const { KickBroadcasterToken } = require('../models');
+const KickBotToken = require('../models/kickBotToken.model');
 
 /**
  * Servicio para enviar mensajes al chat de Kick usando el BOT
@@ -21,10 +21,10 @@ class KickBotService {
     async resolveAccessToken() {
         if (this.accessToken && String(this.accessToken).length > 10) return this.accessToken;
 
-        // Buscar token almacenado del bot
+        // Buscar token almacenado del bot en la tabla kick_bot_tokens
         try {
             const where = this.botUsername ? { kick_username: this.botUsername, is_active: true } : { is_active: true };
-            const record = await KickBroadcasterToken.findOne({ where, order: [['updated_at', 'DESC']] });
+            const record = await KickBotToken.findOne({ where, order: [['updated_at', 'DESC']] });
             if (record?.access_token) {
                 this.accessToken = record.access_token;
                 return this.accessToken;
