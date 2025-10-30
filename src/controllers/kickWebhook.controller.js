@@ -446,11 +446,10 @@ async function handleChatMessage(payload, metadata) {
                 // !tienda | !shop
                 if (/^!(tienda|shop)\b/i.test(content)) {
                     const reply = `${kickUsername} tienda del canal: https://shop.luisardito.com/`;
-                    const targetChannelId = channelId || String(require('../../config').kick.broadcasterId || '');
-                    if (targetChannelId) {
-                        await bot.sendMessage(targetChannelId, reply);
-                    } else {
-                        console.warn('[Chat Command] No se pudo resolver channelId para respuesta !tienda/!shop');
+                    try {
+                        await bot.sendMessage(reply);
+                    } catch (error) {
+                        console.error('[Chat Command] Error enviando mensaje de tienda:', error.message);
                     }
                 }
 
@@ -461,22 +460,23 @@ async function handleChatMessage(payload, metadata) {
 
                     const { Usuario } = require('../models');
                     const { Op } = require('sequelize');
-                    const targetUser = await Usuario.findOne({
-                        where: {
-                            nickname: { [Op.like]: lookupName }
-                        }
-                    });
+                    
+                    try {
+                        const targetUser = await Usuario.findOne({
+                            where: {
+                                nickname: { [Op.like]: lookupName }
+                            }
+                        });
 
-                    const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
-                    const reply = puntos !== null
-                        ? `${lookupName} tiene ${puntos} puntos`
-                        : `${lookupName} no existe o no tiene puntos registrados`;
+                        const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
+                        const reply = puntos !== null
+                            ? `${lookupName} tiene ${puntos} puntos`
+                            : `${lookupName} no existe o no tiene puntos registrados`;
 
-                    const targetChannelId = channelId || String(require('../../config').kick.broadcasterId || '');
-                    if (targetChannelId) {
-                        await bot.sendMessage(targetChannelId, reply);
-                    } else {
-                        console.warn('[Chat Command] No se pudo resolver channelId para respuesta !puntos');
+                        await bot.sendMessage(reply);
+                    } catch (error) {
+                        console.error('[Chat Command] Error procesando comando !puntos:', error.message);
+                        await bot.sendMessage(`Ocurrió un error al verificar los puntos de ${lookupName}`);
                     }
                 }
             }
