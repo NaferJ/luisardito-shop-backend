@@ -84,9 +84,14 @@ async function getKickUserData(userIdOrToken) {
                     statusText: response.statusText,
                     data: response.data ? `Recibidos ${response.data.data?.length || 0} usuarios` : 'Sin datos'
                 });
+                
+                // DEBUG: Ver la estructura completa de la respuesta
+                console.log('[Kick API] DEBUG - Estructura completa de response.data:', JSON.stringify(response.data, null, 2));
 
                 const userData = response.data?.data?.[0]; // Tomar el primer usuario del array
                 if (!userData) {
+                    console.error('[Kick API] ERROR - No se encontró userData en response.data.data[0]');
+                    console.error('[Kick API] ERROR - response.data:', response.data);
                     throw new Error('No se encontraron datos de usuario en la respuesta');
                 }
 
