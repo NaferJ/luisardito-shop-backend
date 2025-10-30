@@ -18,7 +18,7 @@ async function getKickUserData(userIdOrToken) {
             console.log('[Kick API] Detectado token de acceso. Iniciando petición...');
 
             const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-            const userUrl = `${userApiBase}/v1/user`;  // Cambiado a /v1/user según documentación
+            const userUrl = `${userApiBase}/public/v1/users`;  // Corregido según documentación oficial
             
             console.log('[Kick API] URL de la API:', userUrl);
             console.log('[Kick API] Configuración de Kick:', {
