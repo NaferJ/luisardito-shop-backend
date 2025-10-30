@@ -80,8 +80,16 @@ class KickBotService {
             content: String(message).trim().substring(0, 500)  // Asegura que no exceda el límite
         };
 
+        console.log('[KickBot] 🔍 Detalles del envío:', {
+            url,
+            payload,
+            tokenPreview: token ? `${token.substring(0, 10)}...${token.slice(-5)}` : 'NO TOKEN',
+            botUsername: this.botUsername,
+            timestamp: new Date().toISOString()
+        });
+
         try {
-            console.log(`[KickBot] Enviando mensaje: ${payload.content}`);
+            console.log(`[KickBot] 📤 Enviando mensaje: "${payload.content}"`);
             const response = await axios.post(
                 url,
                 payload,
@@ -89,20 +97,38 @@ class KickBotService {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json'
+                        'Accept': 'application/json',
+                        'User-Agent': 'LuisarditoShop/1.0'
                     },
-                    timeout: 10000
+                    timeout: 10000,
+                    validateStatus: status => status < 500 // No lanzar error para códigos 4xx
                 }
             );
 
-            console.log('[KickBot] ✅ Mensaje enviado exitosamente:', response.data);
+            console.log('[KickBot] ✅ Respuesta de la API:', {
+                status: response.status,
+                statusText: response.statusText,
+                data: response.data,
+                headers: response.headers
+            });
+
+            if (response.status >= 400) {
+                console.error('[KickBot] ❌ Error en la respuesta de la API:', {
+                    status: response.status,
+                    data: response.data,
+                    headers: response.headers
+                });
+            }
+
             return { 
-                ok: true, 
+                ok: response.status < 400, 
+                status: response.status,
                 data: {
-                    messageId: response.data.data?.message_id,
-                    isSent: response.data.data?.is_sent === true,
+                    messageId: response.data?.data?.message_id,
+                    isSent: response.data?.data?.is_sent === true,
                     raw: response.data
-                }
+                },
+                headers: response.headers
             };
         } catch (error) {
             const errorData = error.response?.data || error.message;
