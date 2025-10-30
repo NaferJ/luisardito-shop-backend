@@ -6,6 +6,46 @@ const config = require('../../config');
  * @param {string} userIdOrToken - ID del usuario o token de acceso
  * @returns {Promise<Object>} - Datos del usuario de Kick
  */
+/**
+ * Valida un token de acceso de Kick usando el endpoint de introspección
+ * @param {string} accessToken - Token de acceso a validar
+ * @returns {Promise<Object>} - Información del token
+ */
+async function validateKickToken(accessToken) {
+    try {
+        const introspectUrl = `${config.kick.apiBaseUrl}/public/v1/token/introspect`;
+        console.log('[Kick API] Validando token con introspección...');
+        
+        const response = await axios.post(introspectUrl, {}, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            timeout: 10000
+        });
+
+        console.log('[Kick API] ✅ Validación del token exitosa:', {
+            active: response.data?.data?.active,
+            scopes: response.data?.data?.scope,
+            expiresIn: response.data?.data?.expires_in
+        });
+
+        if (!response.data?.data?.active) {
+            throw new Error('Token inactivo o expirado');
+        }
+
+        return response.data.data;
+    } catch (error) {
+        console.error('[Kick API] ❌ Error validando token:', {
+            status: error.response?.status,
+            data: error.response?.data,
+            message: error.message
+        });
+        throw error;
+    }
+}
+
 async function getKickUserData(userIdOrToken) {
     try {
         console.log('[Kick API] Obteniendo datos del usuario. Tipo:', typeof userIdOrToken);
@@ -15,17 +55,19 @@ async function getKickUserData(userIdOrToken) {
 
         // Si es un token (string largo), obtener datos del usuario autenticado
         if (typeof userIdOrToken === 'string' && userIdOrToken.length > 20) {
-            console.log('[Kick API] Detectado token de acceso. Iniciando petición...');
+            console.log('[Kick API] Detectado token de acceso. Validando...');
+
+            // Primero validamos el token
+            const tokenInfo = await validateKickToken(userIdOrToken);
+            
+            // Si llegamos aquí, el token es válido
+            console.log('[Kick API] Token válido. Obteniendo datos del usuario...');
+            console.log('[Kick API] Scopes disponibles:', tokenInfo.scope);
 
             const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-            const userUrl = `${userApiBase}/public/v1/users`;  // Corregido según documentación oficial
+            const userUrl = `${userApiBase}/public/v1/users`;
             
-            console.log('[Kick API] URL de la API:', userUrl);
-            console.log('[Kick API] Configuración de Kick:', {
-                apiBaseUrl: config.kick.apiBaseUrl,
-                oauthAuthorize: config.kick.oauthAuthorize,
-                oauthToken: config.kick.oauthToken
-            });
+            console.log('[Kick API] URL de la API de usuarios:', userUrl);
 
             try {
                 const response = await axios.get(userUrl, {
@@ -37,18 +79,21 @@ async function getKickUserData(userIdOrToken) {
                     timeout: 10000
                 });
 
-                console.log('[Kick API] ✅ Respuesta de la API:', {
+                console.log('[Kick API] ✅ Respuesta de la API de usuarios:', {
                     status: response.status,
                     statusText: response.statusText,
-                    headers: response.headers,
-                    data: response.data ? 'Datos recibidos' : 'Sin datos en la respuesta'
+                    data: response.data ? `Recibidos ${response.data.data?.length || 0} usuarios` : 'Sin datos'
                 });
 
-                const userData = response.data;
+                const userData = response.data?.data?.[0]; // Tomar el primer usuario del array
+                if (!userData) {
+                    throw new Error('No se encontraron datos de usuario en la respuesta');
+                }
+
                 console.log('[Kick API] ✅ Datos del usuario obtenidos:', {
-                    id: userData?.id,
-                    username: userData?.username,
-                    isLive: userData?.is_live
+                    id: userData.id,
+                    username: userData.username,
+                    isLive: userData.is_live
                 });
                 
                 return userData;
