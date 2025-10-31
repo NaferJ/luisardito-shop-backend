@@ -1,6 +1,7 @@
-const { Usuario, Canje, Producto, BotrixMigrationConfig, sequelize } = require('../models');
+const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
+const KickBotService = require('../services/kickBot.service');
 const { Op } = require('sequelize');
 
 /**
@@ -616,3 +617,251 @@ exports.manualBotrixMigration = async (req, res) => {
         })
     }
 }
+
+/**
+ * Obtener estado de tokens del bot de Kick
+ */
+exports.getBotTokensStatus = async (req, res) => {
+    try {
+        const now = new Date();
+        const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
+
+        // Obtener todos los tokens
+        const allTokens = await KickBotToken.findAll({
+            order: [['updated_at', 'DESC']]
+        });
+
+        // Clasificar tokens
+        const activeTokens = allTokens.filter(token =>
+            token.is_active && new Date(token.token_expires_at) > now
+        );
+
+        const expiredTokens = allTokens.filter(token =>
+            token.is_active && new Date(token.token_expires_at) <= now
+        );
+
+        const expiringSoon = allTokens.filter(token =>
+            token.is_active &&
+            new Date(token.token_expires_at) > now &&
+            new Date(token.token_expires_at) <= fiveMinutesFromNow
+        );
+
+        const inactiveTokens = allTokens.filter(token => !token.is_active);
+
+        const tokens = allTokens.map(token => ({
+            id: token.id,
+            kick_username: token.kick_username,
+            kick_user_id: token.kick_user_id,
+            is_active: token.is_active,
+            token_expires_at: token.token_expires_at,
+            has_refresh_token: !!token.refresh_token,
+            status: token.is_active
+                ? (new Date(token.token_expires_at) <= now
+                    ? 'expired'
+                    : (new Date(token.token_expires_at) <= fiveMinutesFromNow
+                        ? 'expiring_soon'
+                        : 'active'
+                    )
+                )
+                : 'inactive',
+            expires_in_minutes: Math.round((new Date(token.token_expires_at) - now) / 1000 / 60),
+            created_at: token.created_at,
+            updated_at: token.updated_at
+        }));
+
+        res.json({
+            success: true,
+            summary: {
+                total: allTokens.length,
+                active: activeTokens.length,
+                expired: expiredTokens.length,
+                expiring_soon: expiringSoon.length,
+                inactive: inactiveTokens.length
+            },
+            tokens
+        });
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error obteniendo estado de tokens:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Limpiar tokens expirados del bot
+ */
+exports.cleanupExpiredBotTokens = async (req, res) => {
+    try {
+        const now = new Date();
+
+        // Buscar tokens expirados y activos
+        const expiredTokens = await KickBotToken.findAll({
+            where: {
+                is_active: true,
+                token_expires_at: {
+                    [Op.lt]: now
+                }
+            }
+        });
+
+        if (expiredTokens.length === 0) {
+            return res.json({
+                success: true,
+                message: 'No hay tokens expirados para limpiar',
+                cleaned: 0
+            });
+        }
+
+        // Marcar como inactivos
+        await KickBotToken.update(
+            { is_active: false },
+            {
+                where: {
+                    is_active: true,
+                    token_expires_at: {
+                        [Op.lt]: now
+                    }
+                }
+            }
+        );
+
+        res.json({
+            success: true,
+            message: `${expiredTokens.length} tokens expirados marcados como inactivos`,
+            cleaned: expiredTokens.length,
+            tokens: expiredTokens.map(token => ({
+                id: token.id,
+                kick_username: token.kick_username,
+                expired_at: token.token_expires_at
+            }))
+        });
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error limpiando tokens expirados:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Renovar token del bot manualmente
+ */
+exports.refreshBotToken = async (req, res) => {
+    try {
+        const { tokenId } = req.params;
+
+        const token = await KickBotToken.findByPk(tokenId);
+        if (!token) {
+            return res.status(404).json({
+                success: false,
+                error: 'Token no encontrado'
+            });
+        }
+
+        const kickBotService = new KickBotService();
+
+        try {
+            const refreshedToken = await kickBotService.refreshToken(token);
+
+            res.json({
+                success: true,
+                message: 'Token renovado exitosamente',
+                token: {
+                    id: refreshedToken.id,
+                    kick_username: refreshedToken.kick_username,
+                    expires_at: refreshedToken.token_expires_at,
+                    is_active: refreshedToken.is_active
+                }
+            });
+
+        } catch (refreshError) {
+            res.status(400).json({
+                success: false,
+                error: 'No se pudo renovar el token',
+                details: refreshError.message,
+                code: refreshError.code || 'REFRESH_FAILED'
+            });
+        }
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error renovando token:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Desactivar token del bot
+ */
+exports.deactivateBotToken = async (req, res) => {
+    try {
+        const { tokenId } = req.params;
+        const { reason } = req.body;
+
+        const token = await KickBotToken.findByPk(tokenId);
+        if (!token) {
+            return res.status(404).json({
+                success: false,
+                error: 'Token no encontrado'
+            });
+        }
+
+        await token.update({
+            is_active: false,
+            updated_at: new Date()
+        });
+
+        res.json({
+            success: true,
+            message: 'Token desactivado exitosamente',
+            token: {
+                id: token.id,
+                kick_username: token.kick_username,
+                reason: reason || 'Desactivado manualmente'
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error desactivando token:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Probar envío de mensaje con el bot
+ */
+exports.testBotMessage = async (req, res) => {
+    try {
+        const { message = 'Mensaje de prueba desde el panel de administración' } = req.body;
+
+        const kickBotService = new KickBotService();
+        const result = await kickBotService.sendMessage(message);
+
+        res.json({
+            success: result.ok,
+            message: result.ok ? 'Mensaje enviado exitosamente' : 'Error enviando mensaje',
+            details: {
+                status: result.status,
+                data: result.data,
+                error: result.error
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error enviando mensaje de prueba:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};

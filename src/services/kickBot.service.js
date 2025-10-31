@@ -47,12 +47,32 @@ class KickBotService {
             return tokenRecord;
 
         } catch (error) {
-            console.error('[KickBot] ❌ Error renovando token:', error.response?.data || error.message);
-            
-            // Si el error es de autenticación, marcar el token como inactivo
-            if (error.response?.status === 401) {
-                console.log(`[KickBot] ⚠️ Desactivando token inválido para ${tokenRecord.kick_username}`);
-                await tokenRecord.update({ is_active: false });
+            const errorData = error.response?.data;
+            const errorStatus = error.response?.status;
+
+            console.error('[KickBot] ❌ Error renovando token:', {
+                status: errorStatus,
+                data: errorData,
+                message: error.message
+            });
+
+            // Si el error es de autenticación o refresh token inválido
+            if (errorStatus === 400 || errorStatus === 401) {
+                console.log(`[KickBot] ⚠️ Refresh token inválido o expirado para ${tokenRecord.kick_username}`);
+                await tokenRecord.update({
+                    is_active: false,
+                    updated_at: new Date()
+                });
+
+                // Crear un error más descriptivo
+                const refreshTokenError = new Error(
+                    errorStatus === 400
+                        ? 'Refresh token expirado o inválido'
+                        : 'Token de renovación no autorizado'
+                );
+                refreshTokenError.code = 'REFRESH_TOKEN_EXPIRED';
+                refreshTokenError.originalError = error;
+                throw refreshTokenError;
             }
             
             throw error;
@@ -98,19 +118,39 @@ class KickBotService {
                 tiene_refresh: !!record.refresh_token
             });
 
-            // Verificar si el token está por expirar (en menos de 5 minutos)
-            const expiresIn = new Date(record.token_expires_at) - new Date();
+            // Verificar si el token está por expirar (en menos de 5 minutos) o ya expiró
+            const now = new Date();
+            const expiresAt = new Date(record.token_expires_at);
+            const expiresIn = expiresAt - now;
             const fiveMinutes = 5 * 60 * 1000; // 5 minutos en milisegundos
             
             if (expiresIn < fiveMinutes) {
-                console.log(`[KickBot] ⏳ Token expira pronto (en ${Math.round(expiresIn/1000/60)} minutos), renovando...`);
+                const isExpired = expiresIn < 0;
+                const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
+
+                if (isExpired) {
+                    console.log(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos, renovando...`);
+                } else {
+                    console.log(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos), renovando...`);
+                }
+
                 try {
                     const updatedRecord = await this.refreshToken(record);
                     this.accessToken = updatedRecord.access_token;
                     return this.accessToken;
                 } catch (error) {
                     console.error('[KickBot] ❌ No se pudo renovar el token:', error.message);
-                    return record.access_token; // Intentar con el token actual aunque esté por expirar
+
+                    // Si el token ya expiró, no intentar usarlo
+                    if (isExpired) {
+                        console.error('[KickBot] ❌ Token expirado y renovación falló, no se puede continuar');
+                        await record.update({ is_active: false });
+                        return null;
+                    }
+
+                    // Si aún no expira, intentar con el token actual
+                    console.log('[KickBot] ⚠️ Usando token actual que expira pronto');
+                    return record.access_token;
                 }
             }
 

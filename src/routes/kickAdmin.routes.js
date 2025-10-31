@@ -105,4 +105,53 @@ router.post('/manual-migration',
     kickAdminController.manualBotrixMigration
 );
 
+// ============================================================================
+// RUTAS DE GESTIÓN DE TOKENS DEL BOT
+// ============================================================================
+
+/**
+ * GET /api/kick-admin/bot-tokens
+ * Obtener estado de todos los tokens del bot
+ */
+router.get('/bot-tokens',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.getBotTokensStatus
+);
+
+/**
+ * POST /api/kick-admin/bot-tokens/cleanup
+ * Limpiar tokens expirados del bot
+ */
+router.post('/bot-tokens/cleanup',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.cleanupExpiredBotTokens
+);
+
+/**
+ * POST /api/kick-admin/bot-tokens/:tokenId/refresh
+ * Renovar un token específico del bot manualmente
+ */
+router.post('/bot-tokens/:tokenId/refresh',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.refreshBotToken
+);
+
+/**
+ * DELETE /api/kick-admin/bot-tokens/:tokenId
+ * Desactivar un token específico del bot
+ */
+router.delete('/bot-tokens/:tokenId',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.deactivateBotToken
+);
+
+/**
+ * POST /api/kick-admin/bot-test-message
+ * Probar envío de mensaje con el bot
+ */
+router.post('/bot-test-message',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.testBotMessage
+);
+
 module.exports = router;

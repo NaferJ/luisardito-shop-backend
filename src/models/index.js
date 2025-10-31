@@ -15,6 +15,7 @@ const KickPointsConfig = require('./kickPointsConfig.model');
 const KickChatCooldown = require('./kickChatCooldown.model');
 const KickUserTracking = require('./kickUserTracking.model');
 const KickBroadcasterToken = require('./kickBroadcasterToken.model');
+const KickBotToken = require('./kickBotToken.model');
 const RefreshToken = require('./refreshToken.model');
 const BotrixMigrationConfig = require('./botrixMigrationConfig.model');
 
@@ -73,6 +74,7 @@ module.exports = {
     KickChatCooldown,
     KickUserTracking,
     KickBroadcasterToken,
+    KickBotToken,
     RefreshToken,
     BotrixMigrationConfig
 };
