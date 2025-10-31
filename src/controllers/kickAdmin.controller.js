@@ -554,7 +554,8 @@ exports.getUsersWithDetails = async (req, res) => {
 
 exports.manualBotrixMigration = async (req, res) => {
     try {
-        const { usuarioId, points } = req.body;
+        const { usuarioId } = req.params;
+        const { points } = req.body;
 
         if (!usuarioId || !points) {
             return res.status(400).json({
