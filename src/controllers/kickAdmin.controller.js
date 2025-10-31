@@ -554,24 +554,34 @@ exports.getUsersWithDetails = async (req, res) => {
 
 exports.manualBotrixMigration = async (req, res) => {
     try {
-        const { usuarioId } = req.params;
-        const { points } = req.body;
+        const rawUsuarioId = req.params?.usuarioId ?? req.body?.usuario_id ?? req.body?.usuarioId
+        const rawPoints = req.body?.points ?? req.body?.points_amount ?? req.body?.pointsAmount
 
-        if (!usuarioId || !points) {
+        if (!rawUsuarioId || !rawPoints) {
             return res.status(400).json({
                 success: false,
                 error: 'usuarioId y points son requeridos'
-            });
+            })
+        }
+
+        const usuarioId = parseInt(rawUsuarioId, 10)
+        const points = parseInt(rawPoints, 10)
+
+        if (Number.isNaN(usuarioId) || Number.isNaN(points)) {
+            return res.status(400).json({
+                success: false,
+                error: 'usuarioId y points deben ser números válidos'
+            })
         }
 
         // Buscar el usuario
-        const usuario = await Usuario.findByPk(usuarioId);
+        const usuario = await Usuario.findByPk(usuarioId)
 
         if (!usuario) {
             return res.status(404).json({
                 success: false,
                 error: 'Usuario no encontrado'
-            });
+            })
         }
 
         // Verificar si ya migró
@@ -583,27 +593,26 @@ exports.manualBotrixMigration = async (req, res) => {
                     migrated_at: usuario.botrix_migrated_at,
                     points_migrated: usuario.botrix_points_migrated
                 }
-            });
+            })
         }
 
         // Realizar migración manual usando el servicio
         const result = await BotrixMigrationService.migrateBotrixPoints(
             usuario,
-            parseInt(points),
+            points,
             usuario.nickname || `Manual-${usuario.id}`
-        );
+        )
 
         res.json({
             success: true,
             message: 'Migración manual completada exitosamente',
             migration: result
-        });
-
+        })
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error en migración manual:', error);
+        console.error('❌ [KICK ADMIN DEBUG] Error en migración manual:', error)
         res.status(500).json({
             success: false,
             error: error.message
-        });
+        })
     }
-};
+}
