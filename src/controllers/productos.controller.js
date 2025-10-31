@@ -1,4 +1,5 @@
 const { Producto, sequelize } = require('../models');
+const { Op } = require('sequelize');
 
 // Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
 exports.listar = async (req, res) => {
@@ -82,8 +83,16 @@ exports.obtener = async (req, res) => {
 exports.obtenerPorSlug = async (req, res) => {
     try {
         const { slug } = req.params;
+        let where = { slug };
+
+        if (!req.user || req.user.rol_id <= 2) {
+            where.estado = 'publicado';
+        } else {
+            where.estado = { [Op.in]: ['publicado', 'borrador'] };
+        }
+
         const producto = await Producto.findOne({
-            where: { slug, estado: 'publicado' },
+            where,
             attributes: {
                 include: [
                     [
