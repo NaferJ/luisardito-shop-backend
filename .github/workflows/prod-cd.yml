@@ -89,6 +89,10 @@ jobs:
             echo "KICK_BOT_CLIENT_ID=${{ secrets.KICK_BOT_CLIENT_ID }}" >> "$ENV_PATH"
             echo "KICK_BOT_REDIRECT_URI=${{ secrets.KICK_BOT_REDIRECT_URI }}" >> "$ENV_PATH"
             echo "KICK_BOT_USERNAME=${{ secrets.KICK_BOT_USERNAME }}" >> "$ENV_PATH"
+
+            # Bot maintenance settings
+            echo "BOT_MAINTENANCE_SIMULATE_ACTIVITY=true" >> "$ENV_PATH"
+            echo "BOT_MAINTENANCE_INTERVAL_MINUTES=30" >> "$ENV_PATH"
             
             # Redis configuration
             echo "REDIS_HOST=redis" >> "$ENV_PATH"

@@ -7,6 +7,7 @@ const config = require("./config");
 // Servicios
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
 const VipCleanupTask = require("./src/services/vipCleanup.task");
+const botMaintenanceService = require("./src/services/botMaintenance.service");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -96,6 +97,9 @@ const start = async () => {
 
     // Iniciar limpieza automática de VIPs expirados
     VipCleanupTask.start();
+
+    // Iniciar mantenimiento automático del bot de Kick
+    botMaintenanceService.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto

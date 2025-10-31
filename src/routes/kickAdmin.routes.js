@@ -106,6 +106,107 @@ router.post('/manual-migration',
 );
 
 // ============================================================================
+// RUTAS DE MANTENIMIENTO AUTOMÁTICO DEL BOT
+// ============================================================================
+
+/**
+ * GET /api/kick-admin/bot-maintenance/status
+ * Obtener estado del servicio de mantenimiento automático del bot
+ */
+router.get('/bot-maintenance/status',
+    checkPermission('gestionar_usuarios'),
+    (req, res) => {
+        const botMaintenanceService = require('../services/botMaintenance.service');
+        const stats = botMaintenanceService.getStats();
+
+        res.json({
+            success: true,
+            service: {
+                name: 'Bot Maintenance Service',
+                isRunning: stats.isRunning,
+                intervalMinutes: stats.intervalMinutes,
+                nextExecution: stats.nextExecution
+            }
+        });
+    }
+);
+
+/**
+ * POST /api/kick-admin/bot-maintenance/start
+ * Iniciar el servicio de mantenimiento automático del bot
+ */
+router.post('/bot-maintenance/start',
+    checkPermission('gestionar_usuarios'),
+    (req, res) => {
+        const botMaintenanceService = require('../services/botMaintenance.service');
+
+        if (botMaintenanceService.isRunning) {
+            return res.json({
+                success: false,
+                message: 'El servicio de mantenimiento ya está ejecutándose'
+            });
+        }
+
+        botMaintenanceService.start();
+
+        res.json({
+            success: true,
+            message: 'Servicio de mantenimiento del bot iniciado',
+            intervalMinutes: botMaintenanceService.intervalMinutes
+        });
+    }
+);
+
+/**
+ * POST /api/kick-admin/bot-maintenance/stop
+ * Detener el servicio de mantenimiento automático del bot
+ */
+router.post('/bot-maintenance/stop',
+    checkPermission('gestionar_usuarios'),
+    (req, res) => {
+        const botMaintenanceService = require('../services/botMaintenance.service');
+
+        if (!botMaintenanceService.isRunning) {
+            return res.json({
+                success: false,
+                message: 'El servicio de mantenimiento no está ejecutándose'
+            });
+        }
+
+        botMaintenanceService.stop();
+
+        res.json({
+            success: true,
+            message: 'Servicio de mantenimiento del bot detenido'
+        });
+    }
+);
+
+/**
+ * POST /api/kick-admin/bot-maintenance/trigger
+ * Ejecutar mantenimiento manualmente (para testing)
+ */
+router.post('/bot-maintenance/trigger',
+    checkPermission('gestionar_usuarios'),
+    async (req, res) => {
+        const botMaintenanceService = require('../services/botMaintenance.service');
+
+        try {
+            await botMaintenanceService.performMaintenance();
+            res.json({
+                success: true,
+                message: 'Mantenimiento ejecutado manualmente'
+            });
+        } catch (error) {
+            res.status(500).json({
+                success: false,
+                error: error.message
+            });
+        }
+    }
+);
+
+// ============================================================================
 // RUTAS DE GESTIÓN DE TOKENS DEL BOT
 // ============================================================================
 

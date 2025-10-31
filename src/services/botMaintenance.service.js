@@ -1,0 +1,171 @@
+// filepath: c:\Users\NaferJ\Projects\Private\luisardito-shop-backend\src\services\botMaintenance.service.js
+const kickBotService = require('./kickBot.service');
+const { KickBotToken } = require('../models');
+const { Op } = require('sequelize');
+
+/**
+ * Servicio de mantenimiento automático del bot de Kick
+ * Se ejecuta cada hora para mantener los tokens activos
+ */
+class BotMaintenanceService {
+    constructor() {
+        this.intervalId = null;
+        this.isRunning = false;
+        this.intervalMinutes = parseInt(process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || '60'); // Por defecto cada 60 minutos
+    }
+
+    /**
+     * Inicia el mantenimiento automático
+     */
+    start() {
+        if (this.isRunning) {
+            console.log('🤖 [BOT-MAINTENANCE] Servicio ya está ejecutándose');
+            return;
+        }
+
+        console.log(`🤖 [BOT-MAINTENANCE] Iniciando mantenimiento automático cada ${this.intervalMinutes} minutos`);
+
+        // Ejecutar inmediatamente al iniciar
+        this.performMaintenance();
+
+        // Configurar intervalo
+        const intervalMs = this.intervalMinutes * 60 * 1000;
+        this.intervalId = setInterval(() => {
+            this.performMaintenance();
+        }, intervalMs);
+
+        this.isRunning = true;
+
+        // Manejar señales de terminación para detener el servicio correctamente
+        process.on('SIGINT', () => this.stop());
+        process.on('SIGTERM', () => this.stop());
+    }
+
+    /**
+     * Detiene el mantenimiento automático
+     */
+    stop() {
+        if (this.intervalId) {
+            clearInterval(this.intervalId);
+            this.intervalId = null;
+        }
+        this.isRunning = false;
+        console.log('🤖 [BOT-MAINTENANCE] Servicio detenido');
+    }
+
+    /**
+     * Ejecuta el mantenimiento del bot
+     */
+    async performMaintenance() {
+        try {
+            console.log('🔧 [BOT-MAINTENANCE] Iniciando mantenimiento programado...');
+
+            // 1. Limpiar tokens expirados
+            await this.cleanupExpiredTokens();
+
+            // 2. Verificar y renovar token activo
+            await this.refreshActiveToken();
+
+            // 3. Opcional: Simular actividad del chat
+            await this.simulateChatActivity();
+
+            console.log('🎉 [BOT-MAINTENANCE] Mantenimiento completado exitosamente');
+
+        } catch (error) {
+            console.error('❌ [BOT-MAINTENANCE] Error en mantenimiento:', error.message);
+        }
+    }
+
+    /**
+     * Limpia tokens expirados
+     */
+    async cleanupExpiredTokens() {
+        try {
+            const now = new Date();
+            const expiredTokens = await KickBotToken.findAll({
+                where: {
+                    is_active: true,
+                    token_expires_at: { [Op.lt]: now }
+                }
+            });
+
+            if (expiredTokens.length > 0) {
+                await KickBotToken.update(
+                    { is_active: false },
+                    {
+                        where: {
+                            is_active: true,
+                            token_expires_at: { [Op.lt]: now }
+                        }
+                    }
+                );
+                console.log(`🧹 [BOT-MAINTENANCE] ${expiredTokens.length} tokens expirados marcados como inactivos`);
+            } else {
+                console.log('✅ [BOT-MAINTENANCE] No hay tokens expirados para limpiar');
+            }
+        } catch (error) {
+            console.error('❌ [BOT-MAINTENANCE] Error limpiando tokens:', error.message);
+        }
+    }
+
+    /**
+     * Renueva el token activo si es necesario
+     */
+    async refreshActiveToken() {
+        try {
+            console.log('🔄 [BOT-MAINTENANCE] Verificando token activo...');
+            const token = await kickBotService.resolveAccessToken();
+
+            if (token) {
+                console.log('✅ [BOT-MAINTENANCE] Token válido y renovado si era necesario');
+            } else {
+                console.error('❌ [BOT-MAINTENANCE] No se pudo obtener token válido');
+            }
+        } catch (error) {
+            console.error('❌ [BOT-MAINTENANCE] Error renovando token:', error.message);
+        }
+    }
+
+    /**
+     * Simula actividad del chat para mantener el bot activo
+     */
+    async simulateChatActivity() {
+        try {
+            // Solo simular actividad si está habilitado
+            const simulateActivity = process.env.BOT_MAINTENANCE_SIMULATE_ACTIVITY === 'true';
+
+            if (!simulateActivity) {
+                return; // No simular actividad
+            }
+
+            console.log('🛒 [BOT-MAINTENANCE] Simulando actividad del chat...');
+
+            // Simular el comando !tienda (igual que el webhook)
+            const reply = `Tienda del canal: https://shop.luisardito.com/`;
+            const result = await kickBotService.sendMessage(reply);
+
+            if (result.ok) {
+                console.log('✅ [BOT-MAINTENANCE] Actividad del chat simulada exitosamente');
+            } else {
+                console.error('❌ [BOT-MAINTENANCE] Error simulando actividad:', result.error);
+            }
+        } catch (error) {
+            console.error('❌ [BOT-MAINTENANCE] Error en simulación de actividad:', error.message);
+        }
+    }
+
+    /**
+     * Obtiene estadísticas del servicio
+     */
+    getStats() {
+        return {
+            isRunning: this.isRunning,
+            intervalMinutes: this.intervalMinutes,
+            nextExecution: this.intervalId ? new Date(Date.now() + (this.intervalMinutes * 60 * 1000)) : null
+        };
+    }
+}
+
+// Exportar instancia singleton
+const botMaintenanceService = new BotMaintenanceService();
+module.exports = botMaintenanceService;
