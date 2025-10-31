@@ -79,6 +79,32 @@ exports.obtener = async (req, res) => {
     res.json(producto);
 };
 
+exports.obtenerPorSlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const producto = await Producto.findOne({
+            where: { slug, estado: 'publicado' },
+            attributes: {
+                include: [
+                    [
+                        sequelize.literal("(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"),
+                        'canjes_count'
+                    ]
+                ]
+            }
+        });
+
+        if (!producto) {
+            return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+
+        res.json(producto);
+    } catch (error) {
+        console.error('Error al buscar producto por slug:', error);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
 exports.crear = async (req, res) => {
     try {
         // Debug: Log datos recibidos
@@ -192,4 +218,3 @@ exports.listarAdmin = async (req, res) => {
     });
     res.json(productos);
 };
-
