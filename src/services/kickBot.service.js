@@ -21,13 +21,13 @@ class KickBotService {
     async refreshToken(tokenRecord) {
         try {
             console.log(`[KickBot] 🔄 Intentando renovar token para ${tokenRecord.kick_username}`);
-            
-            const response = await axios.post('https://kick.com/oauth/token', {
+
+            const response = await axios.post('https://id.kick.com/oauth/token', {
                 grant_type: 'refresh_token',
                 refresh_token: tokenRecord.refresh_token,
-                client_id: config.kick.clientId,
-                client_secret: config.kick.clientSecret,
-                scope: 'chat:write'
+                client_id: config.kickBot.clientId,
+                client_secret: config.kickBot.clientSecret,
+                scope: 'user:read chat:write channel:read channel:write'
             }, {
                 headers: { 'Content-Type': 'application/json' }
             });
