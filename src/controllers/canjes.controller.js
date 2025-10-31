@@ -1,5 +1,6 @@
 const { Canje, Producto, Usuario, HistorialPunto } = require('../models');
 const VipService = require('../services/vip.service');
+const KickBotService = require('../services/kickBot.service');
 
 exports.crear = async (req, res) => {
     const t = await Canje.sequelize.transaction();
@@ -49,6 +50,17 @@ exports.crear = async (req, res) => {
         }, { transaction: t });
 
         await t.commit();
+
+        // 📢 Enviar mensaje automático al chat de Kick
+        try {
+            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}`;
+            await KickBotService.sendMessage(mensaje);
+            console.log(`[Canje] ✅ Mensaje enviado al chat: "${mensaje}"`);
+        } catch (botError) {
+            console.error('[Canje] ⚠️ Error enviando mensaje al chat:', botError.message);
+            // No fallar la respuesta si falla el mensaje del bot
+        }
+
         res.status(201).json(canje);
     } catch (err) {
         await t.rollback();

@@ -143,7 +143,7 @@ class KickBotService {
         const url = `${this.apiBase}/public/v1/chat`;
         const broadcasterId = parseInt(config.kick.broadcasterId || '2771761'); // ID del canal de Luisardito
         const payload = {
-            type: 'bot',  // Usar 'user' en lugar de 'bot' para mejor compatibilidad
+            type: 'user',  // Usar 'user' en lugar de 'bot' para mejor compatibilidad
             content: String(message).trim().substring(0, 500),  // Asegura que no exceda el límite
             broadcaster_user_id: broadcasterId  // Necesario cuando type es 'user'
         };
