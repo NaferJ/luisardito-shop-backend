@@ -470,8 +470,8 @@ async function handleChatMessage(payload, metadata) {
 
                         const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
                         const reply = puntos !== null
-                            ? `${lookupName} tiene ${puntos} puntos`
-                            : `${lookupName} no existe o no tiene puntos registrados`;
+                            ? `${lookupName} tiene ${puntos} puntos.`
+                            : `${lookupName} no existe o no tiene puntos registrados.`;
 
                         await bot.sendMessage(reply);
                     } catch (error) {

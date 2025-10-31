@@ -53,7 +53,7 @@ exports.crear = async (req, res) => {
 
         // 📢 Enviar mensaje automático al chat de Kick
         try {
-            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}`;
+            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}.`;
             await KickBotService.sendMessage(mensaje);
             console.log(`[Canje] ✅ Mensaje enviado al chat: "${mensaje}"`);
         } catch (botError) {
