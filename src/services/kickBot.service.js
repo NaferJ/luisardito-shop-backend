@@ -376,13 +376,55 @@ class KickBotService {
 
         setInterval(async () => {
             try {
-                console.log('[KickBot] 🔄 Ejecutando refresh automático...');
-                await this.refreshAccessToken();
-                console.log('[KickBot] ✅ Refresh automático completado');
+                console.log('[KickBot] 🔄 Verificando si el token necesita refresh...');
+                const needsRefresh = await this.checkIfTokenNeedsRefresh();
+                if (needsRefresh) {
+                    console.log('[KickBot] 🔄 Token necesita refresh, ejecutando...');
+                    await this.refreshAccessToken();
+                    console.log('[KickBot] ✅ Refresh automático completado');
+                } else {
+                    console.log('[KickBot] ✅ Token aún válido, no se refresca');
+                }
             } catch (error) {
                 console.error('[KickBot] ❌ Error en el refresh automático:', error.message);
             }
         }, 15 * 60 * 1000); // Cada 15 minutos
+    }
+
+    /**
+     * Verifica si el token actual necesita ser renovado
+     * @returns {Promise<boolean>} True si necesita refresh
+     */
+    async checkIfTokenNeedsRefresh() {
+        try {
+            const tokens = await this.readTokensFromFile();
+            if (!tokens || !tokens.expiresAt) {
+                console.log('[KickBot] ⚠️ No hay tokens guardados o sin fecha de expiración');
+                return true; // Necesita refresh si no hay tokens
+            }
+
+            const now = new Date();
+            const expiresAt = new Date(tokens.expiresAt);
+            const expiresIn = expiresAt - now;
+            const thirtyMinutes = 30 * 60 * 1000;
+
+            if (expiresIn < thirtyMinutes) {
+                const isExpired = expiresIn < 0;
+                const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
+
+                if (isExpired) {
+                    console.log(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos`);
+                } else {
+                    console.log(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos)`);
+                }
+                return true;
+            }
+
+            return false; // No necesita refresh
+        } catch (error) {
+            console.error('[KickBot] ❌ Error verificando si necesita refresh:', error.message);
+            return true; // En caso de error, intentar refresh
+        }
     }
 
     /**
