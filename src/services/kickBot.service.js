@@ -13,7 +13,7 @@ class KickBotService {
         this.apiBase = String(config.kick.apiBaseUrl || '').replace(/\/$/, '');
         this.accessToken = config.kickBot?.accessToken;
         this.botUsername = config.kickBot?.username || 'Bot';
-        this.tokensFile = path.join(__dirname, '../../tokens.json');
+        this.tokensFile = path.join(__dirname, '../../tokens/tokens.json');
 
         // Iniciar refresh automático en background
         this.startAutoRefresh();

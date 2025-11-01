@@ -41,3 +41,6 @@ build/
 
 # Tokens file (sensitive data)
 tokens.json
+
+# Tokens directory (sensitive data)
+tokens/

@@ -23,7 +23,7 @@ async function validateKickToken(accessToken) {
         console.log('[Kick API] ✅ Validación del token exitosa:', {
             active: response.data?.data?.active,
             scopes: response.data?.data?.scope,
-            expiresIn: response.data?.data?.expires_in
+            expiresIn: response.data?.data?.expires_in || 'No disponible (Kick no lo proporciona)'
         });
 
         if (!response.data?.data?.active) {

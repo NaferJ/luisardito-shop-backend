@@ -44,6 +44,8 @@ services:
       REDIS_DB: 0
     command: >
       sh -c "npm install && npx sequelize db:migrate && npm run start"
+    volumes:
+      - ./tokens:/app/tokens
 
 volumes:
   db_data:
