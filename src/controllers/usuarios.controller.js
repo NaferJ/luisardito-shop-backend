@@ -5,6 +5,9 @@ const { extractAvatarUrl, getKickUserData } = require('../utils/kickApi');
 // Mostrar datos del usuario autenticado
 exports.me = async (req, res) => {
     const user = req.user;
+    if (!user) {
+        return res.status(401).json({ error: 'Usuario no autenticado' });
+    }
     const {
         id, nickname, email, puntos, rol_id, kick_data, discord_username,
         is_vip, vip_granted_at, vip_expires_at, vip_granted_by_canje_id,

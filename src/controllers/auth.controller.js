@@ -607,7 +607,7 @@ exports.callbackKickBot = async (req, res) => {
         try {
             const fs = require('fs').promises;
             const path = require('path');
-            const tokensFile = path.join(__dirname, '../../tokens.json');
+            const tokensFile = path.join(__dirname, '../../tokens/tokens.json');
             const fullPath = path.resolve(tokensFile);
             console.log('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
             const tokensForFile = {
@@ -841,7 +841,7 @@ exports.storeTokens = async (req, res) => {
             rolId: usuario.rol_id,
             nickname: usuario.nickname,
             kick_id: kickUser.user_id
-        }, config.jwtSecret, { expiresIn: '24h' });
+        }, config.jwtSecret, { expiresIn: '30d' });
 
         // Configurar cookies (aunque este endpoint se usa menos, por compatibilidad)
         setAuthCookies(res, token, 'no-refresh-token-provided');
