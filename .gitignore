@@ -38,3 +38,6 @@ build/
 # Environment files (general)
 .env*
 !.env.template
+
+# Tokens file (sensitive data)
+tokens.json

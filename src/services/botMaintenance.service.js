@@ -63,8 +63,8 @@ class BotMaintenanceService {
             // 1. Limpiar tokens expirados
             await this.cleanupExpiredTokens();
 
-            // 2. Verificar y renovar token activo
-            await this.refreshActiveToken();
+            // 2. Renovar todos los tokens que expiren pronto
+            await this.refreshExpiringTokens();
 
             // 3. Opcional: Simular actividad del chat
             await this.simulateChatActivity();
@@ -109,20 +109,30 @@ class BotMaintenanceService {
     }
 
     /**
-     * Renueva el token activo si es necesario
+     * Renueva todos los tokens que expiren pronto
      */
-    async refreshActiveToken() {
+    async refreshExpiringTokens() {
         try {
-            console.log('🔄 [BOT-MAINTENANCE] Verificando token activo...');
-            const token = await kickBotService.resolveAccessToken();
+            console.log('🔄 [BOT-MAINTENANCE] Verificando tokens que expiran pronto...');
+            const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos a partir de ahora
+            const tokens = await KickBotToken.findAll({
+                where: {
+                    is_active: true,
+                    token_expires_at: { [Op.lt]: thresholdDate }
+                }
+            });
 
-            if (token) {
-                console.log('✅ [BOT-MAINTENANCE] Token válido y renovado si era necesario');
+            for (const token of tokens) {
+                await kickBotService.renewAccessToken(token);
+            }
+
+            if (tokens.length > 0) {
+                console.log(`✅ [BOT-MAINTENANCE] ${tokens.length} tokens renovados exitosamente`);
             } else {
-                console.error('❌ [BOT-MAINTENANCE] No se pudo obtener token válido');
+                console.log('✅ [BOT-MAINTENANCE] No hay tokens próximos a expirar');
             }
         } catch (error) {
-            console.error('❌ [BOT-MAINTENANCE] Error renovando token:', error.message);
+            console.error('❌ [BOT-MAINTENANCE] Error renovando tokens:', error.message);
         }
     }
 

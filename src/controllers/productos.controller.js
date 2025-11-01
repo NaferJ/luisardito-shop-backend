@@ -5,22 +5,11 @@ const { Op } = require('sequelize');
 exports.listar = async (req, res) => {
     const where = {};
 
-    // Debug: Log información del usuario
-    console.log('🔍 [PRODUCTOS DEBUG] Usuario autenticado:', {
-        user: req.user ? {
-            id: req.user.id,
-            nickname: req.user.nickname,
-            rol_id: req.user.rol_id
-        } : 'NO AUTENTICADO',
-        isAdmin: req.user && req.user.rol_id > 2
-    });
-
     if (!req.user || req.user.rol_id <= 2) {
         // Usuario no logueado o usuarios básicos (rol 1-2) solo ven productos publicados
         where.estado = 'publicado';
-        console.log('🔍 [PRODUCTOS DEBUG] Aplicando filtro: solo productos publicados');
     } else {
-        console.log('🔍 [PRODUCTOS DEBUG] Usuario administrador: mostrando todos los productos');
+
     }
 
     // Soporte de orden: ?sort=price_desc | price_asc | precio_desc | precio_asc
@@ -49,17 +38,6 @@ exports.listar = async (req, res) => {
                 ]
             ]
         }
-    });
-
-    // Debug: Log productos encontrados
-    console.log('🔍 [PRODUCTOS DEBUG] Productos encontrados:', {
-        total: productos.length,
-        productos: productos.map(p => ({
-            id: p.id,
-            nombre: p.nombre,
-            estado: p.estado,
-            precio: p.precio
-        }))
     });
 
     res.json(productos);
@@ -116,29 +94,9 @@ exports.obtenerPorSlug = async (req, res) => {
 
 exports.crear = async (req, res) => {
     try {
-        // Debug: Log datos recibidos
-        console.log('🔍 [PRODUCTOS DEBUG] Creando producto:', {
-            usuario: req.user ? {
-                id: req.user.id,
-                nickname: req.user.nickname,
-                rol_id: req.user.rol_id
-            } : 'NO AUTENTICADO',
-            datos: req.body
-        });
-
         const producto = await Producto.create(req.body);
-
-        // Debug: Log producto creado
-        console.log('🔍 [PRODUCTOS DEBUG] Producto creado exitosamente:', {
-            id: producto.id,
-            nombre: producto.nombre,
-            estado: producto.estado,
-            precio: producto.precio
-        });
-
         res.status(201).json(producto);
     } catch (err) {
-        console.error('❌ [PRODUCTOS DEBUG] Error creando producto:', err.message);
         res.status(400).json({ error: err.message });
     }
 };
@@ -175,8 +133,6 @@ exports.debugListar = async (req, res) => {
                 ]
             }
         });
-
-        console.log('🔍 [DEBUG] Todos los productos en DB:', productos.length);
 
         res.json({
             total: productos.length,

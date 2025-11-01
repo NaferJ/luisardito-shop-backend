@@ -383,7 +383,6 @@ exports.callbackKick = async (req, res) => {
             console.log('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
         }
 
-        // ...existing code... (resto del callback igual que antes)
         // Guardar token del broadcaster y auto-suscribirse a eventos
         const kickUserId = String(kickUser.user_id);
         const accessToken = tokenData.access_token;
@@ -604,8 +603,19 @@ exports.callbackKickBot = async (req, res) => {
             scopes: ['user:read', 'chat:write', 'channel:read', 'channel:write']
         });
 
-        console.log(`[Kick OAuth][callbackKickBot] Token del bot guardado para el usuario: ${botUser.username}`);
-        
+        // También guardar en tokens.json para auto-refresh
+        const kickBotService = require('../services/kickBot.service');
+        const tokensForFile = {
+            accessToken: access_token,
+            refreshToken: refresh_token,
+            expiresAt: Date.now() + (expires_in * 1000),
+            refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 año aprox
+            username: String(botUser.username || `bot-${botUser.id}`)
+        };
+        await kickBotService.writeTokensToFile(tokensForFile);
+
+        console.log(`[Kick OAuth][callbackKickBot] Tokens guardados en DB y archivo para auto-refresh`);
+
         // Redirigir al frontend
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
         const message = encodeURIComponent('Bot conectado correctamente');
@@ -882,4 +892,3 @@ exports.cookieStatus = async (req, res) => {
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
-
