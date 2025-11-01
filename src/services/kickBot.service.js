@@ -372,23 +372,28 @@ class KickBotService {
      * Inicia el proceso de auto-refresh de tokens en segundo plano
      */
     startAutoRefresh() {
-        console.log('[KickBot] ⏰ Iniciando refresh automático de tokens cada 15 minutos');
+        console.log('[KickBot] ⏰ Iniciando refresh automático de tokens cada 15 minutos (con delay inicial de 30 minutos)');
 
-        setInterval(async () => {
-            try {
-                console.log('[KickBot] 🔄 Verificando si el token necesita refresh...');
-                const needsRefresh = await this.checkIfTokenNeedsRefresh();
-                if (needsRefresh) {
-                    console.log('[KickBot] 🔄 Token necesita refresh, ejecutando...');
-                    await this.refreshAccessToken();
-                    console.log('[KickBot] ✅ Refresh automático completado');
-                } else {
-                    console.log('[KickBot] ✅ Token aún válido, no se refresca');
+        // Esperar 30 minutos antes de iniciar el refresh automático para evitar problemas con tokens recién obtenidos
+        setTimeout(() => {
+            console.log('[KickBot] ⏰ Delay inicial completado, iniciando refresh automático');
+
+            setInterval(async () => {
+                try {
+                    console.log('[KickBot] 🔄 Verificando si el token necesita refresh...');
+                    const needsRefresh = await this.checkIfTokenNeedsRefresh();
+                    if (needsRefresh) {
+                        console.log('[KickBot] 🔄 Token necesita refresh, ejecutando...');
+                        await this.refreshAccessToken();
+                        console.log('[KickBot] ✅ Refresh automático completado');
+                    } else {
+                        console.log('[KickBot] ✅ Token aún válido, no se refresca');
+                    }
+                } catch (error) {
+                    console.error('[KickBot] ❌ Error en el refresh automático:', error.message);
                 }
-            } catch (error) {
-                console.error('[KickBot] ❌ Error en el refresh automático:', error.message);
-            }
-        }, 15 * 60 * 1000); // Cada 15 minutos
+            }, 15 * 60 * 1000); // Cada 15 minutos
+        }, 30 * 60 * 1000); // Delay inicial de 30 minutos
     }
 
     /**
@@ -480,10 +485,15 @@ class KickBotService {
 
             const { access_token, refresh_token, expires_in } = response.data;
 
+            // Validar que tenemos el refresh token (Kick rota los refresh tokens)
+            if (!refresh_token) {
+                throw new Error('Kick no devolvió refresh_token en la respuesta. El refresh token anterior ya no es válido.');
+            }
+
             // Actualizar tokens (Kick rota el refresh token)
             const updatedTokens = {
                 accessToken: access_token,
-                refreshToken: refresh_token || tokens.refreshToken, // Nuevo refresh token
+                refreshToken: refresh_token, // Siempre usar el nuevo
                 expiresAt: Date.now() + (expires_in * 1000),
                 refreshExpiresAt: tokens.refreshExpiresAt || (Date.now() + (365 * 24 * 60 * 60 * 1000)) // 1 año aprox
             };
