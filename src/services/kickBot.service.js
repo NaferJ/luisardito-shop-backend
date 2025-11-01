@@ -28,14 +28,15 @@ class KickBotService {
         try {
             console.log(`[KickBot] 🔄 Intentando renovar token para ${tokenRecord.kick_username}`);
 
-            const response = await axios.post('https://id.kick.com/oauth/token', {
-                grant_type: 'refresh_token',
-                refresh_token: tokenRecord.refresh_token,
-                client_id: config.kickBot.clientId,
-                client_secret: config.kickBot.clientSecret,
-                scope: 'user:read chat:write channel:read channel:write'
-            }, {
-                headers: { 'Content-Type': 'application/json' }
+            const response = await axios.post('https://id.kick.com/oauth/token',
+                new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    refresh_token: tokenRecord.refresh_token,
+                    client_id: config.kickBot.clientId,
+                    client_secret: config.kickBot.clientSecret
+                    // NO incluir scope al renovar - el refresh token ya tiene los scopes
+                }), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             });
 
             const { access_token, refresh_token, expires_in } = response.data;
@@ -48,6 +49,21 @@ class KickBotService {
                 token_expires_at: tokenExpiresAt,
                 updated_at: new Date()
             });
+
+            // También actualizar tokens.json para mantener sincronizado
+            try {
+                const tokensForFile = {
+                    accessToken: access_token,
+                    refreshToken: refresh_token || tokenRecord.refresh_token,
+                    expiresAt: Date.now() + (expires_in * 1000),
+                    refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 año aprox
+                    username: tokenRecord.kick_username
+                };
+                await this.writeTokensToFile(tokensForFile);
+                console.log(`[KickBot] 💾 tokens.json actualizado para ${tokenRecord.kick_username}`);
+            } catch (fileError) {
+                console.warn(`[KickBot] ⚠️ No se pudo actualizar tokens.json (no crítico):`, fileError.message);
+            }
 
             console.log(`[KickBot] ✅ Token renovado exitosamente para ${tokenRecord.kick_username}`);
             return tokenRecord;
@@ -473,14 +489,15 @@ class KickBotService {
 
             console.log('[KickBot] 🔄 Renovando access token...');
 
-            const response = await axios.post('https://id.kick.com/oauth/token', {
-                grant_type: 'refresh_token',
-                refresh_token: tokens.refreshToken,
-                client_id: config.kickBot.clientId,
-                client_secret: config.kickBot.clientSecret,
-                scope: 'user:read chat:write channel:read channel:write'
-            }, {
-                headers: { 'Content-Type': 'application/json' }
+            const response = await axios.post('https://id.kick.com/oauth/token',
+                new URLSearchParams({
+                    grant_type: 'refresh_token',
+                    refresh_token: tokens.refreshToken,
+                    client_id: config.kickBot.clientId,
+                    client_secret: config.kickBot.clientSecret
+                    // NO incluir scope al renovar
+                }), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
             });
 
             const { access_token, refresh_token, expires_in } = response.data;
