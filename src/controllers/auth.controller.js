@@ -465,7 +465,7 @@ exports.callbackKick = async (req, res) => {
             userId: usuario.id,
             rolId: usuario.rol_id,
             nickname: usuario.nickname,
-            kick_id: kickUser.user_id
+            kick_id: usuario.user_id
         });
 
         const ipAddress = req.ip || req.connection.remoteAddress;
@@ -604,17 +604,24 @@ exports.callbackKickBot = async (req, res) => {
         });
 
         // También guardar en tokens.json para auto-refresh
-        const kickBotService = require('../services/kickBot.service');
-        const tokensForFile = {
-            accessToken: access_token,
-            refreshToken: refresh_token,
-            expiresAt: Date.now() + (expires_in * 1000),
-            refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 año aprox
-            username: String(botUser.username || `bot-${botUser.id}`)
-        };
-        await kickBotService.writeTokensToFile(tokensForFile);
-
-        console.log(`[Kick OAuth][callbackKickBot] Tokens guardados en DB y archivo para auto-refresh`);
+        try {
+            const fs = require('fs').promises;
+            const path = require('path');
+            const tokensFile = path.join(__dirname, '../../tokens.json');
+            const fullPath = path.resolve(tokensFile);
+            console.log('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
+            const tokensForFile = {
+                accessToken: access_token,
+                refreshToken: refresh_token,
+                expiresAt: Date.now() + (expires_in * 1000),
+                refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 año aprox
+                username: String(botUser.username || `bot-${botUser.id}`)
+            };
+            await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
+            console.log('[Kick OAuth][callbackKickBot] ✅ Tokens guardados en tokens.json');
+        } catch (error) {
+            console.error('[Kick OAuth][callbackKickBot] ❌ Error guardando tokens.json:', error.message);
+        }
 
         // Redirigir al frontend
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';

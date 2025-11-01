@@ -407,8 +407,10 @@ class KickBotService {
      * @param {Object} tokens - Tokens a guardar
      */
     async writeTokensToFile(tokens) {
+        const fullPath = path.resolve(this.tokensFile);
+        console.log('[KickBot] 📁 Intentando guardar tokens en:', fullPath);
         await fs.writeFile(this.tokensFile, JSON.stringify(tokens, null, 2));
-        console.log('[KickBot] 💾 Tokens guardados en tokens.json');
+        console.log('[KickBot] 💾 Tokens guardados exitosamente en:', fullPath);
     }
 
     /**
