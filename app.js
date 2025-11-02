@@ -3,6 +3,7 @@ const cookieParser = require("cookie-parser");
 const customCors = require("./src/middleware/cors.middleware");
 const { sequelize } = require("./src/models");
 const config = require("./config");
+const logger = require("./src/utils/logger");
 
 // Servicios
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
