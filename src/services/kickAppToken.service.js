@@ -1,6 +1,7 @@
 const axios = require('axios');
 const config = require('../../config');
 const { KickEventSubscription } = require('../models');
+const logger = require('../utils/logger');
 
 /**
  * Servicio para manejar App Access Tokens de Kick (tokens permanentes)
@@ -208,7 +209,6 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId) {
             where: {
                 broadcaster_user_id: parseInt(broadcasterUserId),
                 app_id: { [require('sequelize').Op.ne]: 'APP_TOKEN' },
-const logger = require('../utils/logger');
                 status: 'active'
             }
         });

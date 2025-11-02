@@ -1,6 +1,7 @@
 const { Usuario, Canje, HistorialPunto, sequelize } = require('../models');
 const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl, getKickUserData } = require('../utils/kickApi');
+const logger = require('../utils/logger');
 
 // Mostrar datos del usuario autenticado
 exports.me = async (req, res) => {
@@ -706,7 +707,6 @@ exports.debugRolesPermisos = async (req, res) => {
 exports.debugUsuarioEspecifico = async (req, res) => {
     try {
         const { Rol, Permiso } = require('../models');
-const logger = require('../utils/logger');
         const { usuarioId } = req.params;
 
         // Obtener usuario específico con rol y permisos

@@ -12,6 +12,7 @@ const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl } = require('../utils/kickApi');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
 const KickBotTokenService = require('../services/kickBotToken.service');
+const logger = require('../utils/logger');
 const {
     generateAccessToken,
     createRefreshToken,
@@ -607,7 +608,6 @@ exports.callbackKickBot = async (req, res) => {
         try {
             const fs = require('fs').promises;
             const path = require('path');
-const logger = require('../utils/logger');
             const tokensFile = path.join(__dirname, '../../tokens/tokens.json');
             const fullPath = path.resolve(tokensFile);
             logger.info('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
