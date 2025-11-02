@@ -39,7 +39,7 @@ app.use("/api/kick-webhook", (req, res, next) => {
     );
 
     if (hasKickHeaders) {
-        console.log('🎯 [WEBHOOK] Nueva petición de Kick:', req.method, req.originalUrl);
+        logger.info('🎯 [WEBHOOK] Nueva petición de Kick:', req.method, req.originalUrl);
     }
     next();
 });
@@ -74,7 +74,7 @@ const start = async () => {
       break;
     } catch (err) {
       const code = err?.parent?.code || err?.name || "UNKNOWN_ERROR";
-      console.error(
+      logger.error(
         `⚠️  Falló la conexión a la BD (intento ${attempt}/${retries}) [${code}]. Reintentando en ${delayMs}ms...`,
       );
       await new Promise((r) => setTimeout(r, delayMs));
@@ -82,7 +82,7 @@ const start = async () => {
   }
 
   if (!connected) {
-    console.error(
+    logger.error(
       "❌ No fue posible conectar a la base de datos tras múltiples intentos. Saliendo...",
     );
     process.exit(1);
@@ -90,7 +90,7 @@ const start = async () => {
 
   try {
     await sequelize.sync();
-    console.log("✅ Base de datos conectada y modelos sincronizados");
+    logger.info("✅ Base de datos conectada y modelos sincronizados");
 
     // Iniciar el servicio de refresh automático de tokens
     tokenRefreshService.start();
@@ -109,20 +109,20 @@ const start = async () => {
       const displayPort = isDocker ? "3001 (mapeado desde :3000)" : config.port;
 
       if (isDocker) {
-        console.log(`🚀 Servidor escuchando en:`);
-        console.log(
+        logger.info(`🚀 Servidor escuchando en:`);
+        logger.info(
           `   • Interno (contenedor): http://localhost:${config.port}`,
         );
-        console.log(`   • Externo (tu máquina): http://localhost:3001`);
-        console.log(`   📌 Usa http://localhost:3001 desde tu navegador`);
+        logger.info(`   • Externo (tu máquina): http://localhost:3001`);
+        logger.info(`   📌 Usa http://localhost:3001 desde tu navegador`);
       } else {
-        console.log(
+        logger.info(
           `🚀 Servidor escuchando en http://localhost:${config.port}`,
         );
       }
     });
   } catch (err) {
-    console.error("❌ Error al sincronizar modelos:", err);
+    logger.error("❌ Error al sincronizar modelos:", err);
     process.exit(1);
   }
 };

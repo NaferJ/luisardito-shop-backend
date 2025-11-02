@@ -2,6 +2,7 @@
 const kickBotService = require('./kickBot.service');
 const { KickBotToken } = require('../models');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 /**
  * Servicio de mantenimiento automático del bot de Kick
@@ -19,11 +20,11 @@ class BotMaintenanceService {
      */
     start() {
         if (this.isRunning) {
-            console.log('🤖 [BOT-MAINTENANCE] Servicio ya está ejecutándose');
+            logger.info('🤖 [BOT-MAINTENANCE] Servicio ya está ejecutándose');
             return;
         }
 
-        console.log(`🤖 [BOT-MAINTENANCE] Iniciando mantenimiento automático cada ${this.intervalMinutes} minutos`);
+        logger.info(`🤖 [BOT-MAINTENANCE] Iniciando mantenimiento automático cada ${this.intervalMinutes} minutos`);
 
         // Ejecutar inmediatamente al iniciar
         this.performMaintenance();
@@ -50,7 +51,7 @@ class BotMaintenanceService {
             this.intervalId = null;
         }
         this.isRunning = false;
-        console.log('🤖 [BOT-MAINTENANCE] Servicio detenido');
+        logger.info('🤖 [BOT-MAINTENANCE] Servicio detenido');
     }
 
     /**
@@ -58,7 +59,7 @@ class BotMaintenanceService {
      */
     async performMaintenance() {
         try {
-            console.log('🔧 [BOT-MAINTENANCE] Iniciando mantenimiento programado...');
+            logger.info('🔧 [BOT-MAINTENANCE] Iniciando mantenimiento programado...');
 
             // 1. Limpiar tokens expirados
             await this.cleanupExpiredTokens();
@@ -69,10 +70,10 @@ class BotMaintenanceService {
             // 3. Opcional: Simular actividad del chat
             await this.simulateChatActivity();
 
-            console.log('🎉 [BOT-MAINTENANCE] Mantenimiento completado exitosamente');
+            logger.info('🎉 [BOT-MAINTENANCE] Mantenimiento completado exitosamente');
 
         } catch (error) {
-            console.error('❌ [BOT-MAINTENANCE] Error en mantenimiento:', error.message);
+            logger.error('❌ [BOT-MAINTENANCE] Error en mantenimiento:', error.message);
         }
     }
 
@@ -99,12 +100,12 @@ class BotMaintenanceService {
                         }
                     }
                 );
-                console.log(`🧹 [BOT-MAINTENANCE] ${expiredTokens.length} tokens expirados marcados como inactivos`);
+                logger.info(`🧹 [BOT-MAINTENANCE] ${expiredTokens.length} tokens expirados marcados como inactivos`);
             } else {
-                console.log('✅ [BOT-MAINTENANCE] No hay tokens expirados para limpiar');
+                logger.info('✅ [BOT-MAINTENANCE] No hay tokens expirados para limpiar');
             }
         } catch (error) {
-            console.error('❌ [BOT-MAINTENANCE] Error limpiando tokens:', error.message);
+            logger.error('❌ [BOT-MAINTENANCE] Error limpiando tokens:', error.message);
         }
     }
 
@@ -113,7 +114,7 @@ class BotMaintenanceService {
      */
     async refreshExpiringTokens() {
         try {
-            console.log('🔄 [BOT-MAINTENANCE] Verificando tokens que expiran pronto...');
+            logger.info('🔄 [BOT-MAINTENANCE] Verificando tokens que expiran pronto...');
             const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos a partir de ahora
             const tokens = await KickBotToken.findAll({
                 where: {
@@ -127,12 +128,12 @@ class BotMaintenanceService {
             }
 
             if (tokens.length > 0) {
-                console.log(`✅ [BOT-MAINTENANCE] ${tokens.length} tokens renovados exitosamente`);
+                logger.info(`✅ [BOT-MAINTENANCE] ${tokens.length} tokens renovados exitosamente`);
             } else {
-                console.log('✅ [BOT-MAINTENANCE] No hay tokens próximos a expirar');
+                logger.info('✅ [BOT-MAINTENANCE] No hay tokens próximos a expirar');
             }
         } catch (error) {
-            console.error('❌ [BOT-MAINTENANCE] Error renovando tokens:', error.message);
+            logger.error('❌ [BOT-MAINTENANCE] Error renovando tokens:', error.message);
         }
     }
 
@@ -148,19 +149,19 @@ class BotMaintenanceService {
                 return; // No simular actividad
             }
 
-            console.log('🛒 [BOT-MAINTENANCE] Simulando actividad del chat...');
+            logger.info('🛒 [BOT-MAINTENANCE] Simulando actividad del chat...');
 
             // Simular el comando !tienda (igual que el webhook)
             const reply = `Tienda del canal: https://shop.luisardito.com/`;
             const result = await kickBotService.sendMessage(reply);
 
             if (result.ok) {
-                console.log('✅ [BOT-MAINTENANCE] Actividad del chat simulada exitosamente');
+                logger.info('✅ [BOT-MAINTENANCE] Actividad del chat simulada exitosamente');
             } else {
-                console.error('❌ [BOT-MAINTENANCE] Error simulando actividad:', result.error);
+                logger.error('❌ [BOT-MAINTENANCE] Error simulando actividad:', result.error);
             }
         } catch (error) {
-            console.error('❌ [BOT-MAINTENANCE] Error en simulación de actividad:', error.message);
+            logger.error('❌ [BOT-MAINTENANCE] Error en simulación de actividad:', error.message);
         }
     }
 

@@ -1,6 +1,7 @@
 const { Usuario, Canje, HistorialPunto, BotrixMigrationConfig } = require('../models');
 const { sequelize } = require('../models/database');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 class VipService {
     /**
@@ -56,7 +57,7 @@ class VipService {
 
             await transaction.commit();
 
-            console.log(`✅ [VIP] VIP otorgado a ${usuario.nickname} por canje #${canjeId}`);
+            logger.info(`✅ [VIP] VIP otorgado a ${usuario.nickname} por canje #${canjeId}`);
             return {
                 usuario_id: usuarioId,
                 nickname: usuario.nickname,
@@ -114,7 +115,7 @@ class VipService {
 
             await transaction.commit();
 
-            console.log(`🔴 [VIP] VIP removido de ${usuario.nickname} - Razón: ${reason}`);
+            logger.info(`🔴 [VIP] VIP removido de ${usuario.nickname} - Razón: ${reason}`);
             return {
                 usuario_id: usuarioId,
                 nickname: usuario.nickname,
@@ -147,11 +148,11 @@ class VipService {
                 await this.removeVip(user.id, 'Expiración automática');
                 cleanedCount++;
             } catch (error) {
-                console.error(`❌ [VIP CLEANUP] Error removing expired VIP for user ${user.id}:`, error);
+                logger.error(`❌ [VIP CLEANUP] Error removing expired VIP for user ${user.id}:`, error);
             }
         }
 
-        console.log(`🧹 [VIP CLEANUP] ${cleanedCount} VIPs expirados removidos`);
+        logger.info(`🧹 [VIP CLEANUP] ${cleanedCount} VIPs expirados removidos`);
         return { cleaned_count: cleanedCount, total_expired: expiredVips.length };
     }
 

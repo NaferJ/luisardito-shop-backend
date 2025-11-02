@@ -12,6 +12,7 @@ const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
 const { Op, Transaction } = require('sequelize');
 const { getRedisClient } = require('../config/redis.config');
+const logger = require('../utils/logger');
 
 /**
  * 🔍 DIAGNÓSTICO: monitorear Redis
@@ -46,9 +47,9 @@ exports.debugRedisCooldowns = async (req, res) => {
             redis_status: redis.status,
             timestamp: new Date().toISOString()
         });
+        logger.error('[Debug Redis] Error:', error);
 
     } catch (error) {
-        console.error('[Debug Redis] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -64,7 +65,7 @@ exports.diagnosticTokensDB = async (req, res) => {
         const { KickBroadcasterToken, KickEventSubscription } = require('../models');
         const config = require('../../config');
 
-        console.log('🔍 [DIAGNÓSTICO DB] Consultando tokens en base de datos...');
+        logger.info('🔍 [DIAGNÓSTICO DB] Consultando tokens en base de datos...');
 
         // 1. Obtener TODOS los tokens guardados (activos e inactivos)
         const allTokens = await KickBroadcasterToken.findAll({
@@ -75,8 +76,8 @@ exports.diagnosticTokensDB = async (req, res) => {
             ],
             order: [['updated_at', 'DESC']]
         });
-
-        console.log('🔍 [DIAGNÓSTICO DB] Tokens encontrados:', allTokens.length);
+        logger.info('🔍 [DIAGNÓSTICO DB] Tokens encontrados:', allTokens.length);
+        logger.info('🔍 [DIAGNÓSTICO DB] Tokens encontrados:', allTokens.length);
 
         // 2. Verificar el broadcaster principal específicamente
         const broadcasterPrincipal = await KickBroadcasterToken.findOne({
@@ -156,7 +157,7 @@ exports.diagnosticTokensDB = async (req, res) => {
             }
         };
 
-        console.log('🔍 [DIAGNÓSTICO DB] RESULTADO:', JSON.stringify(diagnostico.resumen, null, 2));
+        logger.info('🔍 [DIAGNÓSTICO DB] RESULTADO:', JSON.stringify(diagnostico.resumen, null, 2));
 
         res.json({
             success: true,
@@ -165,7 +166,7 @@ exports.diagnosticTokensDB = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔍 [DIAGNÓSTICO DB] Error:', error);
+        logger.error('🔍 [DIAGNÓSTICO DB] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -177,11 +178,11 @@ exports.diagnosticTokens = async (req, res) => {
         const { KickBroadcasterToken, KickEventSubscription } = require('../models');
         const config = require('../../config');
 
-        console.log('🔍 [DIAGNÓSTICO] Iniciando verificación...');
+        logger.info('🔍 [DIAGNÓSTICO] Iniciando verificación...');
 
         // 1. Verificar el broadcaster principal configurado
         const broadcasterPrincipal = config.kick.broadcasterId;
-        console.log('🔍 [DIAGNÓSTICO] Broadcaster principal configurado:', broadcasterPrincipal);
+        logger.info('🔍 [DIAGNÓSTICO] Broadcaster principal configurado:', broadcasterPrincipal);
 
         // 2. Obtener todos los tokens disponibles
         const allTokens = await KickBroadcasterToken.findAll({
@@ -189,7 +190,7 @@ exports.diagnosticTokens = async (req, res) => {
             attributes: ['kick_user_id', 'auto_subscribed', 'last_subscription_attempt', 'subscription_error']
         });
 
-        console.log('🔍 [DIAGNÓSTICO] Tokens disponibles:', allTokens.map(t => ({
+        logger.info('🔍 [DIAGNÓSTICO] Tokens disponibles:', allTokens.map(t => ({
             kick_user_id: t.kick_user_id,
             auto_subscribed: t.auto_subscribed,
             last_attempt: t.last_subscription_attempt
@@ -197,7 +198,7 @@ exports.diagnosticTokens = async (req, res) => {
 
         // 3. Verificar si el broadcaster principal tiene token
         const broadcasterToken = allTokens.find(t => t.kick_user_id.toString() === broadcasterPrincipal.toString());
-        console.log('🔍 [DIAGNÓSTICO] ¿Broadcaster principal tiene token?', !!broadcasterToken);
+        logger.info('🔍 [DIAGNÓSTICO] ¿Broadcaster principal tiene token?', !!broadcasterToken);
 
         // 4. Verificar suscripciones actuales
         const suscripciones = await KickEventSubscription.findAll({
@@ -205,12 +206,12 @@ exports.diagnosticTokens = async (req, res) => {
             attributes: ['event_type', 'subscription_id', 'status']
         });
 
-        console.log('🔍 [DIAGNÓSTICO] Suscripciones del broadcaster principal:', suscripciones.length);
+        logger.info('🔍 [DIAGNÓSTICO] Suscripciones del broadcaster principal:', suscripciones.length);
 
         // 5. Verificar qué usuario es NaferJ (ID 33112734)
         const naferToken = allTokens.find(t => t.kick_user_id.toString() === '33112734');
-        console.log('🔍 [DIAGNÓSTICO] ¿NaferJ (33112734) tiene token?', !!naferToken);
-        console.log('🔍 [DIAGNÓSTICO] ¿NaferJ ES el broadcaster principal?', broadcasterPrincipal.toString() === '33112734');
+        logger.info('🔍 [DIAGNÓSTICO] ¿NaferJ (33112734) tiene token?', !!naferToken);
+        logger.info('🔍 [DIAGNÓSTICO] ¿NaferJ ES el broadcaster principal?', broadcasterPrincipal.toString() === '33112734');
 
         const diagnostico = {
             broadcaster_principal_config: broadcasterPrincipal,
@@ -229,7 +230,7 @@ exports.diagnosticTokens = async (req, res) => {
                 'El setup debería estar correcto, el problema puede ser de red o configuración'
         };
 
-        console.log('🔍 [DIAGNÓSTICO] RESUMEN:', diagnostico);
+        logger.info('🔍 [DIAGNÓSTICO] RESUMEN:', diagnostico);
 
         res.json({
             success: true,
@@ -238,7 +239,7 @@ exports.diagnosticTokens = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔍 [DIAGNÓSTICO] Error:', error);
+        logger.error('🔍 [DIAGNÓSTICO] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -246,12 +247,12 @@ exports.diagnosticTokens = async (req, res) => {
     }
 };
 exports.testCors = async (req, res) => {
-    console.log('🧪 [CORS Test] ==========================================');
-    console.log('🧪 [CORS Test] Method:', req.method);
-    console.log('🧪 [CORS Test] Origin:', req.headers.origin || 'SIN ORIGIN');
-    console.log('🧪 [CORS Test] User-Agent:', req.headers['user-agent']);
-    console.log('🧪 [CORS Test] Headers:', Object.keys(req.headers));
-    console.log('🧪 [CORS Test] ==========================================');
+    logger.info('🧪 [CORS Test] ==========================================');
+    logger.info('🧪 [CORS Test] Method:', req.method);
+    logger.info('🧪 [CORS Test] Origin:', req.headers.origin || 'SIN ORIGIN');
+    logger.info('🧪 [CORS Test] User-Agent:', req.headers['user-agent']);
+    logger.info('🧪 [CORS Test] Headers:', Object.keys(req.headers));
+    logger.info('🧪 [CORS Test] ==========================================');
 
     res.status(200).json({
         message: '✅ CORS funcionando correctamente para webhooks',
@@ -272,7 +273,7 @@ exports.handleWebhook = async (req, res) => {
     const messageId = req.headers['kick-event-message-id'];
 
     if (eventType) {
-        console.log('🎯 [Kick Webhook] Evento:', eventType, 'ID:', messageId);
+        logger.info('🎯 [Kick Webhook] Evento:', eventType, 'ID:', messageId);
     }
 
     try {
@@ -298,7 +299,7 @@ exports.handleWebhook = async (req, res) => {
 
         // Validar que existen los headers necesarios
         if (!messageId || !signature || !timestamp || !eventType) {
-            console.error('[Kick Webhook] ❌ Faltan headers requeridos');
+            logger.error('[Kick Webhook] ❌ Faltan headers requeridos');
             return res.status(400).json({ error: 'Faltan headers requeridos' });
         }
 
@@ -309,7 +310,7 @@ exports.handleWebhook = async (req, res) => {
         const isValidSignature = verifyWebhookSignature(messageId, timestamp, rawBody, signature);
 
         if (!isValidSignature) {
-            console.error('[Kick Webhook] ❌ Firma inválida');
+            logger.error('[Kick Webhook] ❌ Firma inválida');
             return res.status(401).json({ error: 'Firma inválida' });
         }
 
@@ -350,7 +351,7 @@ exports.handleWebhook = async (req, res) => {
         return res.status(200).json({ message: 'Webhook procesado correctamente' });
 
     } catch (error) {
-        console.error('[Kick Webhook] ❌ Error procesando webhook:', error.message);
+        logger.error('[Kick Webhook] ❌ Error procesando webhook:', error.message);
         return res.status(500).json({ error: 'Error interno al procesar webhook' });
     }
 };
@@ -363,7 +364,7 @@ exports.handleWebhook = async (req, res) => {
  * @param {object} metadata - Metadatos del webhook (messageId, subscriptionId, timestamp)
  */
 async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
-    console.log(`[Kick Webhook] Procesando evento ${eventType}`);
+    logger.info(`[Kick Webhook] Procesando evento ${eventType}`);
 
     switch (eventType) {
         case 'chat.message.sent':
@@ -399,7 +400,7 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
             break;
 
         default:
-            console.log(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
+            logger.info(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
     }
 }
 
@@ -419,18 +420,18 @@ async function handleChatMessage(payload, metadata) {
         const kickUserId = String(sender.user_id);
         const kickUsername = sender.username;
 
-        console.log('[Chat Message]', kickUsername, ':', payload.content);
+        logger.info('[Chat Message]', kickUsername, ':', payload.content);
 
         // PRIORIDAD 1: Verificar si es migración de Botrix
-        console.log('🔍 [BOTRIX DEBUG] Verificando mensaje para migración...');
+        logger.info('🔍 [BOTRIX DEBUG] Verificando mensaje para migración...');
         const botrixResult = await BotrixMigrationService.processChatMessage(payload);
-        console.log('🔍 [BOTRIX DEBUG] Resultado procesamiento:', botrixResult);
+        logger.info('🔍 [BOTRIX DEBUG] Resultado procesamiento:', botrixResult);
 
         if (botrixResult.processed) {
-            console.log(`📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
+            logger.info(`📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`);
             return;
         } else {
-            console.log(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+            logger.info(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
         }
 
         // ==========================================
@@ -449,7 +450,7 @@ async function handleChatMessage(payload, metadata) {
                     try {
                         await bot.sendMessage(reply);
                     } catch (error) {
-                        console.error('[Chat Command] Error enviando mensaje de tienda:', error.message);
+                        logger.error('[Chat Command] Error enviando mensaje de tienda:', error.message);
                     }
                 }
 
@@ -475,13 +476,13 @@ async function handleChatMessage(payload, metadata) {
 
                         await bot.sendMessage(reply);
                     } catch (error) {
-                        console.error('[Chat Command] Error procesando comando !puntos:', error.message);
+                        logger.error('[Chat Command] Error procesando comando !puntos:', error.message);
                         await bot.sendMessage(`Ocurrió un error al verificar los puntos de ${lookupName}`);
                     }
                 }
             }
         } catch (cmdErr) {
-            console.error('[Chat Command] ❌ Error manejando comandos:', cmdErr.message);
+            logger.error('[Chat Command] ❌ Error manejando comandos:', cmdErr.message);
         }
 
         // 🎥 PRIORIDAD 2: Verificar si el stream está en vivo (para puntos, no para comandos)
@@ -490,15 +491,15 @@ async function handleChatMessage(payload, metadata) {
             const isLive = await redis.get('stream:is_live');
 
             if (isLive !== 'true') {
-                console.log(`🔴 [STREAM] OFFLINE - No se otorgan puntos a ${kickUsername}`);
+                logger.info(`🔴 [STREAM] OFFLINE - No se otorgan puntos a ${kickUsername}`);
                 return; // ❌ NO CONTINUAR
             }
 
-            console.log(`🟢 [STREAM] EN VIVO - Procesando puntos para ${kickUsername}`);
+            logger.info(`🟢 [STREAM] EN VIVO - Procesando puntos para ${kickUsername}`);
 
         } catch (redisError) {
-            console.error(`❌ [STREAM] Error verificando estado:`, redisError.message);
-            console.log(`⚠️  [STREAM] Asumiendo EN VIVO por error de Redis`);
+            logger.error(`❌ [STREAM] Error verificando estado:`, redisError.message);
+            logger.info(`⚠️  [STREAM] Asumiendo EN VIVO por error de Redis`);
             // Fallback: continuar si Redis falla (para no romper el sistema)
         }
 
@@ -508,7 +509,7 @@ async function handleChatMessage(payload, metadata) {
         });
 
         if (!usuario) {
-            console.log(`[Chat Message] Usuario ${kickUsername} no registrado, ignorando`);
+            logger.info(`[Chat Message] Usuario ${kickUsername} no registrado, ignorando`);
             return;
         }
 
@@ -540,9 +541,9 @@ async function handleChatMessage(payload, metadata) {
                         { is_subscribed: false },
                         { where: { kick_user_id: kickUserId } }
                     );
-                    console.log(`[CHAT] Suscripción expirada para ${kickUsername} - is_subscribed=false`);
+                    logger.info(`[CHAT] Suscripción expirada para ${kickUsername} - is_subscribed=false`);
                 } catch (e) {
-                    console.error('[CHAT] Error desactivando suscripción expirada:', e.message);
+                    logger.error('[CHAT] Error desactivando suscripción expirada:', e.message);
                 }
                 isSubscriber = false;
             }
@@ -562,7 +563,7 @@ async function handleChatMessage(payload, metadata) {
             userType = 'subscriber';
         }
 
-        console.log(`🎯 [CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Tipo: ${userType}, Puntos: ${pointsToAward}`);
+        logger.info(`🎯 [CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Tipo: ${userType}, Puntos: ${pointsToAward}`);
 
         if (pointsToAward <= 0) {
             return;
@@ -574,7 +575,7 @@ async function handleChatMessage(payload, metadata) {
         const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
         const cooldownKey = `chat_cooldown:${kickUserId}`;
 
-        console.log(`🚀 [REDIS COOLDOWN] Verificando para ${kickUsername} (${kickUserId})`);
+        logger.info(`🚀 [REDIS COOLDOWN] Verificando para ${kickUsername} (${kickUserId})`);
 
         try {
             const redis = getRedisClient();
@@ -594,19 +595,19 @@ async function handleChatMessage(payload, metadata) {
                 const ttl = await redis.pttl(cooldownKey); // TTL en milisegundos
                 const remainingSecs = Math.ceil(ttl / 1000);
 
-                console.log(`⏰ [REDIS COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
-                console.log(`⏰ [REDIS COOLDOWN] Faltan ${remainingSecs}s (${Math.ceil(ttl/60000)} minutos)`);
+                logger.info(`⏰ [REDIS COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`);
+                logger.info(`⏰ [REDIS COOLDOWN] Faltan ${remainingSecs}s (${Math.ceil(ttl/60000)} minutos)`);
 
                 return; // ❌ NO CONTINUAR - NO DAR PUNTOS
             }
 
             // ✅ Si llegamos aquí: clave creada exitosamente = puede recibir puntos
-            console.log(`✅ [REDIS COOLDOWN] ${kickUsername} puede recibir puntos`);
-            console.log(`📅 [REDIS COOLDOWN] Próximo mensaje permitido en: ${COOLDOWN_MS/1000}s (${COOLDOWN_MS/60000} minutos)`);
+            logger.info(`✅ [REDIS COOLDOWN] ${kickUsername} puede recibir puntos`);
+            logger.info(`📅 [REDIS COOLDOWN] Próximo mensaje permitido en: ${COOLDOWN_MS/1000}s (${COOLDOWN_MS/60000} minutos)`);
 
         } catch (redisError) {
-            console.error(`❌ [REDIS COOLDOWN] Error de Redis:`, redisError.message);
-            console.log(`⚠️  [REDIS COOLDOWN] Fallback: continuando sin cooldown por error de Redis`);
+            logger.error(`❌ [REDIS COOLDOWN] Error de Redis:`, redisError.message);
+            logger.info(`⚠️  [REDIS COOLDOWN] Fallback: continuando sin cooldown por error de Redis`);
             // Para máxima disponibilidad: continuar
             // Para máxima consistencia: return;
         }
@@ -641,27 +642,27 @@ async function handleChatMessage(payload, metadata) {
 
             await transaction.commit();
 
-            console.log(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
-            console.log(`[Chat Message] 💰 Total puntos usuario: ${(await usuario.reload()).puntos}`);
+            logger.info(`[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`);
+            logger.info(`[Chat Message] 💰 Total puntos usuario: ${(await usuario.reload()).puntos}`);
 
         } catch (transactionError) {
             await transaction.rollback();
-            console.error(`[Chat Message] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
+            logger.error(`[Chat Message] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
 
             // Si falla la DB, eliminar el cooldown de Redis para permitir retry
             try {
                 const redis = getRedisClient();
                 await redis.del(cooldownKey);
-                console.log(`🔄 [REDIS COOLDOWN] Cooldown eliminado por error de DB - permitir retry`);
+                logger.info(`🔄 [REDIS COOLDOWN] Cooldown eliminado por error de DB - permitir retry`);
             } catch (redisCleanupError) {
-                console.error(`❌ [REDIS COOLDOWN] Error limpiando cooldown:`, redisCleanupError.message);
+                logger.error(`❌ [REDIS COOLDOWN] Error limpiando cooldown:`, redisCleanupError.message);
             }
 
             throw transactionError;
         }
 
     } catch (error) {
-        console.error('[Chat Message] ❌ Error:', error.message);
+        logger.error('[Chat Message] ❌ Error:', error.message);
     }
 }
 
@@ -674,7 +675,7 @@ async function handleChannelFollowed(payload, metadata) {
         const kickUserId = String(follower.user_id);
         const kickUsername = follower.username;
 
-        console.log('[Kick Webhook][Channel Followed]', {
+        logger.info('[Kick Webhook][Channel Followed]', {
             broadcaster: payload.broadcaster.username,
             follower: kickUsername
         });
@@ -685,7 +686,7 @@ async function handleChannelFollowed(payload, metadata) {
         });
 
         if (!usuario) {
-            console.log(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} no registrado en la BD`);
+            logger.info(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} no registrado en la BD`);
             return;
         }
 
@@ -695,7 +696,7 @@ async function handleChannelFollowed(payload, metadata) {
         });
 
         if (userTracking && userTracking.follow_points_awarded) {
-            console.log(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} ya recibió puntos por follow anteriormente`);
+            logger.info(`[Kick Webhook][Channel Followed] Usuario ${kickUsername} ya recibió puntos por follow anteriormente`);
             return;
         }
 
@@ -713,7 +714,7 @@ async function handleChannelFollowed(payload, metadata) {
         const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
 
         if (pointsToAward <= 0) {
-            console.log('[Kick Webhook][Channel Followed] Puntos por follow deshabilitados');
+            logger.info('[Kick Webhook][Channel Followed] Puntos por follow deshabilitados');
             return;
         }
 
@@ -755,10 +756,10 @@ async function handleChannelFollowed(payload, metadata) {
             });
         }
 
-        console.log(`[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow - ${userType})`);
+        logger.info(`[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow - ${userType})`);
 
     } catch (error) {
-        console.error('[Kick Webhook][Channel Followed] Error:', error.message);
+        logger.error('[Kick Webhook][Channel Followed] Error:', error.message);
     }
 }
 
@@ -773,7 +774,7 @@ async function handleNewSubscription(payload, metadata) {
         const duration = payload.duration;
         const expiresAt = new Date(payload.expires_at);
 
-        console.log('[Kick Webhook][New Subscription]', {
+        logger.info('[Kick Webhook][New Subscription]', {
             broadcaster: payload.broadcaster.username,
             subscriber: kickUsername,
             duration,
@@ -786,7 +787,7 @@ async function handleNewSubscription(payload, metadata) {
         });
 
         if (!usuario) {
-            console.log(`[Kick Webhook][New Subscription] Usuario ${kickUsername} no registrado en la BD`);
+            logger.info(`[Kick Webhook][New Subscription] Usuario ${kickUsername} no registrado en la BD`);
             return;
         }
 
@@ -838,10 +839,10 @@ async function handleNewSubscription(payload, metadata) {
             total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
         });
 
-        console.log(`[Kick Webhook][New Subscription] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub hasta ${expiresAt}`);
+        logger.info(`[Kick Webhook][New Subscription] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub hasta ${expiresAt}`);
 
     } catch (error) {
-        console.error('[Kick Webhook][New Subscription] Error:', error.message);
+        logger.error('[Kick Webhook][New Subscription] Error:', error.message);
     }
 }
 
@@ -856,7 +857,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
         const duration = payload.duration;
         const expiresAt = new Date(payload.expires_at);
 
-        console.log('[Kick Webhook][Subscription Renewal]', {
+        logger.info('[Kick Webhook][Subscription Renewal]', {
             broadcaster: payload.broadcaster.username,
             subscriber: kickUsername,
             duration,
@@ -869,7 +870,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
         });
 
         if (!usuario) {
-            console.log(`[Kick Webhook][Subscription Renewal] Usuario ${kickUsername} no registrado en la BD`);
+            logger.info(`[Kick Webhook][Subscription Renewal] Usuario ${kickUsername} no registrado en la BD`);
             return;
         }
 
@@ -913,10 +914,10 @@ async function handleSubscriptionRenewal(payload, metadata) {
             total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
         });
 
-        console.log(`[Kick Webhook][Subscription Renewal] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub renovada hasta ${expiresAt}`);
+        logger.info(`[Kick Webhook][Subscription Renewal] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub renovada hasta ${expiresAt}`);
 
     } catch (error) {
-        console.error('[Kick Webhook][Subscription Renewal] Error:', error.message);
+        logger.error('[Kick Webhook][Subscription Renewal] Error:', error.message);
     }
 }
 
@@ -929,7 +930,7 @@ async function handleSubscriptionGifts(payload, metadata) {
         const giftees = payload.giftees || [];
         const expiresAt = new Date(payload.expires_at);
 
-        console.log('[Kick Webhook][Subscription Gifts]', {
+        logger.info('[Kick Webhook][Subscription Gifts]', {
             broadcaster: payload.broadcaster.username,
             gifter: gifter.is_anonymous ? 'Anónimo' : gifter.username,
             giftees: giftees.map(g => g.username),
@@ -960,7 +961,7 @@ async function handleSubscriptionGifts(payload, metadata) {
             });
 
             if (gifterUsuario) {
-                console.log('🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos');
+                logger.info('🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos');
                 const totalPoints = pointsForGifter * giftees.length;
                 await gifterUsuario.increment('puntos', { by: totalPoints });
 
@@ -984,7 +985,7 @@ async function handleSubscriptionGifts(payload, metadata) {
                     total_gifts_given: KickUserTracking.sequelize.literal(`total_gifts_given + ${giftees.length}`)
                 });
 
-                console.log(`[Kick Webhook][Subscription Gifts] ✅ ${totalPoints} puntos a ${gifter.username} por regalar ${giftees.length} subs`);
+                logger.info(`[Kick Webhook][Subscription Gifts] ✅ ${totalPoints} puntos a ${gifter.username} por regalar ${giftees.length} subs`);
             }
         }
 
@@ -1025,14 +1026,14 @@ async function handleSubscriptionGifts(payload, metadata) {
                         total_subscriptions: KickUserTracking.sequelize.literal('total_subscriptions + 1')
                     });
 
-                    console.log('🎯 [Subscription Gifts] ✅', pointsForGiftee, 'puntos a', gifteeUsername, 'por recibir sub regalada');
-                    console.log('🎯 [Subscription Gifts] 💰 Total puntos del receptor:', (await gifteeUsuario.reload()).puntos);
+                    logger.info('🎯 [Subscription Gifts] ✅', pointsForGiftee, 'puntos a', gifteeUsername, 'por recibir sub regalada');
+                    logger.info('🎯 [Subscription Gifts] 💰 Total puntos del receptor:', (await gifteeUsuario.reload()).puntos);
                 }
             }
         }
 
     } catch (error) {
-        console.error('[Kick Webhook][Subscription Gifts] Error:', error.message);
+        logger.error('[Kick Webhook][Subscription Gifts] Error:', error.message);
     }
 }
 
@@ -1043,7 +1044,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
     try {
         const isLive = payload.is_live;
 
-        console.log('[Kick Webhook][Livestream Status]', {
+        logger.info('[Kick Webhook][Livestream Status]', {
             broadcaster: payload.broadcaster.username,
             is_live: isLive,
             title: payload.title,
@@ -1055,13 +1056,13 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
         const redis = getRedisClient();
         await redis.set('stream:is_live', isLive ? 'true' : 'false');
 
-        console.log(isLive ?
+        logger.info(isLive ?
             '🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS' :
             '🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS'
         );
 
     } catch (error) {
-        console.error('[Kick Webhook][Livestream Status] Error:', error.message);
+        logger.error('[Kick Webhook][Livestream Status] Error:', error.message);
     }
 }
 
@@ -1069,7 +1070,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
  * Maneja actualizaciones de metadatos de transmisión
  */
 async function handleLivestreamMetadataUpdated(payload, metadata) {
-    console.log('[Kick Webhook][Livestream Metadata]', {
+    logger.info('[Kick Webhook][Livestream Metadata]', {
         broadcaster: payload.broadcaster.username,
         title: payload.metadata.title,
         category: payload.metadata.category?.name,
@@ -1084,7 +1085,7 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
  * Maneja baneos de moderación
  */
 async function handleModerationBanned(payload, metadata) {
-    console.log('[Kick Webhook][Moderation Banned]', {
+    logger.info('[Kick Webhook][Moderation Banned]', {
         broadcaster: payload.broadcaster.username,
         moderator: payload.moderator.username,
         banned_user: payload.banned_user.username,
@@ -1100,10 +1101,10 @@ async function handleModerationBanned(payload, metadata) {
  * GET /webhook/test
  */
 exports.testWebhook = async (req, res) => {
-    console.log('[Kick Webhook] Test endpoint alcanzado');
-    console.log('[Kick Webhook] Headers:', req.headers);
-    console.log('[Kick Webhook] IP:', req.ip);
-    console.log('[Kick Webhook] User-Agent:', req.headers['user-agent']);
+    logger.info('[Kick Webhook] Test endpoint alcanzado');
+    logger.info('[Kick Webhook] Headers:', req.headers);
+    logger.info('[Kick Webhook] IP:', req.ip);
+    logger.info('[Kick Webhook] User-Agent:', req.headers['user-agent']);
 
     return res.json({
         status: 'success',
@@ -1151,7 +1152,7 @@ exports.debugWebhook = async (req, res) => {
  */
 exports.simulateChat = async (req, res) => {
     try {
-        console.log('[Webhook Simulator] Simulando evento de chat...');
+        logger.info('[Webhook Simulator] Simulando evento de chat...');
 
         // Simular payload de chat message
         const simulatedPayload = {
@@ -1174,7 +1175,7 @@ exports.simulateChat = async (req, res) => {
             timestamp: Date.now()
         };
 
-        console.log('[Webhook Simulator] Procesando evento simulado...');
+        logger.info('[Webhook Simulator] Procesando evento simulado...');
 
         // Procesar el evento como si fuera real
         await processWebhookEvent('chat.message.sent', 1, simulatedPayload, metadata);
@@ -1187,7 +1188,7 @@ exports.simulateChat = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Webhook Simulator] Error:', error.message);
+        logger.error('[Webhook Simulator] Error:', error.message);
         return res.status(500).json({
             error: error.message,
             stack: error.stack
@@ -1201,7 +1202,7 @@ exports.simulateChat = async (req, res) => {
  */
 exports.testRealWebhook = async (req, res) => {
     try {
-        console.log('[Test Real Webhook] Simulando webhook REAL de Kick con headers...');
+        logger.info('[Test Real Webhook] Simulando webhook REAL de Kick con headers...');
 
         // Simular headers exactos que envía Kick
         const mockHeaders = {
@@ -1234,14 +1235,14 @@ exports.testRealWebhook = async (req, res) => {
         req.headers = { ...req.headers, ...mockHeaders };
         req.body = mockPayload;
 
-        console.log('[Test Real Webhook] Headers simulados:', mockHeaders);
-        console.log('[Test Real Webhook] Payload simulado:', mockPayload);
+        logger.info('[Test Real Webhook] Headers simulados:', mockHeaders);
+        logger.info('[Test Real Webhook] Payload simulado:', mockPayload);
 
         // Llamar al handler principal como si fuera un webhook real
         await this.handleWebhook(req, res);
 
     } catch (error) {
-        console.error('[Test Real Webhook] Error:', error.message);
+        logger.error('[Test Real Webhook] Error:', error.message);
         return res.status(500).json({
             error: error.message,
             stack: error.stack
@@ -1258,7 +1259,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
         const config = require('../../config');
 
-        console.log('🔧 [REACTIVAR] Buscando token de broadcaster principal...');
+        logger.info('🔧 [REACTIVAR] Buscando token de broadcaster principal...');
 
         const broadcasterToken = await KickBroadcasterToken.findOne({
             where: { kick_user_id: config.kick.broadcasterId }
@@ -1272,14 +1273,14 @@ exports.reactivateBroadcasterToken = async (req, res) => {
             });
         }
 
-        console.log('🔧 [REACTIVAR] Token encontrado, verificando expiración...');
+        logger.info('🔧 [REACTIVAR] Token encontrado, verificando expiración...');
 
         // Verificar si el token está expirado
         const now = new Date();
         const expiresAt = new Date(broadcasterToken.token_expires_at);
         const isExpired = expiresAt <= now;
 
-        console.log('🔧 [REACTIVAR] Estado del token:', {
+        logger.info('🔧 [REACTIVAR] Estado del token:', {
             expires_at: expiresAt,
             now: now,
             is_expired: isExpired,
@@ -1287,7 +1288,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         });
 
         if (isExpired) {
-            console.log('🔧 [REACTIVAR] Token expirado, intentando renovar con refresh_token...');
+            logger.info('🔧 [REACTIVAR] Token expirado, intentando renovar con refresh_token...');
 
             if (!broadcasterToken.refresh_token) {
                 return res.status(400).json({
@@ -1301,7 +1302,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
             // Intentar renovar el token
             try {
                 const { refreshAccessToken } = require('../services/kickAutoSubscribe.service');
-                console.log('🔧 [REACTIVAR] Intentando renovar token...');
+                logger.info('🔧 [REACTIVAR] Intentando renovar token...');
 
                 const renewed = await refreshAccessToken(broadcasterToken);
 
@@ -1314,11 +1315,11 @@ exports.reactivateBroadcasterToken = async (req, res) => {
                     });
                 }
 
-                console.log('🔧 [REACTIVAR] ✅ Token renovado exitosamente');
+                logger.info('🔧 [REACTIVAR] ✅ Token renovado exitosamente');
                 await broadcasterToken.reload(); // Recargar el token actualizado
 
             } catch (refreshError) {
-                console.error('🔧 [REACTIVAR] Error renovando token:', refreshError.message);
+                logger.error('🔧 [REACTIVAR] Error renovando token:', refreshError.message);
                 return res.status(400).json({
                     success: false,
                     error: 'Error renovando token: ' + refreshError.message,
@@ -1328,7 +1329,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
             }
         }
 
-        console.log('🔧 [REACTIVAR] Reactivando token...');
+        logger.info('🔧 [REACTIVAR] Reactivando token...');
 
         // Reactivar el token
         await broadcasterToken.update({
@@ -1337,7 +1338,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
             subscription_error: null
         });
 
-        console.log('🔧 [REACTIVAR] Intentando auto-suscripción con token del broadcaster...');
+        logger.info('🔧 [REACTIVAR] Intentando auto-suscripción con token del broadcaster...');
 
         // Intentar auto-suscripción usando SU propio token
         try {
@@ -1353,7 +1354,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
                 subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
             });
 
-            console.log('🔧 [REACTIVAR] Resultado de suscripción:', autoSubscribeResult.success ? 'ÉXITO' : 'FALLO');
+            logger.info('🔧 [REACTIVAR] Resultado de suscripción:', autoSubscribeResult.success ? 'ÉXITO' : 'FALLO');
 
             res.json({
                 success: true,
@@ -1372,7 +1373,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
             });
 
         } catch (subscribeError) {
-            console.error('🔧 [REACTIVAR] Error en suscripción:', subscribeError.message);
+            logger.error('🔧 [REACTIVAR] Error en suscripción:', subscribeError.message);
 
             await broadcasterToken.update({
                 auto_subscribed: false,
@@ -1390,7 +1391,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         }
 
     } catch (error) {
-        console.error('🔧 [REACTIVAR] Error general:', error);
+        logger.error('🔧 [REACTIVAR] Error general:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -1452,7 +1453,7 @@ exports.systemStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[System Status] Error:', error);
+        logger.error('[System Status] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -1469,7 +1470,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
         const config = require('../../config');
         const axios = require('axios');
 
-        console.log('🔧 [DEBUG SUB] Iniciando depuración del proceso de suscripción...');
+        logger.info('🔧 [DEBUG SUB] Iniciando depuración del proceso de suscripción...');
 
         // 1. Verificar token activo
         const broadcasterToken = await KickBroadcasterToken.findOne({
@@ -1487,7 +1488,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
             });
         }
 
-        console.log('🔧 [DEBUG SUB] Token encontrado para:', broadcasterToken.kick_username);
+        logger.info('🔧 [DEBUG SUB] Token encontrado para:', broadcasterToken.kick_username);
 
         // 2. Simular llamada a la API de Kick (solo un evento para prueba)
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
@@ -1498,7 +1499,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
             webhook_url: 'https://api.luisardito.com/api/kick-webhook/events'
         };
 
-        console.log('🔧 [DEBUG SUB] Payload enviado a Kick:', JSON.stringify(testPayload, null, 2));
+        logger.info('🔧 [DEBUG SUB] Payload enviado a Kick:', JSON.stringify(testPayload, null, 2));
 
         let kickResponse;
         try {
@@ -1510,9 +1511,9 @@ exports.debugSubscriptionProcess = async (req, res) => {
                 timeout: 15000
             });
             kickResponse = response.data;
-            console.log('🔧 [DEBUG SUB] Respuesta de Kick:', JSON.stringify(kickResponse, null, 2));
+            logger.info('🔧 [DEBUG SUB] Respuesta de Kick:', JSON.stringify(kickResponse, null, 2));
         } catch (apiError) {
-            console.error('🔧 [DEBUG SUB] Error en API de Kick:', apiError.message);
+            logger.error('🔧 [DEBUG SUB] Error en API de Kick:', apiError.message);
             return res.json({
                 success: false,
                 error: 'Error comunicándose con API de Kick',
@@ -1525,7 +1526,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
         const debugResults = [];
 
         for (const sub of subscriptionsData) {
-            console.log('🔧 [DEBUG SUB] Procesando suscripción:', JSON.stringify(sub, null, 2));
+            logger.info('🔧 [DEBUG SUB] Procesando suscripción:', JSON.stringify(sub, null, 2));
 
             if (sub.subscription_id && !sub.error) {
                 const dataToSave = {
@@ -1537,7 +1538,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
                     status: 'active'
                 };
 
-                console.log('🔧 [DEBUG SUB] Datos a guardar:', JSON.stringify(dataToSave, null, 2));
+                logger.info('🔧 [DEBUG SUB] Datos a guardar:', JSON.stringify(dataToSave, null, 2));
 
                 try {
                     // Usar la misma lógica que en el servicio principal: find-update
@@ -1555,7 +1556,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
                             subscription_id: sub.subscription_id,
                             db_id: localSub.id
                         });
-                        console.log('🔧 [DEBUG SUB] ✅ Actualizado exitoso para:', sub.name);
+                        logger.info('🔧 [DEBUG SUB] ✅ Actualizado exitoso para:', sub.name);
                     } else {
                         // Si no existe, crear nuevo
                         const newSubscription = await KickEventSubscription.create(dataToSave);
@@ -1566,11 +1567,11 @@ exports.debugSubscriptionProcess = async (req, res) => {
                             subscription_id: sub.subscription_id,
                             db_id: newSubscription.id
                         });
-                        console.log('🔧 [DEBUG SUB] ✅ Creado exitoso para:', sub.name);
+                        logger.info('🔧 [DEBUG SUB] ✅ Creado exitoso para:', sub.name);
                     }
 
                 } catch (dbError) {
-                    console.error('🔧 [DEBUG SUB] ❌ Error DB detallado:', {
+                    logger.error('🔧 [DEBUG SUB] ❌ Error DB detallado:', {
                         message: dbError.message,
                         name: dbError.name,
                         errors: dbError.errors,
@@ -1611,7 +1612,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
                 event_type: 'chat.message.sent'
             }
         });
-        console.log('🔧 [DEBUG SUB] Limpieza completada');
+        logger.info('🔧 [DEBUG SUB] Limpieza completada');
 
         res.json({
             success: true,
@@ -1627,7 +1628,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔧 [DEBUG SUB] Error general:', error);
+        logger.error('🔧 [DEBUG SUB] Error general:', error);
         res.status(500).json({
             success: false,
             error: error.message,
@@ -1644,7 +1645,7 @@ exports.debugTableStructure = async (req, res) => {
         const { KickEventSubscription } = require('../models');
         const { sequelize } = require('../models/database');
 
-        console.log('🔧 [DEBUG TABLE] Verificando estructura de tabla...');
+        logger.info('🔧 [DEBUG TABLE] Verificando estructura de tabla...');
 
         // 1. Describir la tabla directamente en la BD
         const [tableDescription] = await sequelize.query(`DESCRIBE kick_event_subscriptions`);
@@ -1701,7 +1702,7 @@ exports.debugTableStructure = async (req, res) => {
                 status: 'active'
             };
 
-            console.log('🔧 [DEBUG TABLE] Probando inserción con datos:', testData);
+            logger.info('🔧 [DEBUG TABLE] Probando inserción con datos:', testData);
 
             const testRecord = await KickEventSubscription.create(testData);
 
@@ -1715,7 +1716,7 @@ exports.debugTableStructure = async (req, res) => {
             };
 
         } catch (insertError) {
-            console.error('🔧 [DEBUG TABLE] Error en inserción de prueba:', insertError);
+            logger.error('🔧 [DEBUG TABLE] Error en inserción de prueba:', insertError);
 
             insertTestResult = {
                 success: false,
@@ -1755,7 +1756,7 @@ exports.debugTableStructure = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔧 [DEBUG TABLE] Error general:', error);
+        logger.error('🔧 [DEBUG TABLE] Error general:', error);
         res.status(500).json({
             success: false,
             error: error.message,
@@ -1772,7 +1773,7 @@ exports.setupPermanentWebhooks = async (req, res) => {
         const { subscribeToEventsWithAppToken } = require('../services/kickAppToken.service');
         const config = require('../../config');
 
-        console.log('🚀 [Setup Permanent] Iniciando configuración de webhooks permanentes...');
+        logger.info('🚀 [Setup Permanent] Iniciando configuración de webhooks permanentes...');
 
         const result = await subscribeToEventsWithAppToken(config.kick.broadcasterId);
 
@@ -1811,7 +1812,7 @@ exports.setupPermanentWebhooks = async (req, res) => {
         }
 
     } catch (error) {
-        console.error('🚀 [Setup Permanent] Error general:', error);
+        logger.error('🚀 [Setup Permanent] Error general:', error);
         res.status(500).json({
             success: false,
             error: error.message,
@@ -1831,14 +1832,14 @@ exports.debugAppTokenWebhooks = async (req, res) => {
         } = require('../services/kickAppToken.service');
         const config = require('../../config');
 
-        console.log('🔍 [Debug App Token] Iniciando diagnóstico de webhooks permanentes...');
+        logger.info('🔍 [Debug App Token] Iniciando diagnóstico de webhooks permanentes...');
 
         // 1. Probar obtención de App Token
-        console.log('🔍 [Debug App Token] Probando obtención de App Access Token...');
+        logger.info('🔍 [Debug App Token] Probando obtención de App Access Token...');
         const appToken = await getAppAccessToken();
 
         // 2. Verificar estado de suscripciones
-        console.log('🔍 [Debug App Token] Verificando estado de suscripciones...');
+        logger.info('🔍 [Debug App Token] Verificando estado de suscripciones...');
         const webhooksStatus = await checkAppTokenWebhooksStatus(config.kick.broadcasterId);
 
         // 3. Verificar todas las suscripciones en DB
@@ -1891,7 +1892,7 @@ exports.debugAppTokenWebhooks = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔍 [Debug App Token] Error:', error);
+        logger.error('🔍 [Debug App Token] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message,
@@ -1909,7 +1910,7 @@ exports.compareTokenTypes = async (req, res) => {
         const { KickBroadcasterToken } = require('../models');
         const config = require('../../config');
 
-        console.log('🔄 [Compare Tokens] Comparando User Token vs App Token...');
+        logger.info('🔄 [Compare Tokens] Comparando User Token vs App Token...');
 
         // Estado de webhooks
         const webhooksStatus = await checkAppTokenWebhooksStatus(config.kick.broadcasterId);
@@ -1970,7 +1971,7 @@ exports.compareTokenTypes = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('🔄 [Compare Tokens] Error:', error);
+        logger.error('🔄 [Compare Tokens] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -1996,7 +1997,7 @@ exports.debugBotrixMigration = async (req, res) => {
             });
         }
 
-        console.log(`🧪 [DEBUG BOTRIX] Simulando migración: ${kick_username} con ${points_amount} puntos`);
+        logger.info(`🧪 [DEBUG BOTRIX] Simulando migración: ${kick_username} con ${points_amount} puntos`);
 
         // Crear mensaje simulado de BotRix
         const mockMessage = {
@@ -2022,7 +2023,7 @@ exports.debugBotrixMigration = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [DEBUG BOTRIX] Error en simulación:', error);
+        logger.error('❌ [DEBUG BOTRIX] Error en simulación:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -2076,7 +2077,7 @@ exports.debugSystemInfo = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error obteniendo información del sistema:', error);
+        logger.error('Error obteniendo información del sistema:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -2106,7 +2107,7 @@ exports.debugStreamStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Stream Status] Error:', error);
+        logger.error('[Stream Status] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message

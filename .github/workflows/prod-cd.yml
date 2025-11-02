@@ -83,6 +83,9 @@ jobs:
             echo "KICK_OAUTH_TOKEN_URL=${{ secrets.KICK_OAUTH_TOKEN_URL }}" >> "$ENV_PATH"
             echo "KICK_OAUTH_REVOKE_URL=${{ secrets.KICK_OAUTH_REVOKE_URL }}" >> "$ENV_PATH"
             echo "KICK_BROADCASTER_ID=${{ secrets.KICK_BROADCASTER_ID }}" >> "$ENV_PATH"
+            
+            # Logging settings (false = logs apagados para máximo rendimiento)
+            echo "DEBUG_LOGS=true" >> "$ENV_PATH"
 
             # Kick BOT application
             echo "KICK_BOT_CLIENT_SECRET=${{ secrets.KICK_BOT_CLIENT_SECRET }}" >> "$ENV_PATH"

@@ -133,7 +133,7 @@ exports.listarUsuarios = async (req, res) => {
 
         res.json(enrichedUsers);
     } catch (error) {
-        console.error('Error al listar usuarios:', error);
+        logger.error('Error al listar usuarios:', error);
         res.status(500).json({ error: 'Error interno del servidor', message: error.message });
     }
 };
@@ -232,7 +232,7 @@ exports.debugUsuario = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en debug de usuario:', error);
+        logger.error('Error en debug de usuario:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -342,7 +342,7 @@ exports.debugRolesPermisos = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en debug de roles y permisos:', error);
+        logger.error('Error en debug de roles y permisos:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -381,7 +381,7 @@ exports.hotfixActualizarRol = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error en hotfix de rol:', error);
+        logger.error('Error en hotfix de rol:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -402,19 +402,19 @@ exports.syncKickInfo = async (req, res) => {
             });
         }
 
-        console.log(`[Sync Kick Info] Sincronizando datos para usuario ${user.nickname} (ID: ${userId})`);
+        logger.info(`[Sync Kick Info] Sincronizando datos para usuario ${user.nickname} (ID: ${userId})`);
 
         // Obtener datos actualizados de Kick usando el ID externo
         let kickUserData;
         try {
             kickUserData = await getKickUserData(user.user_id_ext);
-            console.log(`[Sync Kick Info] Datos obtenidos de Kick:`, {
+            logger.info(`[Sync Kick Info] Datos obtenidos de Kick:`, {
                 name: kickUserData?.name,
                 user_id: kickUserData?.user_id,
                 profile_picture: kickUserData?.profile_picture ? 'presente' : 'ausente'
             });
         } catch (kickError) {
-            console.error('[Sync Kick Info] Error obteniendo datos de Kick:', kickError.message);
+            logger.error('[Sync Kick Info] Error obteniendo datos de Kick:', kickError.message);
             return res.status(500).json({
                 error: 'No se pudieron obtener datos actualizados de Kick',
                 details: kickError.message
@@ -434,15 +434,15 @@ exports.syncKickInfo = async (req, res) => {
 
         if (kickAvatarUrl) {
             try {
-                console.log(`[Sync Kick Info] Procesando avatar para usuario ${userId}`);
+                logger.info(`[Sync Kick Info] Procesando avatar para usuario ${userId}`);
                 cloudinaryAvatarUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
-                console.log(`[Sync Kick Info] ✅ Avatar actualizado en Cloudinary:`, cloudinaryAvatarUrl);
+                logger.info(`[Sync Kick Info] ✅ Avatar actualizado en Cloudinary:`, cloudinaryAvatarUrl);
             } catch (avatarError) {
-                console.warn('[Sync Kick Info] Error actualizando avatar, manteniendo el anterior:', avatarError.message);
+                logger.warn('[Sync Kick Info] Error actualizando avatar, manteniendo el anterior:', avatarError.message);
                 // No fallar la sincronización por problemas con el avatar
             }
         } else {
-            console.log('[Sync Kick Info] No se encontró avatar en los datos de Kick');
+            logger.info('[Sync Kick Info] No se encontró avatar en los datos de Kick');
         }
 
         // Actualizar usuario con datos sincronizados
@@ -459,7 +459,7 @@ exports.syncKickInfo = async (req, res) => {
             kick_data: updatedKickData
         });
 
-        console.log(`[Sync Kick Info] ✅ Usuario sincronizado exitosamente`);
+        logger.info(`[Sync Kick Info] ✅ Usuario sincronizado exitosamente`);
 
         // Devolver usuario actualizado
         const updatedUser = await Usuario.findByPk(userId);
@@ -483,7 +483,7 @@ exports.syncKickInfo = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Sync Kick Info] Error general:', error.message);
+        logger.error('[Sync Kick Info] Error general:', error.message);
         res.status(500).json({
             error: 'Error al sincronizar información',
             details: error.message
@@ -545,7 +545,7 @@ exports.actualizarPuntos = async (req, res) => {
         });
     } catch (error) {
         await t.rollback();
-        console.error('Error al actualizar puntos:', error);
+        logger.error('Error al actualizar puntos:', error);
         res.status(500).json({ error: 'Error interno del servidor', message: error.message });
     }
 };
@@ -599,7 +599,7 @@ exports.debugPermisos = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Debug Permisos] Error:', error);
+        logger.error('[Debug Permisos] Error:', error);
         res.status(500).json({
             error: error.message,
             stack: error.stack
@@ -692,7 +692,7 @@ exports.debugRolesPermisos = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Debug Roles/Permisos] Error:', error);
+        logger.error('[Debug Roles/Permisos] Error:', error);
         res.status(500).json({
             error: error.message,
             stack: error.stack
@@ -706,6 +706,7 @@ exports.debugRolesPermisos = async (req, res) => {
 exports.debugUsuarioEspecifico = async (req, res) => {
     try {
         const { Rol, Permiso } = require('../models');
+const logger = require('../utils/logger');
         const { usuarioId } = req.params;
 
         // Obtener usuario específico con rol y permisos
@@ -769,7 +770,7 @@ exports.debugUsuarioEspecifico = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Debug Usuario Específico] Error:', error);
+        logger.error('[Debug Usuario Específico] Error:', error);
         res.status(500).json({
             error: error.message,
             stack: error.stack
@@ -805,7 +806,7 @@ exports.hotfixActualizarRol = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Hotfix Rol] Error:', error);
+        logger.error('[Hotfix Rol] Error:', error);
         res.status(500).json({
             error: error.message
         });

@@ -1,6 +1,7 @@
 const axios = require('axios');
 const config = require('../../config');
 const { KickEventSubscription, KickBroadcasterToken } = require('../models');
+const logger = require('../utils/logger');
 
 /**
  * Lista de eventos a los que auto-suscribirse
@@ -26,7 +27,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
     try {
         const actualTokenProvider = tokenProviderId || broadcasterUserId;
 
-        console.log(`[Auto Subscribe] Configurando eventos para broadcaster ${broadcasterUserId}`);
+        logger.info(`[Auto Subscribe] Configurando eventos para broadcaster ${broadcasterUserId}`);
 
         // Asegurar que tenemos un token válido del proveedor del token
         const validToken = await ensureValidToken(actualTokenProvider);
@@ -56,7 +57,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
         const createdSubscriptions = [];
         const errors = [];
 
-        console.log(`[Auto Subscribe] Procesando ${subscriptionsData.length} suscripciones recibidas de Kick`);
+        logger.info(`[Auto Subscribe] Procesando ${subscriptionsData.length} suscripciones recibidas de Kick`);
 
         for (const sub of subscriptionsData) {
             if (sub.subscription_id && !sub.error) {
@@ -75,7 +76,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
                             method: 'webhook',
                             status: 'active'
                         });
-                        console.log(`[Auto Subscribe] ✅ ${sub.name} actualizado (ID: ${localSub.id})`);
+                        logger.info(`[Auto Subscribe] ✅ ${sub.name} actualizado (ID: ${localSub.id})`);
                     } else {
                         // Si no existe, crear nuevo
                         localSub = await KickEventSubscription.create({
@@ -86,18 +87,18 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
                             method: 'webhook',
                             status: 'active'
                         });
-                        console.log(`[Auto Subscribe] ✅ ${sub.name} creado (ID: ${localSub.id})`);
+                        logger.info(`[Auto Subscribe] ✅ ${sub.name} creado (ID: ${localSub.id})`);
                     }
 
                     createdSubscriptions.push(localSub);
 
                 } catch (dbError) {
-                    console.error(`[Auto Subscribe] ❌ Error DB ${sub.name}:`, dbError.message);
+                    logger.error(`[Auto Subscribe] ❌ Error DB ${sub.name}:`, dbError.message);
                     errors.push({ event: sub.name, error: dbError.message });
                 }
             } else if (sub.error) {
                 errors.push({ event: sub.name, error: sub.error });
-                console.error(`[Auto Subscribe] ❌ ${sub.name}:`, sub.error);
+                logger.error(`[Auto Subscribe] ❌ ${sub.name}:`, sub.error);
             }
         }
 
@@ -125,12 +126,12 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
             kickResponse: response.data
         };
 
-        console.log(`[Auto Subscribe] ✅ Completado: ${result.totalSubscribed} eventos configurados`);
+        logger.info(`[Auto Subscribe] ✅ Completado: ${result.totalSubscribed} eventos configurados`);
 
         return result;
 
     } catch (error) {
-        console.error('[Auto Subscribe] ❌ Error:', error.message);
+        logger.error('[Auto Subscribe] ❌ Error:', error.message);
 
         // Actualizar el error en la base de datos
         await KickBroadcasterToken.update(
@@ -148,7 +149,7 @@ async function autoSubscribeToEvents(accessToken, broadcasterUserId, tokenProvid
         );
 
         if (error.response) {
-            console.error('[Auto Subscribe] API Error:', error.response.status, error.response.data);
+            logger.error('[Auto Subscribe] API Error:', error.response.status, error.response.data);
 
             return {
                 success: false,
@@ -190,11 +191,11 @@ async function hasActiveSubscriptions(broadcasterUserId) {
 async function refreshAccessToken(broadcasterToken) {
     try {
         if (!broadcasterToken.refresh_token) {
-            console.error('[Token Refresh] No hay refresh token disponible');
+            logger.error('[Token Refresh] No hay refresh token disponible');
             return false;
         }
 
-        console.log(`[Token Refresh] Renovando token para ${broadcasterToken.kick_username}`);
+        logger.info(`[Token Refresh] Renovando token para ${broadcasterToken.kick_username}`);
 
         const refreshUrl = `${config.kick.apiBaseUrl}/oauth/token`;
 
@@ -221,16 +222,16 @@ async function refreshAccessToken(broadcasterToken) {
                 token_expires_at: newExpiresAt
             });
 
-            console.log(`[Token Refresh] ✅ Token renovado exitosamente`);
+            logger.info(`[Token Refresh] ✅ Token renovado exitosamente`);
             return true;
         }
 
         return false;
 
     } catch (error) {
-        console.error('[Token Refresh] ❌ Error renovando token:', error.message);
+        logger.error('[Token Refresh] ❌ Error renovando token:', error.message);
         if (error.response) {
-            console.error('[Token Refresh] API Error:', error.response.status, error.response.data);
+            logger.error('[Token Refresh] API Error:', error.response.status, error.response.data);
         }
         return false;
     }
@@ -251,7 +252,7 @@ async function ensureValidToken(broadcasterUserId) {
         });
 
         if (!broadcasterToken) {
-            console.error('[Token Ensure] No se encontró token activo para:', broadcasterUserId);
+            logger.error('[Token Ensure] No se encontró token activo para:', broadcasterUserId);
             return null;
         }
 
@@ -261,11 +262,11 @@ async function ensureValidToken(broadcasterUserId) {
 
         // Si el token expira en menos de 5 minutos, refrescarlo
         if (expiresAt.getTime() - now.getTime() < bufferTime) {
-            console.log('[Token Ensure] Renovando token próximo a expirar...');
+            logger.info('[Token Ensure] Renovando token próximo a expirar...');
             const refreshed = await refreshAccessToken(broadcasterToken);
 
             if (!refreshed) {
-                console.error('[Token Ensure] No se pudo refrescar el token');
+                logger.error('[Token Ensure] No se pudo refrescar el token');
                 return null;
             }
 
@@ -276,7 +277,7 @@ async function ensureValidToken(broadcasterUserId) {
         return broadcasterToken.access_token;
 
     } catch (error) {
-        console.error('[Token Ensure] Error:', error.message);
+        logger.error('[Token Ensure] Error:', error.message);
         return null;
     }
 }

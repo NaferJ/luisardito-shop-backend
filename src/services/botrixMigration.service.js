@@ -1,6 +1,7 @@
 const { Usuario, HistorialPunto, BotrixMigrationConfig } = require('../models');
 const { sequelize } = require('../models/database');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 class BotrixMigrationService {
     /**
@@ -33,7 +34,7 @@ class BotrixMigrationService {
             const [, targetUsername, botrixPoints] = match;
             const pointsAmount = parseInt(botrixPoints, 10);
 
-            console.log(`🔄 [BOTRIX MIGRATION] Detected: @${targetUsername} has ${pointsAmount} points`);
+            logger.info(`🔄 [BOTRIX MIGRATION] Detected: @${targetUsername} has ${pointsAmount} points`);
 
             // Buscar el usuario por nickname de Kick
             const usuario = await Usuario.findOne({
@@ -47,7 +48,7 @@ class BotrixMigrationService {
             });
 
             if (!usuario) {
-                console.log(`❌ [BOTRIX MIGRATION] Usuario ${targetUsername} no encontrado en la base de datos`);
+                logger.info(`❌ [BOTRIX MIGRATION] Usuario ${targetUsername} no encontrado en la base de datos`);
                 return {
                     processed: false,
                     reason: 'User not found',
@@ -57,7 +58,7 @@ class BotrixMigrationService {
 
             // Verificar si ya migró
             if (usuario.botrix_migrated) {
-                console.log(`⚠️ [BOTRIX MIGRATION] Usuario ${targetUsername} ya migró puntos anteriormente`);
+                logger.info(`⚠️ [BOTRIX MIGRATION] Usuario ${targetUsername} ya migró puntos anteriormente`);
                 return {
                     processed: false,
                     reason: 'Already migrated',
@@ -73,7 +74,7 @@ class BotrixMigrationService {
             // Realizar la migración
             const result = await this.migrateBotrixPoints(usuario, pointsAmount, targetUsername);
 
-            console.log(`✅ [BOTRIX MIGRATION] Migración completada para ${targetUsername}: ${pointsAmount} puntos`);
+            logger.info(`✅ [BOTRIX MIGRATION] Migración completada para ${targetUsername}: ${pointsAmount} puntos`);
             return {
                 processed: true,
                 reason: 'Migration successful',
@@ -81,7 +82,7 @@ class BotrixMigrationService {
             };
 
         } catch (error) {
-            console.error('❌ [BOTRIX MIGRATION] Error:', error);
+            logger.error('❌ [BOTRIX MIGRATION] Error:', error);
             return {
                 processed: false,
                 reason: 'Error',

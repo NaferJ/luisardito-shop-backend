@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const logger = require('./logger');
 
 // Clave pública de Kick para verificar firmas
 const KICK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
@@ -39,7 +40,7 @@ function verifyWebhookSignature(messageId, timestamp, body, signatureBase64) {
 
         return isValid;
     } catch (error) {
-        console.error('[Kick Webhook] Error verificando firma:', error.message);
+        logger.error('[Kick Webhook] Error verificando firma:', error.message);
         return false;
     }
 }

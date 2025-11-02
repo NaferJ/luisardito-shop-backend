@@ -3,6 +3,7 @@ const config = require('../../config');
 const KickBotToken = require('../models/kickBotToken.model');
 const fs = require('fs').promises;
 const path = require('path');
+const logger = require('../utils/logger');
 
 /**
  * Servicio para enviar mensajes al chat de Kick usando el BOT
@@ -26,7 +27,7 @@ class KickBotService {
      */
     async refreshToken(tokenRecord) {
         try {
-            console.log(`[KickBot] 🔄 Intentando renovar token para ${tokenRecord.kick_username}`);
+            logger.info(`[KickBot] 🔄 Intentando renovar token para ${tokenRecord.kick_username}`);
 
             const response = await axios.post('https://id.kick.com/oauth/token',
                 new URLSearchParams({
@@ -60,19 +61,19 @@ class KickBotService {
                     username: tokenRecord.kick_username
                 };
                 await this.writeTokensToFile(tokensForFile);
-                console.log(`[KickBot] 💾 tokens.json actualizado para ${tokenRecord.kick_username}`);
+                logger.info(`[KickBot] 💾 tokens.json actualizado para ${tokenRecord.kick_username}`);
             } catch (fileError) {
-                console.warn(`[KickBot] ⚠️ No se pudo actualizar tokens.json (no crítico):`, fileError.message);
+                logger.warn(`[KickBot] ⚠️ No se pudo actualizar tokens.json (no crítico):`, fileError.message);
             }
 
-            console.log(`[KickBot] ✅ Token renovado exitosamente para ${tokenRecord.kick_username}`);
+            logger.info(`[KickBot] ✅ Token renovado exitosamente para ${tokenRecord.kick_username}`);
             return tokenRecord;
 
         } catch (error) {
             const errorData = error.response?.data;
             const errorStatus = error.response?.status;
 
-            console.error('[KickBot] ❌ Error renovando token:', {
+            logger.error('[KickBot] ❌ Error renovando token:', {
                 status: errorStatus,
                 data: errorData,
                 message: error.message
@@ -80,7 +81,7 @@ class KickBotService {
 
             // Si el error es de autenticación o refresh token inválido
             if (errorStatus === 400 || errorStatus === 401) {
-                console.log(`[KickBot] ⚠️ Refresh token inválido o expirado para ${tokenRecord.kick_username}`);
+                logger.info(`[KickBot] ⚠️ Refresh token inválido o expirado para ${tokenRecord.kick_username}`);
                 await tokenRecord.update({
                     is_active: false,
                     updated_at: new Date()
@@ -96,9 +97,9 @@ class KickBotService {
                 refreshTokenError.originalError = error;
 
                 // 🚨 ALERTA: Refresh token expirado - requiere re-autorización manual
-                console.error(`🚨 [ALERTA CRÍTICA] Refresh token expirado para ${tokenRecord.kick_username}!`);
-                console.error(`🚨 Requiere re-autorización manual en: https://id.kick.com/oauth/authorize?client_id=${config.kickBot.clientId}&redirect_uri=${encodeURIComponent(config.kickBot.redirectUri)}&response_type=code&scope=user:read%20chat:write%20channel:read%20channel:write`);
-                console.error(`🚨 Una vez autorizado, guardar el nuevo código en la DB.`);
+                logger.error(`🚨 [ALERTA CRÍTICA] Refresh token expirado para ${tokenRecord.kick_username}!`);
+                logger.error(`🚨 Requiere re-autorización manual en: https://id.kick.com/oauth/authorize?client_id=${config.kickBot.clientId}&redirect_uri=${encodeURIComponent(config.kickBot.redirectUri)}&response_type=code&scope=user:read%20chat:write%20channel:read%20channel:write`);
+                logger.error(`🚨 Una vez autorizado, guardar el nuevo código en la DB.`);
 
                 throw refreshTokenError;
             }
@@ -114,11 +115,11 @@ class KickBotService {
      */
     async renewAccessToken(tokenRecord) {
         try {
-            console.log(`[KickBot] 🔄 Renovando token para ${tokenRecord.kick_username}...`);
+            logger.info(`[KickBot] 🔄 Renovando token para ${tokenRecord.kick_username}...`);
             const updatedRecord = await this.refreshToken(tokenRecord);
             return true;
         } catch (error) {
-            console.error(`[KickBot] ❌ Error renovando token para ${tokenRecord.kick_username}:`, error.message);
+            logger.error(`[KickBot] ❌ Error renovando token para ${tokenRecord.kick_username}:`, error.message);
             return false;
         }
     }
@@ -128,11 +129,11 @@ class KickBotService {
      * @returns {Promise<string>} - Token de acceso
      */
     async resolveAccessToken() {
-        console.log('[KickBot] 🔍 Resolviendo access token...');
+        logger.info('[KickBot] 🔍 Resolviendo access token...');
         
         // Si hay un token en la configuración, usarlo (para desarrollo)
         if (this.accessToken && String(this.accessToken).length > 10) {
-            console.log('[KickBot] ✅ Usando token de configuración');
+            logger.info('[KickBot] ✅ Usando token de configuración');
             return this.accessToken;
         }
 
@@ -142,15 +143,15 @@ class KickBotService {
             if (tokens && tokens.accessToken) {
                 // Verificar si el token está por expirar (en menos de 5 minutos)
                 if (tokens.expiresAt > Date.now() + 5 * 60 * 1000) {
-                    console.log('[KickBot] ✅ Token válido desde archivo');
+                    logger.info('[KickBot] ✅ Token válido desde archivo');
                     return tokens.accessToken;
                 } else {
-                    console.log('[KickBot] ⏳ Token expirado o por expirar, renovando desde archivo...');
+                    logger.info('[KickBot] ⏳ Token expirado o por expirar, renovando desde archivo...');
                     return await this.refreshAccessToken();
                 }
             }
         } catch (error) {
-            console.log('[KickBot] ⚠️ Error leyendo tokens.json, intentando con DB:', error.message);
+            logger.info('[KickBot] ⚠️ Error leyendo tokens.json, intentando con DB:', error.message);
         }
 
         // Fallback a DB si no hay archivo o falla
@@ -162,22 +163,22 @@ class KickBotService {
                 is_active: true 
             };
             
-            console.log('[KickBot] 🔍 Buscando tokens en DB...');
+            logger.info('[KickBot] 🔍 Buscando tokens en DB...');
             const records = await KickBotToken.findAll({
                 where,
                 order: [['updated_at', 'DESC']] 
             });
             
             if (!records || records.length === 0) {
-                console.log('[KickBot] ❌ No se encontraron tokens activos en la base de datos');
+                logger.info('[KickBot] ❌ No se encontraron tokens activos en la base de datos');
                 return null;
             }
 
-            console.log(`[KickBot] 🔍 Encontrados ${records.length} tokens activos`);
+            logger.info(`[KickBot] 🔍 Encontrados ${records.length} tokens activos`);
 
             // Probar cada token hasta encontrar uno válido
             for (const record of records) {
-                console.log(`[KickBot] 🔍 Probando token para ${record.kick_username}`, {
+                logger.info(`[KickBot] 🔍 Probando token para ${record.kick_username}`, {
                     expira_en: record.token_expires_at,
                     activo: record.is_active,
                     tiene_refresh: !!record.refresh_token
@@ -193,35 +194,35 @@ class KickBotService {
                     const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
 
                     if (isExpired) {
-                        console.log(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos, intentando renovar...`);
+                        logger.info(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos, intentando renovar...`);
                     } else {
-                        console.log(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos), renovando...`);
+                        logger.info(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos), renovando...`);
                     }
 
                     try {
                         const updatedRecord = await this.refreshToken(record);
                         this.accessToken = updatedRecord.access_token;
-                        console.log(`[KickBot] ✅ Token renovado y seleccionado para ${record.kick_username}`);
+                        logger.info(`[KickBot] ✅ Token renovado y seleccionado para ${record.kick_username}`);
                         return this.accessToken;
                     } catch (error) {
-                        console.error(`[KickBot] ❌ Renovación falló para ${record.kick_username}:`, error.message);
+                        logger.error(`[KickBot] ❌ Renovación falló para ${record.kick_username}:`, error.message);
                         // Continuar con el siguiente token
                         continue;
                     }
                 } else {
                     // Token válido, usarlo
                     this.accessToken = record.access_token;
-                    console.log(`[KickBot] ✅ Token válido seleccionado para ${record.kick_username}`);
+                    logger.info(`[KickBot] ✅ Token válido seleccionado para ${record.kick_username}`);
                     return this.accessToken;
                 }
             }
 
             // Si ningún token funcionó
-            console.log('[KickBot] ❌ Ningún token pudo ser renovado o es válido');
+            logger.info('[KickBot] ❌ Ningún token pudo ser renovado o es válido');
             return null;
 
         } catch (e) {
-            console.error('[KickBot] ❌ Error resolviendo token desde DB:', e.message);
+            logger.error('[KickBot] ❌ Error resolviendo token desde DB:', e.message);
             return null;
         }
     }
@@ -234,7 +235,7 @@ class KickBotService {
     async sendMessage(message) {
         const token = await this.resolveAccessToken();
         if (!token) {
-            console.error('[KickBot] ❌ No hay access token disponible (config ni DB)');
+            logger.error('[KickBot] ❌ No hay access token disponible (config ni DB)');
             return { ok: false, error: 'missing_access_token' };
         }
         
@@ -250,7 +251,7 @@ class KickBotService {
             broadcaster_user_id: broadcasterId  // Necesario cuando type es 'user'
         };
 
-        console.log('[KickBot] 🔍 Detalles del envío:', {
+        logger.info('[KickBot] 🔍 Detalles del envío:', {
             url,
             payload,
             tokenPreview: token ? `${token.substring(0, 10)}...${token.slice(-5)}` : 'NO TOKEN',
@@ -260,7 +261,7 @@ class KickBotService {
         });
 
         try {
-            console.log(`[KickBot] 📤 Enviando mensaje: "${payload.content}"`);
+            logger.info(`[KickBot] 📤 Enviando mensaje: "${payload.content}"`);
             const response = await axios.post(
                 url,
                 payload,
@@ -276,7 +277,7 @@ class KickBotService {
                 }
             );
 
-            console.log('[KickBot] ✅ Respuesta de la API:', {
+            logger.info('[KickBot] ✅ Respuesta de la API:', {
                 status: response.status,
                 statusText: response.statusText,
                 data: response.data,
@@ -284,7 +285,7 @@ class KickBotService {
             });
 
             if (response.status >= 400) {
-                console.error('[KickBot] ❌ Error en la respuesta de la API:', {
+                logger.error('[KickBot] ❌ Error en la respuesta de la API:', {
                     status: response.status,
                     data: response.data,
                     headers: response.headers
@@ -303,7 +304,7 @@ class KickBotService {
             };
         } catch (error) {
             const errorData = error.response?.data || error.message;
-            console.error('[KickBot] ❌ Error enviando mensaje:', errorData);
+            logger.error('[KickBot] ❌ Error enviando mensaje:', errorData);
             return { 
                 ok: false, 
                 error: typeof errorData === 'object' ? JSON.stringify(errorData) : errorData,
@@ -330,7 +331,7 @@ class KickBotService {
      */
     async exchangeCodeForTokens(code, username) {
         try {
-            console.log(`[KickBot] 🔄 Intercambiando código por tokens para ${username}...`);
+            logger.info(`[KickBot] 🔄 Intercambiando código por tokens para ${username}...`);
 
             const response = await axios.post('https://id.kick.com/oauth/token', {
                 grant_type: 'authorization_code',
@@ -375,11 +376,11 @@ class KickBotService {
                 });
             }
 
-            console.log(`[KickBot] ✅ Nuevos tokens guardados para ${username}`);
+            logger.info(`[KickBot] ✅ Nuevos tokens guardados para ${username}`);
             return tokenRecord;
 
         } catch (error) {
-            console.error('[KickBot] ❌ Error intercambiando código:', error.message);
+            logger.error('[KickBot] ❌ Error intercambiando código:', error.message);
             throw error;
         }
     }
@@ -388,25 +389,25 @@ class KickBotService {
      * Inicia el proceso de auto-refresh de tokens en segundo plano
      */
     startAutoRefresh() {
-        console.log('[KickBot] ⏰ Iniciando refresh automático de tokens cada 15 minutos (con delay inicial de 30 minutos)');
+        logger.info('[KickBot] ⏰ Iniciando refresh automático de tokens cada 15 minutos (con delay inicial de 30 minutos)');
 
         // Esperar 30 minutos antes de iniciar el refresh automático para evitar problemas con tokens recién obtenidos
         setTimeout(() => {
-            console.log('[KickBot] ⏰ Delay inicial completado, iniciando refresh automático');
+            logger.info('[KickBot] ⏰ Delay inicial completado, iniciando refresh automático');
 
             setInterval(async () => {
                 try {
-                    console.log('[KickBot] 🔄 Verificando si el token necesita refresh...');
+                    logger.info('[KickBot] 🔄 Verificando si el token necesita refresh...');
                     const needsRefresh = await this.checkIfTokenNeedsRefresh();
                     if (needsRefresh) {
-                        console.log('[KickBot] 🔄 Token necesita refresh, ejecutando...');
+                        logger.info('[KickBot] 🔄 Token necesita refresh, ejecutando...');
                         await this.refreshAccessToken();
-                        console.log('[KickBot] ✅ Refresh automático completado');
+                        logger.info('[KickBot] ✅ Refresh automático completado');
                     } else {
-                        console.log('[KickBot] ✅ Token aún válido, no se refresca');
+                        logger.info('[KickBot] ✅ Token aún válido, no se refresca');
                     }
                 } catch (error) {
-                    console.error('[KickBot] ❌ Error en el refresh automático:', error.message);
+                    logger.error('[KickBot] ❌ Error en el refresh automático:', error.message);
                 }
             }, 15 * 60 * 1000); // Cada 15 minutos
         }, 30 * 60 * 1000); // Delay inicial de 30 minutos
@@ -420,7 +421,7 @@ class KickBotService {
         try {
             const tokens = await this.readTokensFromFile();
             if (!tokens || !tokens.expiresAt) {
-                console.log('[KickBot] ⚠️ No hay tokens guardados o sin fecha de expiración');
+                logger.info('[KickBot] ⚠️ No hay tokens guardados o sin fecha de expiración');
                 return true; // Necesita refresh si no hay tokens
             }
 
@@ -434,16 +435,16 @@ class KickBotService {
                 const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
 
                 if (isExpired) {
-                    console.log(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos`);
+                    logger.info(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos`);
                 } else {
-                    console.log(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos)`);
+                    logger.info(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos)`);
                 }
                 return true;
             }
 
             return false; // No necesita refresh
         } catch (error) {
-            console.error('[KickBot] ❌ Error verificando si necesita refresh:', error.message);
+            logger.error('[KickBot] ❌ Error verificando si necesita refresh:', error.message);
             return true; // En caso de error, intentar refresh
         }
     }
@@ -458,7 +459,7 @@ class KickBotService {
             return JSON.parse(data);
         } catch (error) {
             if (error.code === 'ENOENT') {
-                console.log('[KickBot] 📄 Archivo tokens.json no existe aún');
+                logger.info('[KickBot] 📄 Archivo tokens.json no existe aún');
                 return null;
             }
             throw error;
@@ -471,9 +472,9 @@ class KickBotService {
      */
     async writeTokensToFile(tokens) {
         const fullPath = path.resolve(this.tokensFile);
-        console.log('[KickBot] 📁 Intentando guardar tokens en:', fullPath);
+        logger.info('[KickBot] 📁 Intentando guardar tokens en:', fullPath);
         await fs.writeFile(this.tokensFile, JSON.stringify(tokens, null, 2));
-        console.log('[KickBot] 💾 Tokens guardados exitosamente en:', fullPath);
+        logger.info('[KickBot] 💾 Tokens guardados exitosamente en:', fullPath);
     }
 
     /**
@@ -487,7 +488,7 @@ class KickBotService {
                 throw new Error('No hay refresh token disponible en tokens.json');
             }
 
-            console.log('[KickBot] 🔄 Renovando access token...');
+            logger.info('[KickBot] 🔄 Renovando access token...');
 
             const response = await axios.post('https://id.kick.com/oauth/token',
                 new URLSearchParams({
@@ -516,12 +517,12 @@ class KickBotService {
             };
 
             await this.writeTokensToFile(updatedTokens);
-            console.log('[KickBot] ✅ Access token renovado exitosamente');
+            logger.info('[KickBot] ✅ Access token renovado exitosamente');
 
             return updatedTokens.accessToken;
 
         } catch (error) {
-            console.error('[KickBot] ❌ Error renovando access token:', error.message);
+            logger.error('[KickBot] ❌ Error renovando access token:', error.message);
             throw error;
         }
     }

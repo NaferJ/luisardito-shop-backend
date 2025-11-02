@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 let cloudinary;
 
 try {
@@ -9,10 +10,10 @@ try {
         api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    console.log('[Cloudinary] ✅ Configurado correctamente');
+    logger.info('[Cloudinary] ✅ Configurado correctamente');
 
 } catch (error) {
-    console.warn('[Cloudinary] ⚠️ No disponible:', error.message);
+    logger.warn('[Cloudinary] ⚠️ No disponible:', error.message);
     cloudinary = null;
 }
 

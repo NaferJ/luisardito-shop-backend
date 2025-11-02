@@ -13,7 +13,7 @@ const { KickEventSubscription } = require('../models');
  */
 async function getAppAccessToken() {
     try {
-        console.log('🔑 [App Token] Obteniendo App Access Token con Client Credentials...');
+        logger.info('🔑 [App Token] Obteniendo App Access Token con Client Credentials...');
 
         const tokenUrl = `${config.kick.apiBaseUrl}/oauth/token`;
 
@@ -23,8 +23,8 @@ async function getAppAccessToken() {
             client_secret: config.kick.clientSecret
         };
 
-        console.log('🔑 [App Token] Enviando request a:', tokenUrl);
-        console.log('🔑 [App Token] Client ID:', config.kick.clientId);
+        logger.info('🔑 [App Token] Enviando request a:', tokenUrl);
+        logger.info('🔑 [App Token] Client ID:', config.kick.clientId);
 
         const response = await axios.post(tokenUrl, payload, {
             headers: {
@@ -35,22 +35,22 @@ async function getAppAccessToken() {
         });
 
         if (response.data.access_token) {
-            console.log('🔑 [App Token] ✅ App Access Token obtenido exitosamente');
-            console.log('🔑 [App Token] Token type:', response.data.token_type);
-            console.log('🔑 [App Token] Expires in:', response.data.expires_in || 'No especificado (permanente)');
+            logger.info('🔑 [App Token] ✅ App Access Token obtenido exitosamente');
+            logger.info('🔑 [App Token] Token type:', response.data.token_type);
+            logger.info('🔑 [App Token] Expires in:', response.data.expires_in || 'No especificado (permanente)');
 
             return response.data.access_token;
         } else {
-            console.error('🔑 [App Token] ❌ No se recibió access_token en la respuesta');
+            logger.error('🔑 [App Token] ❌ No se recibió access_token en la respuesta');
             return null;
         }
 
     } catch (error) {
-        console.error('🔑 [App Token] ❌ Error obteniendo App Access Token:', error.message);
+        logger.error('🔑 [App Token] ❌ Error obteniendo App Access Token:', error.message);
 
         if (error.response) {
-            console.error('🔑 [App Token] Status:', error.response.status);
-            console.error('🔑 [App Token] Response:', error.response.data);
+            logger.error('🔑 [App Token] Status:', error.response.status);
+            logger.error('🔑 [App Token] Response:', error.response.data);
         }
 
         return null;
@@ -64,7 +64,7 @@ async function getAppAccessToken() {
  */
 async function subscribeToEventsWithAppToken(broadcasterUserId) {
     try {
-        console.log('🎯 [App Webhook] Iniciando suscripción con App Token para broadcaster:', broadcasterUserId);
+        logger.info('🎯 [App Webhook] Iniciando suscripción con App Token para broadcaster:', broadcasterUserId);
 
         // 1. Obtener App Access Token
         const appToken = await getAppAccessToken();
@@ -93,7 +93,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
             webhook_url: 'https://api.luisardito.com/api/kick-webhook/events'
         };
 
-        console.log('🎯 [App Webhook] Payload:', JSON.stringify(payload, null, 2));
+        logger.info('🎯 [App Webhook] Payload:', JSON.stringify(payload, null, 2));
 
         const response = await axios.post(subscribeUrl, payload, {
             headers: {
@@ -103,7 +103,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
             timeout: 15000
         });
 
-        console.log('🎯 [App Webhook] Respuesta de Kick:', JSON.stringify(response.data, null, 2));
+        logger.info('🎯 [App Webhook] Respuesta de Kick:', JSON.stringify(response.data, null, 2));
 
         // 4. Procesar respuesta y guardar suscripciones
         const subscriptionsData = response.data.data || [];
@@ -128,7 +128,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
                             status: 'active',
                             app_id: 'APP_TOKEN' // Marcar como App Token
                         });
-                        console.log(`🎯 [App Webhook] ✅ ${sub.name} actualizado (App Token)`);
+                        logger.info(`🎯 [App Webhook] ✅ ${sub.name} actualizado (App Token)`);
                     } else {
                         // Crear nuevo
                         localSub = await KickEventSubscription.create({
@@ -140,18 +140,18 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
                             status: 'active',
                             app_id: 'APP_TOKEN' // Marcar como App Token
                         });
-                        console.log(`🎯 [App Webhook] ✅ ${sub.name} creado (App Token)`);
+                        logger.info(`🎯 [App Webhook] ✅ ${sub.name} creado (App Token)`);
                     }
 
                     createdSubscriptions.push(localSub);
 
                 } catch (dbError) {
-                    console.error(`🎯 [App Webhook] ❌ Error DB ${sub.name}:`, dbError.message);
+                    logger.error(`🎯 [App Webhook] ❌ Error DB ${sub.name}:`, dbError.message);
                     errors.push({ event: sub.name, error: dbError.message });
                 }
             } else if (sub.error) {
                 errors.push({ event: sub.name, error: sub.error });
-                console.error(`🎯 [App Webhook] ❌ ${sub.name}:`, sub.error);
+                logger.error(`🎯 [App Webhook] ❌ ${sub.name}:`, sub.error);
             }
         }
 
@@ -166,16 +166,16 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
             permanent: true
         };
 
-        console.log(`🎯 [App Webhook] ✅ Completado: ${result.totalSubscribed} eventos configurados con App Token`);
-        console.log('🎯 [App Webhook] 🚀 ¡Webhooks permanentes activados! No requieren re-autenticación.');
+        logger.info(`🎯 [App Webhook] ✅ Completado: ${result.totalSubscribed} eventos configurados con App Token`);
+        logger.info('🎯 [App Webhook] 🚀 ¡Webhooks permanentes activados! No requieren re-autenticación.');
 
         return result;
 
     } catch (error) {
-        console.error('🎯 [App Webhook] ❌ Error:', error.message);
+        logger.error('🎯 [App Webhook] ❌ Error:', error.message);
 
         if (error.response) {
-            console.error('🎯 [App Webhook] API Error:', error.response.status, error.response.data);
+            logger.error('🎯 [App Webhook] API Error:', error.response.status, error.response.data);
         }
 
         return {
@@ -208,6 +208,7 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId) {
             where: {
                 broadcaster_user_id: parseInt(broadcasterUserId),
                 app_id: { [require('sequelize').Op.ne]: 'APP_TOKEN' },
+const logger = require('../utils/logger');
                 status: 'active'
             }
         });
@@ -221,7 +222,7 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId) {
         };
 
     } catch (error) {
-        console.error('🎯 [App Webhook Status] Error:', error.message);
+        logger.error('🎯 [App Webhook Status] Error:', error.message);
         return {
             error: error.message,
             app_token_subscriptions: 0,

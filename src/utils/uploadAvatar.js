@@ -1,5 +1,6 @@
 const cloudinary = require('../config/cloudinary');
 const axios = require('axios');
+const logger = require('./logger');
 
 /**
  * Descarga el avatar de Kick y lo sube a Cloudinary
@@ -11,17 +12,17 @@ async function uploadKickAvatarToCloudinary(kickAvatarUrl, userId) {
     try {
         // Verificar si Cloudinary está disponible
         if (!cloudinary) {
-            console.warn(`[Upload Avatar] Cloudinary no disponible, usando URL original de Kick`);
+            logger.warn(`[Upload Avatar] Cloudinary no disponible, usando URL original de Kick`);
             return kickAvatarUrl; // Fallback a URL original
         }
 
         // Verificar si es una imagen por defecto de Kick (no se pueden descargar)
         if (kickAvatarUrl.includes('/img/default-profile-pictures/')) {
-            console.log(`[Upload Avatar] Avatar por defecto de Kick detectado, usando URL original`);
+            logger.info(`[Upload Avatar] Avatar por defecto de Kick detectado, usando URL original`);
             return kickAvatarUrl; // Usar URL original para avatares por defecto
         }
 
-        console.log(`[Upload Avatar] Descargando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
+        logger.info(`[Upload Avatar] Descargando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
 
         // 1. Descargar la imagen de Kick con headers mejorados
         const response = await axios.get(kickAvatarUrl, {
@@ -45,7 +46,7 @@ async function uploadKickAvatarToCloudinary(kickAvatarUrl, userId) {
         const base64Image = Buffer.from(response.data).toString('base64');
         const dataUri = `data:image/jpeg;base64,${base64Image}`;
 
-        console.log(`[Upload Avatar] Subiendo a Cloudinary para usuario ${userId}...`);
+        logger.info(`[Upload Avatar] Subiendo a Cloudinary para usuario ${userId}...`);
 
         // 3. Subir a Cloudinary
         const result = await cloudinary.uploader.upload(dataUri, {
@@ -59,27 +60,27 @@ async function uploadKickAvatarToCloudinary(kickAvatarUrl, userId) {
             ]
         });
 
-        console.log(`[Upload Avatar] ✅ Avatar subido exitosamente`);
+        logger.info(`[Upload Avatar] ✅ Avatar subido exitosamente`);
         return result.secure_url;
 
     } catch (error) {
-        console.error('[Upload Avatar] Error procesando avatar:', error.message);
+        logger.error('[Upload Avatar] Error procesando avatar:', error.message);
 
         // Si es un error 403 específicamente de Kick, es probable que sea una imagen protegida
         if (error.response && error.response.status === 403 && error.config?.url?.includes('kick.com')) {
-            console.warn('[Upload Avatar] Kick.com bloqueó la descarga (imagen protegida), usando URL original');
+            logger.warn('[Upload Avatar] Kick.com bloqueó la descarga (imagen protegida), usando URL original');
             return kickAvatarUrl; // Usar URL original cuando Kick bloquea la descarga
         }
 
         // Para otros errores, también usar fallback
-        console.error('[Upload Avatar] Error completo:', error);
+        logger.error('[Upload Avatar] Error completo:', error);
         if (error.http_code) {
-            console.error('[Upload Avatar] HTTP Code:', error.http_code);
+            logger.error('[Upload Avatar] HTTP Code:', error.http_code);
         }
         if (error.error && error.error.message) {
-            console.error('[Upload Avatar] Cloudinary Error:', error.error.message);
+            logger.error('[Upload Avatar] Cloudinary Error:', error.error.message);
         }
-        console.warn('[Upload Avatar] Usando URL original de Kick como fallback');
+        logger.warn('[Upload Avatar] Usando URL original de Kick como fallback');
         return kickAvatarUrl; // Fallback a URL original en caso de error
     }
 }

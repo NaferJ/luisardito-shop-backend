@@ -32,19 +32,19 @@ async function processKickAvatar(kickUser, userId) {
         const kickAvatarUrl = extractAvatarUrl(kickUser);
 
         if (!kickAvatarUrl) {
-            console.log(`[Auth] No se encontró avatar para usuario ${userId}`);
+            logger.info(`[Auth] No se encontró avatar para usuario ${userId}`);
             return null;
         }
 
-        console.log(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
+        logger.info(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
 
         const cloudinaryUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
 
-        console.log(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
+        logger.info(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
         return cloudinaryUrl;
 
     } catch (error) {
-        console.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
+        logger.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
         // No fallar el proceso de autenticación por problemas con el avatar
         return null;
     }
@@ -127,8 +127,8 @@ exports.loginLocal = async (req, res) => {
 exports.redirectKick = (req, res) => {
     try {
         const { code_verifier, code_challenge } = generatePkce();
-        console.log('[Kick OAuth][redirectKick] code_verifier:', code_verifier);
-        console.log('[Kick OAuth][redirectKick] code_challenge:', code_challenge);
+        logger.info('[Kick OAuth][redirectKick] code_verifier:', code_verifier);
+        logger.info('[Kick OAuth][redirectKick] code_challenge:', code_challenge);
 
         const statePayload = {
             cv: code_verifier,
@@ -137,8 +137,8 @@ exports.redirectKick = (req, res) => {
         };
         const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
 
-        console.log('[Kick OAuth][redirectKick] statePayload:', statePayload);
-        console.log('[Kick OAuth][redirectKick] state (JWT):', state);
+        logger.info('[Kick OAuth][redirectKick] statePayload:', statePayload);
+        logger.info('[Kick OAuth][redirectKick] state (JWT):', state);
 
         const params = new URLSearchParams({
             response_type: 'code',
@@ -151,10 +151,10 @@ exports.redirectKick = (req, res) => {
         });
 
         const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
-        console.log('[Kick OAuth][redirectKick] URL de redirección final:', url);
+        logger.info('[Kick OAuth][redirectKick] URL de redirección final:', url);
         return res.redirect(url);
     } catch (err) {
-        console.error('[Kick OAuth][redirectKick] Error:', err?.message || err);
+        logger.error('[Kick OAuth][redirectKick] Error:', err?.message || err);
         return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth con Kick' });
     }
 };
@@ -184,7 +184,7 @@ exports.redirectKickBot = (req, res) => {
         const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
         return res.redirect(url);
     } catch (err) {
-        console.error('[Kick OAuth][redirectKickBot] Error:', err?.message || err);
+        logger.error('[Kick OAuth][redirectKickBot] Error:', err?.message || err);
         return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth del BOT' });
     }
 };
@@ -193,29 +193,29 @@ exports.redirectKickBot = (req, res) => {
 exports.callbackKick = async (req, res) => {
     try {
         const { code, state } = req.query || {};
-        console.log('[Kick OAuth][callbackKick] Parámetros recibidos:', { code, state });
+        logger.info('[Kick OAuth][callbackKick] Parámetros recibidos:', { code, state });
 
         if (!code || !state) {
-            console.log('[Kick OAuth][callbackKick] Faltan parámetros code/state:', { code, state });
+            logger.info('[Kick OAuth][callbackKick] Faltan parámetros code/state:', { code, state });
             return res.status(400).json({ error: 'Faltan parámetros code/state' });
         }
 
         let decoded;
         try {
             decoded = jwt.verify(String(state), config.jwtSecret);
-            console.log('[Kick OAuth][callbackKick] State decodificado:', decoded);
+            logger.info('[Kick OAuth][callbackKick] State decodificado:', decoded);
         } catch (e) {
-            console.log('[Kick OAuth][callbackKick] State inválido o expirado:', e?.message || e);
+            logger.info('[Kick OAuth][callbackKick] State inválido o expirado:', e?.message || e);
             return res.status(400).json({ error: 'state inválido o expirado' });
         }
 
         const code_verifier = decoded?.cv;
         const finalRedirectUri = decoded?.ruri || config.kick.redirectUri;
-        console.log('[Kick OAuth][callbackKick] code_verifier recuperado:', code_verifier);
-        console.log('[Kick OAuth][callbackKick] finalRedirectUri:', finalRedirectUri);
+        logger.info('[Kick OAuth][callbackKick] code_verifier recuperado:', code_verifier);
+        logger.info('[Kick OAuth][callbackKick] finalRedirectUri:', finalRedirectUri);
 
         if (!code_verifier || !finalRedirectUri) {
-            console.log('[Kick OAuth][callbackKick] PKCE o redirect_uri inválidos:', { code_verifier, finalRedirectUri });
+            logger.info('[Kick OAuth][callbackKick] PKCE o redirect_uri inválidos:', { code_verifier, finalRedirectUri });
             return res.status(400).json({ error: 'PKCE o redirect_uri inválidos' });
         }
 
@@ -223,12 +223,12 @@ exports.callbackKick = async (req, res) => {
         const clientId = config.kick.clientId;
         const clientSecret = config.kick.clientSecret;
 
-        console.log('[Kick OAuth][callbackKick] tokenUrl:', tokenUrl);
-        console.log('[Kick OAuth][callbackKick] clientId:', clientId);
-        console.log('[Kick OAuth][callbackKick] clientSecret:', clientSecret);
+        logger.info('[Kick OAuth][callbackKick] tokenUrl:', tokenUrl);
+        logger.info('[Kick OAuth][callbackKick] clientId:', clientId);
+        logger.info('[Kick OAuth][callbackKick] clientSecret:', clientSecret);
 
         if (!clientId || !clientSecret) {
-            console.error('[Kick OAuth][callbackKick] Falta configuración KICK_CLIENT_ID/KICK_CLIENT_SECRET');
+            logger.error('[Kick OAuth][callbackKick] Falta configuración KICK_CLIENT_ID/KICK_CLIENT_SECRET');
             return res.status(500).json({ error: 'Configuración del proveedor incompleta' });
         }
 
@@ -241,27 +241,27 @@ exports.callbackKick = async (req, res) => {
             code_verifier
         });
 
-        console.log('[Kick OAuth][callbackKick] Parámetros enviados a token endpoint:', params.toString());
+        logger.info('[Kick OAuth][callbackKick] Parámetros enviados a token endpoint:', params.toString());
 
         const tokenRes = await axios.post(tokenUrl, params.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 10000
         });
 
-        console.log('[Kick OAuth][callbackKick] Respuesta de token endpoint:', tokenRes.data);
+        logger.info('[Kick OAuth][callbackKick] Respuesta de token endpoint:', tokenRes.data);
 
         const tokenData = tokenRes.data;
 
         const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
         const userUrl = `${userApiBase}/public/v1/users`;
-        console.log('[Kick OAuth][callbackKick] URL para obtener perfil de usuario:', userUrl);
+        logger.info('[Kick OAuth][callbackKick] URL para obtener perfil de usuario:', userUrl);
 
         const userRes = await axios.get(userUrl, {
             headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
             timeout: 10000
         });
 
-        console.log('[Kick OAuth][callbackKick] Respuesta de perfil de usuario:', userRes.data);
+        logger.info('[Kick OAuth][callbackKick] Respuesta de perfil de usuario:', userRes.data);
 
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
@@ -286,7 +286,7 @@ exports.callbackKick = async (req, res) => {
             });
 
             if (colision) {
-                console.log('[Kick OAuth][callbackKick] Colisión detectada, vinculando usuario existente:', {
+                logger.info('[Kick OAuth][callbackKick] Colisión detectada, vinculando usuario existente:', {
                     usuario_id: colision.id,
                     usuario_nickname: colision.nickname,
                     kick_nickname: kickUser.name,
@@ -326,7 +326,7 @@ exports.callbackKick = async (req, res) => {
                     }
                 };
 
-                console.log('[Kick OAuth][callbackKick] Datos a crear usuario:', newUserData);
+                logger.info('[Kick OAuth][callbackKick] Datos a crear usuario:', newUserData);
 
                 usuario = await Usuario.create(newUserData);
 
@@ -343,7 +343,7 @@ exports.callbackKick = async (req, res) => {
                 }
 
                 isNewUser = true;
-                console.log('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
+                logger.info('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
             }
         } else {
             const colision = await Usuario.findOne({
@@ -360,7 +360,7 @@ exports.callbackKick = async (req, res) => {
             }
 
             // Log de datos antes de actualizar usuario
-            console.log('[Kick OAuth][callbackKick] Datos a actualizar usuario:', {
+            logger.info('[Kick OAuth][callbackKick] Datos a actualizar usuario:', {
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 kick_data: {
@@ -380,7 +380,7 @@ exports.callbackKick = async (req, res) => {
                     username: kickUser.name
                 }
             });
-            console.log('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
+            logger.info('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
         }
 
         // Guardar token del broadcaster y auto-suscribirse a eventos
@@ -398,7 +398,7 @@ exports.callbackKick = async (req, res) => {
         const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
 
         if (isBroadcasterPrincipal) {
-            console.log('🚀 [BROADCASTER PRINCIPAL] Luisardito autenticado - Configurando webhooks...');
+            logger.info('🚀 [BROADCASTER PRINCIPAL] Luisardito autenticado - Configurando webhooks...');
         }
 
         // Guardar o actualizar token
@@ -425,13 +425,13 @@ exports.callbackKick = async (req, res) => {
             });
         }
 
-        console.log('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
+        logger.info('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
 
         let autoSubscribeResult = null;
 
         // SOLO el broadcaster principal debe suscribirse a eventos
         if (isBroadcasterPrincipal) {
-            console.log('🚀 [BROADCASTER PRINCIPAL] Configurando suscripciones de webhooks...');
+            logger.info('🚀 [BROADCASTER PRINCIPAL] Configurando suscripciones de webhooks...');
 
             try {
                 // Usar SU PROPIO token para suscribirse a eventos de SU canal
@@ -444,12 +444,12 @@ exports.callbackKick = async (req, res) => {
                 });
 
                 if (autoSubscribeResult.success) {
-                    console.log(`🚀 [BROADCASTER PRINCIPAL] ✅ ${autoSubscribeResult.totalSubscribed} eventos configurados. Sistema listo.`);
+                    logger.info(`🚀 [BROADCASTER PRINCIPAL] ✅ ${autoSubscribeResult.totalSubscribed} eventos configurados. Sistema listo.`);
                 } else {
-                    console.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error en configuración:', autoSubscribeResult.error);
+                    logger.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error en configuración:', autoSubscribeResult.error);
                 }
             } catch (subscribeError) {
-                console.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error crítico:', subscribeError.message);
+                logger.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error crítico:', subscribeError.message);
                 await broadcasterToken.update({
                     auto_subscribed: false,
                     last_subscription_attempt: new Date(),
@@ -457,7 +457,7 @@ exports.callbackKick = async (req, res) => {
                 });
             }
         } else {
-            console.log('👤 [Usuario Normal] Autenticado, no requiere configuración de webhooks');
+            logger.info('👤 [Usuario Normal] Autenticado, no requiere configuración de webhooks');
         }
 
         // Generar access token y refresh token
@@ -473,7 +473,7 @@ exports.callbackKick = async (req, res) => {
 
         const refreshTokenObj = await createRefreshToken(usuario.id, ipAddress, userAgent);
 
-        console.log('[Kick OAuth][callbackKick] JWT emitido (access + refresh)');
+        logger.info('[Kick OAuth][callbackKick] JWT emitido (access + refresh)');
 
         // Configurar cookies cross-domain
         setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
@@ -512,16 +512,16 @@ exports.callbackKick = async (req, res) => {
         const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
         const redirectUrl = `${frontendUrl}/auth/callback?data=${encodeURIComponent(encodedData)}`;
 
-        console.log('[Kick OAuth][callbackKick] Redirigiendo al frontend:', redirectUrl);
+        logger.info('[Kick OAuth][callbackKick] Redirigiendo al frontend:', redirectUrl);
 
         return res.redirect(redirectUrl);
 
     } catch (error) {
-        console.error('[Kick OAuth][callbackKick] Error general:', error?.message || error);
+        logger.error('[Kick OAuth][callbackKick] Error general:', error?.message || error);
 
         // Mostrar detalle de errores de validación de Sequelize si existen
         if (error.errors) {
-            console.error('[Kick OAuth][callbackKick] Detalle de errores de validación:', error.errors);
+            logger.error('[Kick OAuth][callbackKick] Detalle de errores de validación:', error.errors);
             // Responder con el mensaje de validación si es colisión de unicidad
             const uniqueError = error.errors.find(e => e.type === 'unique violation');
             if (uniqueError) {
@@ -530,7 +530,7 @@ exports.callbackKick = async (req, res) => {
         }
 
         if (error.response) {
-            console.log('[Kick OAuth][callbackKick] error.response.data:', error.response.data);
+            logger.info('[Kick OAuth][callbackKick] error.response.data:', error.response.data);
             return res.status(error.response.status).json({
                 error: 'Error al comunicarse con Kick',
                 provider_status: error.response.status,
@@ -549,10 +549,10 @@ exports.callbackKick = async (req, res) => {
 exports.callbackKickBot = async (req, res) => {
     try {
         const { code, state } = req.query || {};
-        console.log('[Kick OAuth][callbackKickBot] Parámetros recibidos:', { code, state });
+        logger.info('[Kick OAuth][callbackKickBot] Parámetros recibidos:', { code, state });
 
         if (!code || !state) {
-            console.log('[Kick OAuth][callbackKickBot] Faltan parámetros code/state');
+            logger.info('[Kick OAuth][callbackKickBot] Faltan parámetros code/state');
             return res.status(400).json({ error: 'Faltan parámetros code/state' });
         }
 
@@ -560,9 +560,9 @@ exports.callbackKickBot = async (req, res) => {
         let decodedState;
         try {
             decodedState = jwt.verify(state, config.jwtSecret);
-            console.log('[Kick OAuth][callbackKickBot] Estado decodificado:', decodedState);
+            logger.info('[Kick OAuth][callbackKickBot] Estado decodificado:', decodedState);
         } catch (err) {
-            console.error('[Kick OAuth][callbackKickBot] Error al decodificar el estado:', err);
+            logger.error('[Kick OAuth][callbackKickBot] Error al decodificar el estado:', err);
             return res.status(400).json({ error: 'Estado inválido o expirado' });
         }
 
@@ -607,9 +607,10 @@ exports.callbackKickBot = async (req, res) => {
         try {
             const fs = require('fs').promises;
             const path = require('path');
+const logger = require('../utils/logger');
             const tokensFile = path.join(__dirname, '../../tokens/tokens.json');
             const fullPath = path.resolve(tokensFile);
-            console.log('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
+            logger.info('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
             const tokensForFile = {
                 accessToken: access_token,
                 refreshToken: refresh_token,
@@ -618,9 +619,9 @@ exports.callbackKickBot = async (req, res) => {
                 username: String(botUser.username || `bot-${botUser.id}`)
             };
             await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
-            console.log('[Kick OAuth][callbackKickBot] ✅ Tokens guardados en tokens.json');
+            logger.info('[Kick OAuth][callbackKickBot] ✅ Tokens guardados en tokens.json');
         } catch (error) {
-            console.error('[Kick OAuth][callbackKickBot] ❌ Error guardando tokens.json:', error.message);
+            logger.error('[Kick OAuth][callbackKickBot] ❌ Error guardando tokens.json:', error.message);
         }
 
         // Redirigir al frontend
@@ -628,7 +629,7 @@ exports.callbackKickBot = async (req, res) => {
         const message = encodeURIComponent('Bot conectado correctamente');
         return res.redirect(`${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`);
     } catch (err) {
-        console.error('[Kick OAuth][callbackKickBot] Error:', err);
+        logger.error('[Kick OAuth][callbackKickBot] Error:', err);
         return res.status(500).json({ 
             error: 'Error en el callback de autenticación del bot',
             details: err.message 
@@ -681,7 +682,7 @@ exports.refreshToken = async (req, res) => {
             kick_id: usuario.user_id_ext
         });
 
-        console.log(`[Auth][refreshToken] Token renovado para usuario ${usuario.nickname}`);
+        logger.info(`[Auth][refreshToken] Token renovado para usuario ${usuario.nickname}`);
 
         // Configurar cookies con los nuevos tokens
         setAuthCookies(res, newAccessToken, newRefreshToken.token);
@@ -700,7 +701,7 @@ exports.refreshToken = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Auth][refreshToken] Error:', error.message);
+        logger.error('[Auth][refreshToken] Error:', error.message);
         return res.status(500).json({ error: 'Error al refrescar token' });
     }
 };
@@ -726,12 +727,12 @@ exports.logout = async (req, res) => {
         // Limpiar cookies cross-domain
         clearAuthCookies(res);
 
-        console.log('[Auth][logout] Sesión cerrada exitosamente');
+        logger.info('[Auth][logout] Sesión cerrada exitosamente');
 
         return res.json({ message: 'Sesión cerrada exitosamente' });
 
     } catch (error) {
-        console.error('[Auth][logout] Error:', error.message);
+        logger.error('[Auth][logout] Error:', error.message);
         return res.status(500).json({ error: 'Error al cerrar sesión' });
     }
 };
@@ -754,7 +755,7 @@ exports.logoutAll = async (req, res) => {
         // Limpiar cookies cross-domain
         clearAuthCookies(res);
 
-        console.log(`[Auth][logoutAll] ${revokedCount} sesiones cerradas para usuario ${userId}`);
+        logger.info(`[Auth][logoutAll] ${revokedCount} sesiones cerradas para usuario ${userId}`);
 
         return res.json({
             message: `${revokedCount} sesión(es) cerrada(s) exitosamente`,
@@ -762,7 +763,7 @@ exports.logoutAll = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Auth][logoutAll] Error:', error.message);
+        logger.error('[Auth][logoutAll] Error:', error.message);
         return res.status(500).json({ error: 'Error al cerrar sesiones' });
     }
 };
@@ -867,7 +868,7 @@ exports.storeTokens = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('Error en storeTokens:', error?.message || error);
+        logger.error('Error en storeTokens:', error?.message || error);
         if (error.response) {
             return res.status(400).json({ error: 'Error al obtener perfil de Kick', details: error.response.data });
         }
@@ -895,7 +896,7 @@ exports.cookieStatus = async (req, res) => {
             allCookies: req.cookies
         });
     } catch (error) {
-        console.error('[Auth][cookieStatus] Error:', error.message);
+        logger.error('[Auth][cookieStatus] Error:', error.message);
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
