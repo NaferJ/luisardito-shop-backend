@@ -490,8 +490,7 @@ exports.cleanupExpiredVips = async (req, res) => {
 
 exports.getUsersWithDetails = async (req, res) => {
     try {
-        const { page = 1, limit = 20, filter = 'all' } = req.query;
-        const offset = (page - 1) * limit;
+        const { filter = 'all' } = req.query;
 
         let whereClause = {};
         switch (filter) {
@@ -508,8 +507,6 @@ exports.getUsersWithDetails = async (req, res) => {
 
         const { count, rows: usuarios } = await Usuario.findAndCountAll({
             where: whereClause,
-            limit: parseInt(limit),
-            offset: parseInt(offset),
             order: [['actualizado', 'DESC']],
             attributes: [
                 'id', 'nickname', 'email', 'puntos', 'user_id_ext', 'discord_username',
@@ -536,12 +533,7 @@ exports.getUsersWithDetails = async (req, res) => {
         res.json({
             success: true,
             users: enrichedUsers,
-            pagination: {
-                total: count,
-                page: parseInt(page),
-                limit: parseInt(limit),
-                pages: Math.ceil(count / limit)
-            }
+            total: count
         });
 
     } catch (error) {
