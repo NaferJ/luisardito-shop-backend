@@ -1,17 +1,28 @@
 const router = require('express').Router();
 const productosCtrl = require('../controllers/productos.controller');
 const auth = require('../middleware/auth.middleware');
+const authRequired = require('../middleware/authRequired.middleware');
 const permiso = require('../middleware/permisos.middleware');
 
+// ✅ Rutas públicas - Sin autenticación requerida
 router.get('/', productosCtrl.listar);
-// Endpoint admin: requiere autenticación y permiso de gestión de productos o canjes
-router.get('/admin', auth, permiso('gestionar_canjes'), productosCtrl.listarAdmin);
-router.get('/debug/all', productosCtrl.debugListar); // Endpoint debug sin filtros - debe ir antes de /:id
-router.get('/slug/:slug', auth, productosCtrl.obtenerPorSlug);
-router.get('/:id', productosCtrl.obtener);
 
-router.post('/', auth, permiso('crear_producto'), productosCtrl.crear);
-router.put('/:id', auth, permiso('editar_producto'), productosCtrl.editar);
-router.delete('/:id', auth, permiso('eliminar_producto'), productosCtrl.eliminar);
+// ⚠️ IMPORTANTE: Rutas específicas DEBEN ir ANTES de rutas con parámetros (/:id)
+// Si no, Express confunde "admin" o "debug" como un ID
+
+// Rutas específicas primero
+router.get('/debug/all', productosCtrl.debugListar); // Debug endpoint
+router.get('/admin', authRequired, permiso('gestionar_canjes'), productosCtrl.listarAdmin); // Admin
+
+// ✅ Rutas con autenticación opcional (rutas específicas)
+router.get('/slug/:slug', auth, productosCtrl.obtenerPorSlug);
+
+// ✅ Rutas con parámetros dinámicos (DEBEN IR AL FINAL)
+router.get('/:id', productosCtrl.obtener); // ← Esta debe ir al final
+
+// ✅ Rutas protegidas con modificación
+router.post('/', authRequired, permiso('crear_producto'), productosCtrl.crear);
+router.put('/:id', authRequired, permiso('editar_producto'), productosCtrl.editar);
+router.delete('/:id', authRequired, permiso('eliminar_producto'), productosCtrl.eliminar);
 
 module.exports = router;

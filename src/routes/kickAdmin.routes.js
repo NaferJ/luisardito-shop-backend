@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const kickAdminController = require('../controllers/kickAdmin.controller');
-const authMiddleware = require('../middleware/auth.middleware');
+const authRequired = require('../middleware/authRequired.middleware');
 const checkPermission = require('../middleware/permisos.middleware');
 
-// Middleware de autenticación para todas las rutas
-router.use(authMiddleware);
+// ✅ Middleware de autenticación ESTRICTA para todas las rutas de admin
+router.use(authRequired);
 
 // ============================================================================
 // RUTAS DE CONFIGURACIÓN
