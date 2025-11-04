@@ -6,9 +6,13 @@ const { Op } = require('sequelize');
 
 /**
  * Duración de los tokens
+ *
+ * Para tienda de puntos de lealtad (usuarios públicos):
+ * - Access token: 30 días (usuarios no pierden sesión)
+ * - Refresh token: 90 días (permite renovar acceso)
  */
 const TOKEN_EXPIRATION = {
-    ACCESS_TOKEN: '1h',      // 1 hora
+    ACCESS_TOKEN: '30d',     // 30 días (antes era 1h)
     REFRESH_TOKEN: 90        // 90 días
 };
 
