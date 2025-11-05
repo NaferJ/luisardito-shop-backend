@@ -99,9 +99,9 @@ exports.listar = async (req, res) => {
                 };
             }
 
-            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
         } else {
-            canje.Usuario.dataValues.subscriber_info = {
+            canje.Usuario.dataValues.subscriber_status = {
                 is_subscriber: false,
                 is_active: false,
                 expires_at: null
@@ -143,9 +143,9 @@ exports.listarMios = async (req, res) => {
                 };
             }
 
-            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
         } else {
-            canje.Usuario.dataValues.subscriber_info = {
+            canje.Usuario.dataValues.subscriber_status = {
                 is_subscriber: false,
                 is_active: false,
                 expires_at: null
@@ -192,9 +192,9 @@ exports.listarPorUsuario = async (req, res) => {
                 };
             }
 
-            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
         } else {
-            canje.Usuario.dataValues.subscriber_info = {
+            canje.Usuario.dataValues.subscriber_status = {
                 is_subscriber: false,
                 is_active: false,
                 expires_at: null
