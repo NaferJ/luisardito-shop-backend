@@ -1,4 +1,4 @@
-const { Canje, Producto, Usuario, HistorialPunto } = require('../models');
+const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking } = require('../models');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 
@@ -75,6 +75,40 @@ exports.listar = async (req, res) => {
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });
+
+    // Agregar información de suscriptor a cada usuario
+    for (const canje of canjes) {
+        if (canje.Usuario && canje.Usuario.user_id_ext) {
+            const userTracking = await KickUserTracking.findOne({
+                where: { kick_user_id: canje.Usuario.user_id_ext }
+            });
+
+            let subscriberInfo = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+
+            if (userTracking?.is_subscribed) {
+                const now = new Date();
+                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                subscriberInfo = {
+                    is_subscriber: true,
+                    is_active: !expiresAt || expiresAt > now,
+                    expires_at: expiresAt
+                };
+            }
+
+            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+        } else {
+            canje.Usuario.dataValues.subscriber_info = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+        }
+    }
+
     res.json(canjes);
 };
 
@@ -85,6 +119,40 @@ exports.listarMios = async (req, res) => {
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });
+
+    // Agregar información de suscriptor al usuario (aunque es el mismo, por consistencia)
+    for (const canje of canjes) {
+        if (canje.Usuario && canje.Usuario.user_id_ext) {
+            const userTracking = await KickUserTracking.findOne({
+                where: { kick_user_id: canje.Usuario.user_id_ext }
+            });
+
+            let subscriberInfo = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+
+            if (userTracking?.is_subscribed) {
+                const now = new Date();
+                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                subscriberInfo = {
+                    is_subscriber: true,
+                    is_active: !expiresAt || expiresAt > now,
+                    expires_at: expiresAt
+                };
+            }
+
+            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+        } else {
+            canje.Usuario.dataValues.subscriber_info = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+        }
+    }
+
     res.json(canjes);
 };
 
@@ -100,6 +168,40 @@ exports.listarPorUsuario = async (req, res) => {
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });
+
+    // Agregar información de suscriptor al usuario
+    for (const canje of canjes) {
+        if (canje.Usuario && canje.Usuario.user_id_ext) {
+            const userTracking = await KickUserTracking.findOne({
+                where: { kick_user_id: canje.Usuario.user_id_ext }
+            });
+
+            let subscriberInfo = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+
+            if (userTracking?.is_subscribed) {
+                const now = new Date();
+                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                subscriberInfo = {
+                    is_subscriber: true,
+                    is_active: !expiresAt || expiresAt > now,
+                    expires_at: expiresAt
+                };
+            }
+
+            canje.Usuario.dataValues.subscriber_info = subscriberInfo;
+        } else {
+            canje.Usuario.dataValues.subscriber_info = {
+                is_subscriber: false,
+                is_active: false,
+                expires_at: null
+            };
+        }
+    }
+
     res.json(canjes);
 };
 
