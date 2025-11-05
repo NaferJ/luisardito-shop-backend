@@ -49,4 +49,7 @@ router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
 // Stream
 router.get('/debug-stream-status', kickWebhookCtrl.debugStreamStatus);
 
+// 📊 ENDPOINT PÚBLICO: Configuración de puntos
+router.get('/public/points-config', kickWebhookCtrl.getPublicPointsConfig);
+
 module.exports = router;

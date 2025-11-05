@@ -2114,3 +2114,38 @@ exports.debugStreamStatus = async (req, res) => {
         });
     }
 };
+
+/**
+ * 📊 ENDPOINT PÚBLICO: Obtener configuración pública de puntos de Kick
+ * GET /api/kick/public/points-config
+ */
+exports.getPublicPointsConfig = async (req, res) => {
+    try {
+        const configs = await KickPointsConfig.findAll({
+            order: [['id', 'ASC']]
+        });
+
+        const total = configs.length;
+        const initialized = total > 0;
+
+        res.json({
+            config: configs.map(c => ({
+                id: c.id,
+                config_key: c.config_key,
+                config_value: c.config_value,
+                enabled: c.enabled,
+                description: c.description || null
+            })),
+            total,
+            initialized
+        });
+
+    } catch (error) {
+        logger.error('[Public Points Config] Error:', error.message);
+        res.status(500).json({
+            success: false,
+            error: 'Error interno del servidor'
+        });
+    }
+};
+
