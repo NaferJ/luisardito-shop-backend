@@ -1,4 +1,4 @@
-const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize } = require('../models');
+const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize, KickUserTracking } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
@@ -516,18 +516,44 @@ exports.getUsersWithDetails = async (req, res) => {
             ]
         });
 
-        const enrichedUsers = usuarios.map(user => ({
-            ...user.toJSON(),
-            vip_status: {
-                is_active: user.is_vip && (!user.vip_expires_at || new Date(user.vip_expires_at) > new Date()),
-                is_permanent: user.is_vip && !user.vip_expires_at,
-                expires_soon: user.vip_expires_at &&
-                    new Date(user.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            },
-            migration_status: {
-                can_migrate: !user.botrix_migrated,
-                points_migrated: user.botrix_points_migrated || 0
+        const enrichedUsers = await Promise.all(usuarios.map(async user => {
+            const userJson = user.toJSON();
+
+            // Calcular información de suscriptor
+            let subscriberStatus = {
+                is_active: false,
+                expires_soon: false
+            };
+
+            if (userJson.user_id_ext) {
+                const userTracking = await KickUserTracking.findOne({
+                    where: { kick_user_id: userJson.user_id_ext }
+                });
+
+                if (userTracking?.is_subscribed) {
+                    const now = new Date();
+                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                    subscriberStatus = {
+                        is_active: !expiresAt || expiresAt > now,
+                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    };
+                }
             }
+
+            return {
+                ...userJson,
+                vip_status: {
+                    is_active: userJson.is_vip && (!userJson.vip_expires_at || new Date(userJson.vip_expires_at) > new Date()),
+                    is_permanent: userJson.is_vip && !userJson.vip_expires_at,
+                    expires_soon: userJson.vip_expires_at &&
+                        new Date(userJson.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                },
+                migration_status: {
+                    can_migrate: !userJson.botrix_migrated,
+                    points_migrated: userJson.botrix_points_migrated || 0
+                },
+                subscriber_status: subscriberStatus
+            };
         }));
 
         res.json({

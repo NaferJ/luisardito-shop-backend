@@ -1,4 +1,4 @@
-const { Usuario, Canje, HistorialPunto, sequelize } = require('../models');
+const { Usuario, Canje, HistorialPunto, sequelize, KickUserTracking } = require('../models');
 const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl, getKickUserData } = require('../utils/kickApi');
 const logger = require('../utils/logger');
@@ -15,6 +15,29 @@ exports.me = async (req, res) => {
         botrix_migrated, botrix_migrated_at, botrix_points_migrated,
         creado, actualizado
     } = user;
+
+    // Calcular información de suscriptor
+    let subscriberInfo = {
+        is_subscriber: false,
+        is_active: false,
+        expires_at: null
+    };
+
+    if (user.user_id_ext) {
+        const userTracking = await KickUserTracking.findOne({
+            where: { kick_user_id: user.user_id_ext }
+        });
+
+        if (userTracking?.is_subscribed) {
+            const now = new Date();
+            const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+            subscriberInfo = {
+                is_subscriber: true,
+                is_active: !expiresAt || expiresAt > now,
+                expires_at: expiresAt
+            };
+        }
+    }
 
     res.json({
         id, nickname, email, puntos, rol_id, kick_data, discord_username,
@@ -33,6 +56,7 @@ exports.me = async (req, res) => {
             can_migrate: user.canMigrateBotrix()
         },
         user_type: user.getUserType(),
+        subscriber_info: subscriberInfo,
         creado, actualizado
     });
 };
@@ -112,9 +136,30 @@ exports.listarUsuarios = async (req, res) => {
         });
 
         // Enriquecer datos con información adicional
-        const enrichedUsers = usuarios.map(user => {
+        const enrichedUsers = await Promise.all(usuarios.map(async (user) => {
             const userData = user.toJSON();
             const userInstance = Usuario.build(userData);
+
+            // Calcular información de suscriptor
+            let subscriberStatus = {
+                is_active: false,
+                expires_soon: false
+            };
+
+            if (userData.user_id_ext) {
+                const userTracking = await KickUserTracking.findOne({
+                    where: { kick_user_id: userData.user_id_ext }
+                });
+
+                if (userTracking?.is_subscribed) {
+                    const now = new Date();
+                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                    subscriberStatus = {
+                        is_active: !expiresAt || expiresAt > now,
+                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    };
+                }
+            }
 
             return {
                 ...userData,
@@ -124,13 +169,14 @@ exports.listarUsuarios = async (req, res) => {
                     expires_soon: userData.vip_expires_at &&
                         new Date(userData.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 días
                 },
+                subscriber_status: subscriberStatus,
                 migration_status: {
                     can_migrate: userInstance.canMigrateBotrix(),
                     points_migrated: userData.botrix_points_migrated || 0
                 },
                 user_type: userInstance.getUserType()
             };
-        });
+        }));
 
         res.json(enrichedUsers);
     } catch (error) {
@@ -181,6 +227,29 @@ exports.debugUsuario = async (req, res) => {
 
         const userInstance = Usuario.build(usuario.toJSON());
 
+        // Calcular información de suscriptor
+        let subscriberInfo = {
+            is_subscriber: false,
+            is_active: false,
+            expires_at: null
+        };
+
+        if (usuario.user_id_ext) {
+            const userTracking = await KickUserTracking.findOne({
+                where: { kick_user_id: usuario.user_id_ext }
+            });
+
+            if (userTracking?.is_subscribed) {
+                const now = new Date();
+                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                subscriberInfo = {
+                    is_subscriber: true,
+                    is_active: !expiresAt || expiresAt > now,
+                    expires_at: expiresAt
+                };
+            }
+        }
+
         res.json({
             usuario: {
                 id: usuario.id,
@@ -221,6 +290,7 @@ exports.debugUsuario = async (req, res) => {
                 can_migrate: userInstance.canMigrateBotrix()
             },
             user_type: userInstance.getUserType(),
+            subscriber_info: subscriberInfo,
             diagnostico: {
                 problema_identificado: permisos.includes('ver_historial_puntos') ?
                     'Usuario SÍ tiene el permiso ver_historial_puntos' :
@@ -552,7 +622,7 @@ exports.actualizarPuntos = async (req, res) => {
 };
 
 /**
- * 🔍 DEBUG: Verificar permisos del usuario actual
+ * 🔍 DEBUG: Verificar permisos del usuario current
  */
 exports.debugPermisos = async (req, res) => {
     try {
