@@ -505,15 +505,26 @@ exports.getUsersWithDetails = async (req, res) => {
                 break;
         }
 
-        const { count, rows: usuarios } = await Usuario.findAndCountAll({
+        // Calcular el total de usuarios
+        const total = await Usuario.count({ where: whereClause });
+
+        // Obtener usuarios con conteo de canjes
+        const usuarios = await Usuario.findAll({
             where: whereClause,
             order: [['actualizado', 'DESC']],
             attributes: [
                 'id', 'nickname', 'email', 'puntos', 'user_id_ext', 'discord_username',
                 'is_vip', 'vip_granted_at', 'vip_expires_at', 'vip_granted_by_canje_id',
                 'botrix_migrated', 'botrix_migrated_at', 'botrix_points_migrated',
-                'creado', 'actualizado'
-            ]
+                'creado', 'actualizado',
+                [sequelize.fn('COUNT', sequelize.col('Canjes.id')), 'total_canjes'],
+                [sequelize.fn('COUNT', sequelize.literal('CASE WHEN Canjes.estado = "pendiente" THEN 1 END')), 'canjes_pendientes']
+            ],
+            include: [{
+                model: Canje,
+                attributes: []
+            }],
+            group: ['Usuario.id']
         });
 
         const enrichedUsers = await Promise.all(usuarios.map(async user => {
@@ -559,7 +570,7 @@ exports.getUsersWithDetails = async (req, res) => {
         res.json({
             success: true,
             users: enrichedUsers,
-            total: count
+            total
         });
 
     } catch (error) {
