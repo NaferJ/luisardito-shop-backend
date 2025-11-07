@@ -23,6 +23,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes --replica-read-only no
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
