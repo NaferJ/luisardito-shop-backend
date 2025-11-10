@@ -17,10 +17,9 @@ exports.me = async (req, res) => {
     } = user;
 
     // Calcular información de suscriptor
-    let subscriberInfo = {
-        is_subscriber: false,
+    let subscriberStatus = {
         is_active: false,
-        expires_at: null
+        expires_soon: false
     };
 
     if (user.user_id_ext) {
@@ -31,32 +30,31 @@ exports.me = async (req, res) => {
         if (userTracking?.is_subscribed) {
             const now = new Date();
             const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-            subscriberInfo = {
-                is_subscriber: true,
+            subscriberStatus = {
                 is_active: !expiresAt || expiresAt > now,
-                expires_at: expiresAt
+                expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
         }
     }
 
     res.json({
         id, nickname, email, puntos, rol_id, kick_data, discord_username,
-        vip_info: {
-            is_vip,
+        vip_status: {
             is_active: user.isVipActive(),
+            is_permanent: is_vip && !vip_expires_at,
+            expires_soon: vip_expires_at && new Date(vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             granted_at: vip_granted_at,
             expires_at: vip_expires_at,
-            granted_by_canje_id: vip_granted_by_canje_id,
-            is_permanent: is_vip && !vip_expires_at
+            granted_by_canje_id: vip_granted_by_canje_id
         },
-        botrix_info: {
+        migration_status: {
+            can_migrate: user.canMigrateBotrix(),
             migrated: botrix_migrated,
             migrated_at: botrix_migrated_at,
-            points_migrated: botrix_points_migrated,
-            can_migrate: user.canMigrateBotrix()
+            points_migrated: botrix_points_migrated
         },
         user_type: user.getUserType(),
-        subscriber_info: subscriberInfo,
+        subscriber_status: subscriberStatus,
         creado, actualizado
     });
 };
