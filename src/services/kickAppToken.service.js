@@ -81,7 +81,8 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
             { name: 'channel.subscription.renewal', version: 1 },
             { name: 'channel.subscription.gifts', version: 1 },
             { name: 'livestream.status.updated', version: 1 },
-            { name: 'livestream.metadata.updated', version: 1 }
+            { name: 'livestream.metadata.updated', version: 1 },
+            { name: 'kicks.gifted', version: 1 }
         ];
 
         // 3. Suscribirse a eventos

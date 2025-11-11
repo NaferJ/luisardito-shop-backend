@@ -70,6 +70,12 @@ const KickUserTracking = sequelize.define('KickUserTracking', {
         allowNull: false,
         defaultValue: 0,
         comment: 'Cantidad de subs que ha regalado'
+    },
+    total_kicks_gifted: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        comment: 'Cantidad total de kicks regalados por el usuario'
     }
 }, {
     tableName: 'kick_user_tracking',

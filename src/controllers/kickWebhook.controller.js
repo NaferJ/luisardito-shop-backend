@@ -399,6 +399,10 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
             await handleModerationBanned(payload, metadata);
             break;
 
+        case 'kicks.gifted':
+            await handleKicksGifted(payload, metadata);
+            break;
+
         default:
             logger.info(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
     }
@@ -1094,6 +1098,101 @@ async function handleModerationBanned(payload, metadata) {
     });
 
     // TODO: Implementar lógica de negocio (registrar baneo, actualizar permisos, etc.)
+}
+
+/**
+ * Maneja regalos de kicks (kicks.gifted)
+ * Otorga puntos equivalentes a la cantidad de kicks regalados
+ */
+async function handleKicksGifted(payload, metadata) {
+    try {
+        const sender = payload.sender;
+        const kickUserId = String(sender.user_id);
+        const kickUsername = sender.username;
+        const kickAmount = payload.gift?.amount || 0;
+        const giftName = payload.gift?.name || 'Unknown Gift';
+        const giftTier = payload.gift?.tier || 'BASIC';
+        const giftMessage = payload.gift?.message || '';
+
+        logger.info('[Kick Webhook][Kicks Gifted]', {
+            broadcaster: payload.broadcaster.username,
+            sender: kickUsername,
+            kick_amount: kickAmount,
+            gift_name: giftName,
+            gift_tier: giftTier,
+            message: giftMessage,
+            created_at: payload.created_at
+        });
+
+        // Verificar si el usuario existe en nuestra BD
+        const usuario = await Usuario.findOne({
+            where: { user_id_ext: kickUserId }
+        });
+
+        if (!usuario) {
+            logger.info(`[Kick Webhook][Kicks Gifted] Usuario ${kickUsername} no registrado en la BD`);
+            return;
+        }
+
+        // Los puntos a otorgar son equivalentes a la cantidad de kicks regalados
+        const pointsToAward = kickAmount;
+
+        if (pointsToAward <= 0) {
+            logger.info('[Kick Webhook][Kicks Gifted] Cantidad de kicks es 0 o inválida');
+            return;
+        }
+
+        // Iniciar transacción para garantizar atomicidad
+        const transaction = await sequelize.transaction({
+            isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
+        });
+
+        try {
+            // Otorgar puntos
+            await usuario.increment('puntos', { by: pointsToAward }, { transaction });
+
+            // Registrar en historial
+            await HistorialPunto.create({
+                usuario_id: usuario.id,
+                puntos: pointsToAward,
+                tipo: 'ganado',
+                concepto: `Regalo de ${kickAmount} kicks (${giftName})`,
+                kick_event_data: {
+                    event_type: 'kicks.gifted',
+                    kick_user_id: kickUserId,
+                    kick_username: kickUsername,
+                    kick_amount: kickAmount,
+                    gift_name: giftName,
+                    gift_tier: giftTier,
+                    gift_message: giftMessage,
+                    created_at: payload.created_at
+                }
+            }, { transaction });
+
+            // Actualizar tracking del usuario (opcional, para estadísticas)
+            await KickUserTracking.upsert({
+                kick_user_id: kickUserId,
+                kick_username: kickUsername,
+                total_kicks_gifted: sequelize.literal(`COALESCE(total_kicks_gifted, 0) + ${kickAmount}`)
+            }, { transaction });
+
+            await transaction.commit();
+
+            logger.info(`[Kick Webhook][Kicks Gifted] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} por regalar ${kickAmount} kicks`);
+
+            // Recargar usuario para mostrar total actualizado
+            const updatedUser = await usuario.reload();
+            logger.info(`[Kick Webhook][Kicks Gifted] 💰 Total puntos de ${kickUsername}: ${updatedUser.puntos}`);
+
+        } catch (transactionError) {
+            await transaction.rollback();
+            logger.error(`[Kick Webhook][Kicks Gifted] ❌ Error en transacción para ${kickUsername}:`, transactionError.message);
+            throw transactionError;
+        }
+
+    } catch (error) {
+        logger.error('[Kick Webhook][Kicks Gifted] Error:', error.message);
+    }
 }
 
 /**

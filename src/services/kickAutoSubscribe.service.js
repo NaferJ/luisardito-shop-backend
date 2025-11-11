@@ -13,7 +13,8 @@ const DEFAULT_EVENTS = [
     { name: 'channel.subscription.renewal', version: 1 },
     { name: 'channel.subscription.gifts', version: 1 },
     { name: 'livestream.status.updated', version: 1 },
-    { name: 'livestream.metadata.updated', version: 1 }
+    { name: 'livestream.metadata.updated', version: 1 },
+    { name: 'kicks.gifted', version: 1 }
 ];
 
 /**
