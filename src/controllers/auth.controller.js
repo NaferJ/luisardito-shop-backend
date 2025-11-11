@@ -145,7 +145,7 @@ exports.redirectKick = (req, res) => {
             response_type: 'code',
             client_id: String(config.kick.clientId || ''),
             redirect_uri: String(config.kick.redirectUri || ''),
-            scope: 'user:read events:subscribe',
+            scope: 'user:read events:subscribe kicks:read',
             code_challenge: code_challenge,
             code_challenge_method: 'S256',
             state
