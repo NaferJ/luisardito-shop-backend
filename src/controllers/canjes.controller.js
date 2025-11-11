@@ -76,36 +76,44 @@ exports.listar = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de suscriptor a cada usuario
+    // Agregar información de VIP y suscriptor a cada usuario
+    const now = new Date();
     for (const canje of canjes) {
-        if (canje.Usuario && canje.Usuario.user_id_ext) {
-            const userTracking = await KickUserTracking.findOne({
-                where: { kick_user_id: canje.Usuario.user_id_ext }
-            });
-
-            let subscriberInfo = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
+        if (canje.Usuario) {
+            // Información VIP
+            canje.Usuario.dataValues.vip_status = {
+                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
+                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+                expires_soon: canje.Usuario.vip_expires_at &&
+                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            if (userTracking?.is_subscribed) {
-                const now = new Date();
-                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                subscriberInfo = {
-                    is_subscriber: true,
-                    is_active: !expiresAt || expiresAt > now,
-                    expires_at: expiresAt
+            // Información de suscriptor
+            if (canje.Usuario.user_id_ext) {
+                const userTracking = await KickUserTracking.findOne({
+                    where: { kick_user_id: canje.Usuario.user_id_ext }
+                });
+
+                let subscriberInfo = {
+                    is_active: false,
+                    expires_soon: false
+                };
+
+                if (userTracking?.is_subscribed) {
+                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                    subscriberInfo = {
+                        is_active: !expiresAt || expiresAt > now,
+                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    };
+                }
+
+                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+            } else {
+                canje.Usuario.dataValues.subscriber_status = {
+                    is_active: false,
+                    expires_soon: false
                 };
             }
-
-            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-        } else {
-            canje.Usuario.dataValues.subscriber_status = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
-            };
         }
     }
 
@@ -120,36 +128,44 @@ exports.listarMios = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de suscriptor al usuario (aunque es el mismo, por consistencia)
+    // Agregar información de VIP y suscriptor al usuario (aunque es el mismo, por consistencia)
+    const now = new Date();
     for (const canje of canjes) {
-        if (canje.Usuario && canje.Usuario.user_id_ext) {
-            const userTracking = await KickUserTracking.findOne({
-                where: { kick_user_id: canje.Usuario.user_id_ext }
-            });
-
-            let subscriberInfo = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
+        if (canje.Usuario) {
+            // Información VIP
+            canje.Usuario.dataValues.vip_status = {
+                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
+                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+                expires_soon: canje.Usuario.vip_expires_at &&
+                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            if (userTracking?.is_subscribed) {
-                const now = new Date();
-                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                subscriberInfo = {
-                    is_subscriber: true,
-                    is_active: !expiresAt || expiresAt > now,
-                    expires_at: expiresAt
+            // Información de suscriptor
+            if (canje.Usuario.user_id_ext) {
+                const userTracking = await KickUserTracking.findOne({
+                    where: { kick_user_id: canje.Usuario.user_id_ext }
+                });
+
+                let subscriberInfo = {
+                    is_active: false,
+                    expires_soon: false
+                };
+
+                if (userTracking?.is_subscribed) {
+                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                    subscriberInfo = {
+                        is_active: !expiresAt || expiresAt > now,
+                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    };
+                }
+
+                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+            } else {
+                canje.Usuario.dataValues.subscriber_status = {
+                    is_active: false,
+                    expires_soon: false
                 };
             }
-
-            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-        } else {
-            canje.Usuario.dataValues.subscriber_status = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
-            };
         }
     }
 
@@ -169,36 +185,44 @@ exports.listarPorUsuario = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de suscriptor al usuario
+    // Agregar información de VIP y suscriptor al usuario
+    const now = new Date();
     for (const canje of canjes) {
-        if (canje.Usuario && canje.Usuario.user_id_ext) {
-            const userTracking = await KickUserTracking.findOne({
-                where: { kick_user_id: canje.Usuario.user_id_ext }
-            });
-
-            let subscriberInfo = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
+        if (canje.Usuario) {
+            // Información VIP
+            canje.Usuario.dataValues.vip_status = {
+                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
+                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+                expires_soon: canje.Usuario.vip_expires_at &&
+                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            if (userTracking?.is_subscribed) {
-                const now = new Date();
-                const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                subscriberInfo = {
-                    is_subscriber: true,
-                    is_active: !expiresAt || expiresAt > now,
-                    expires_at: expiresAt
+            // Información de suscriptor
+            if (canje.Usuario.user_id_ext) {
+                const userTracking = await KickUserTracking.findOne({
+                    where: { kick_user_id: canje.Usuario.user_id_ext }
+                });
+
+                let subscriberInfo = {
+                    is_active: false,
+                    expires_soon: false
+                };
+
+                if (userTracking?.is_subscribed) {
+                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
+                    subscriberInfo = {
+                        is_active: !expiresAt || expiresAt > now,
+                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+                    };
+                }
+
+                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+            } else {
+                canje.Usuario.dataValues.subscriber_status = {
+                    is_active: false,
+                    expires_soon: false
                 };
             }
-
-            canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-        } else {
-            canje.Usuario.dataValues.subscriber_status = {
-                is_subscriber: false,
-                is_active: false,
-                expires_at: null
-            };
         }
     }
 
