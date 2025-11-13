@@ -1047,42 +1047,144 @@ async function handleSubscriptionGifts(payload, metadata) {
 async function handleLivestreamStatusUpdated(payload, metadata) {
     try {
         const isLive = payload.is_live;
+        const redis = getRedisClient();
+
+        // 📊 Log detallado del payload completo para debugging
+        logger.info('🎥 [STREAM STATUS] ==========================================');
+        logger.info('🎥 [STREAM STATUS] Payload completo:', JSON.stringify(payload, null, 2));
+        logger.info('🎥 [STREAM STATUS] Metadata:', JSON.stringify(metadata, null, 2));
 
         logger.info('[Kick Webhook][Livestream Status]', {
             broadcaster: payload.broadcaster.username,
             is_live: isLive,
             title: payload.title,
             started_at: payload.started_at,
-            ended_at: payload.ended_at
+            ended_at: payload.ended_at,
+            timestamp_evento: metadata.timestamp,
+            timestamp_actual: new Date().toISOString()
         });
 
-        // 🎥 Actualizar estado en Redis
-        const redis = getRedisClient();
-        await redis.set('stream:is_live', isLive ? 'true' : 'false');
+        // 🔍 Validar timestamp del evento (no procesar eventos muy antiguos)
+        if (metadata.timestamp) {
+            const eventTimestamp = new Date(metadata.timestamp);
+            const now = new Date();
+            const ageMinutes = (now - eventTimestamp) / 1000 / 60;
+
+            if (ageMinutes > 5) {
+                logger.warn(`⚠️  [STREAM STATUS] Evento muy antiguo (${ageMinutes.toFixed(2)} minutos)`);
+                logger.warn(`⚠️  [STREAM STATUS] Podría estar desactualizado, procesando con precaución`);
+            }
+        }
+
+        // 🎥 Obtener estado anterior de Redis
+        const previousState = await redis.get('stream:is_live');
+        const stateChanged = previousState !== (isLive ? 'true' : 'false');
+
+        if (stateChanged) {
+            logger.info(`🔄 [STREAM STATUS] CAMBIO DETECTADO: ${previousState || 'unknown'} → ${isLive ? 'true' : 'false'}`);
+        } else {
+            logger.info(`✅ [STREAM STATUS] Estado sin cambios: ${isLive ? 'online' : 'offline'}`);
+        }
+
+        // 🎥 Actualizar estado en Redis con TTL de seguridad
+        // TTL de 2 horas: si no hay actualizaciones en 2h, el estado expirará
+        await redis.set('stream:is_live', isLive ? 'true' : 'false', 'EX', 7200);
+
+        // Guardar timestamp de última actualización
+        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 7200);
+
+        // Guardar información adicional del stream
+        if (isLive) {
+            const streamInfo = {
+                title: payload.title || 'Sin título',
+                started_at: payload.started_at,
+                broadcaster: payload.broadcaster?.username,
+                updated_by: 'status.updated'
+            };
+            await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
+        } else {
+            // Al terminar el stream, limpiar información
+            await redis.del('stream:current_info');
+            logger.info('🧹 [STREAM STATUS] Información del stream limpiada');
+        }
 
         logger.info(isLive ?
             '🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS' :
             '🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS'
         );
 
+        logger.info(`⏰ [STREAM STATUS] Estado guardado con TTL de 2 horas`);
+        logger.info('🎥 [STREAM STATUS] ==========================================');
+
     } catch (error) {
         logger.error('[Kick Webhook][Livestream Status] Error:', error.message);
+        logger.error('[Kick Webhook][Livestream Status] Stack:', error.stack);
     }
 }
 
 /**
  * Maneja actualizaciones de metadatos de transmisión
+ * IMPORTANTE: Este evento SOLO se dispara cuando el stream está EN VIVO
+ * Lo usamos como validación cruzada y heartbeat del estado del stream
  */
 async function handleLivestreamMetadataUpdated(payload, metadata) {
-    logger.info('[Kick Webhook][Livestream Metadata]', {
-        broadcaster: payload.broadcaster.username,
-        title: payload.metadata.title,
-        category: payload.metadata.category?.name,
-        language: payload.metadata.language,
-        has_mature_content: payload.metadata.has_mature_content
-    });
+    try {
+        const redis = getRedisClient();
 
-    // TODO: Implementar lógica de negocio (actualizar información de stream, etc.)
+        // 📊 Log detallado del payload completo
+        logger.info('🎬 [STREAM METADATA] ==========================================');
+        logger.info('🎬 [STREAM METADATA] Payload completo:', JSON.stringify(payload, null, 2));
+        logger.info('🎬 [STREAM METADATA] Metadata:', JSON.stringify(metadata, null, 2));
+
+        logger.info('[Kick Webhook][Livestream Metadata]', {
+            broadcaster: payload.broadcaster.username,
+            title: payload.metadata.title,
+            category: payload.metadata.category?.name,
+            language: payload.metadata.language,
+            has_mature_content: payload.metadata.has_mature_content,
+            timestamp_evento: metadata.timestamp,
+            timestamp_actual: new Date().toISOString()
+        });
+
+        // 🎯 VALIDACIÓN CRUZADA: Este evento solo llega si el stream está EN VIVO
+        const currentState = await redis.get('stream:is_live');
+
+        if (currentState !== 'true') {
+            logger.warn('⚠️  [STREAM METADATA] INCONSISTENCIA DETECTADA!');
+            logger.warn(`⚠️  [STREAM METADATA] Redis dice: ${currentState || 'unknown'}`);
+            logger.warn('⚠️  [STREAM METADATA] Pero metadata.updated indica que el stream ESTÁ EN VIVO');
+            logger.warn('🔧 [STREAM METADATA] CORRECCIÓN AUTOMÁTICA: Actualizando a true');
+
+            // Corregir automáticamente el estado
+            await redis.set('stream:is_live', 'true', 'EX', 7200);
+        } else {
+            logger.info('✅ [STREAM METADATA] Estado consistente: stream online confirmado');
+        }
+
+        // Actualizar información del stream en Redis
+        const streamInfo = {
+            title: payload.metadata.title || 'Sin título',
+            category: payload.metadata.category?.name || 'Sin categoría',
+            category_id: payload.metadata.category?.id,
+            language: payload.metadata.language || 'en',
+            has_mature_content: payload.metadata.has_mature_content || false,
+            broadcaster: payload.broadcaster?.username,
+            updated_by: 'metadata.updated',
+            last_update: new Date().toISOString()
+        };
+
+        await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
+        await redis.set('stream:last_metadata_update', new Date().toISOString(), 'EX', 7200);
+
+        logger.info('💾 [STREAM METADATA] Información del stream actualizada en Redis');
+        logger.info(`📺 [STREAM METADATA] Título: "${streamInfo.title}"`);
+        logger.info(`🎮 [STREAM METADATA] Categoría: "${streamInfo.category}"`);
+        logger.info('🎬 [STREAM METADATA] ==========================================');
+
+    } catch (error) {
+        logger.error('[Kick Webhook][Livestream Metadata] Error:', error.message);
+        logger.error('[Kick Webhook][Livestream Metadata] Stack:', error.stack);
+    }
 }
 
 /**
@@ -2190,7 +2292,60 @@ exports.debugSystemInfo = async (req, res) => {
 exports.debugStreamStatus = async (req, res) => {
     try {
         const redis = getRedisClient();
+
+        // Obtener todas las claves relacionadas con el stream
         const isLive = await redis.get('stream:is_live');
+        const currentInfo = await redis.get('stream:current_info');
+        const lastStatusUpdate = await redis.get('stream:last_status_update');
+        const lastMetadataUpdate = await redis.get('stream:last_metadata_update');
+
+        // Obtener TTL de las claves
+        const ttlIsLive = await redis.ttl('stream:is_live');
+        const ttlCurrentInfo = await redis.ttl('stream:current_info');
+
+        // Parsear información del stream si existe
+        let streamInfo = null;
+        if (currentInfo) {
+            try {
+                streamInfo = JSON.parse(currentInfo);
+            } catch (e) {
+                logger.warn('[Stream Status] Error parseando stream:current_info');
+            }
+        }
+
+        // Calcular tiempo desde última actualización
+        let minutesSinceStatusUpdate = null;
+        if (lastStatusUpdate) {
+            const lastUpdate = new Date(lastStatusUpdate);
+            const now = new Date();
+            minutesSinceStatusUpdate = (now - lastUpdate) / 1000 / 60;
+        }
+
+        let minutesSinceMetadataUpdate = null;
+        if (lastMetadataUpdate) {
+            const lastUpdate = new Date(lastMetadataUpdate);
+            const now = new Date();
+            minutesSinceMetadataUpdate = (now - lastUpdate) / 1000 / 60;
+        }
+
+        // Detectar inconsistencias
+        const warnings = [];
+
+        if (isLive === 'true' && ttlIsLive < 3600) {
+            warnings.push(`⚠️ TTL bajo: expira en ${Math.floor(ttlIsLive / 60)} minutos`);
+        }
+
+        if (isLive === 'true' && minutesSinceStatusUpdate && minutesSinceStatusUpdate > 120) {
+            warnings.push(`⚠️ Sin actualizaciones de status desde hace ${minutesSinceStatusUpdate.toFixed(1)} minutos`);
+        }
+
+        if (isLive === 'true' && !streamInfo) {
+            warnings.push('⚠️ Stream online pero sin información en Redis');
+        }
+
+        if (ttlIsLive === -1) {
+            warnings.push('⚠️ Clave sin TTL (permanente)');
+        }
 
         res.json({
             success: true,
@@ -2202,11 +2357,97 @@ exports.debugStreamStatus = async (req, res) => {
                     '🟢 Stream EN VIVO - Puntos activados' :
                     '🔴 Stream OFFLINE - Puntos desactivados'
             },
+            stream_info: streamInfo,
+            redis_metadata: {
+                ttl_is_live: ttlIsLive === -1 ? 'sin_expiración' : (ttlIsLive === -2 ? 'no_existe' : `${ttlIsLive}s (${Math.floor(ttlIsLive / 60)} min)`),
+                ttl_current_info: ttlCurrentInfo === -1 ? 'sin_expiración' : (ttlCurrentInfo === -2 ? 'no_existe' : `${ttlCurrentInfo}s (${Math.floor(ttlCurrentInfo / 60)} min)`),
+                last_status_update: lastStatusUpdate || 'nunca',
+                last_metadata_update: lastMetadataUpdate || 'nunca',
+                minutes_since_status_update: minutesSinceStatusUpdate ? minutesSinceStatusUpdate.toFixed(1) : 'n/a',
+                minutes_since_metadata_update: minutesSinceMetadataUpdate ? minutesSinceMetadataUpdate.toFixed(1) : 'n/a'
+            },
+            health_check: {
+                status: warnings.length === 0 ? '✅ Saludable' : '⚠️ Advertencias',
+                warnings: warnings
+            },
             timestamp: new Date().toISOString()
         });
 
     } catch (error) {
         logger.error('[Stream Status] Error:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * 🚨 EMERGENCY: Establecer manualmente el estado del stream
+ * POST /api/kick-webhook/debug/force-stream-state
+ * Body: { "is_live": true/false, "reason": "explicación" }
+ */
+exports.forceStreamState = async (req, res) => {
+    try {
+        const { is_live, reason } = req.body;
+
+        if (typeof is_live !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                error: 'Parámetro is_live debe ser boolean (true/false)'
+            });
+        }
+
+        const redis = getRedisClient();
+        const previousState = await redis.get('stream:is_live');
+
+        logger.warn('🚨 [FORCE STREAM STATE] ==========================================');
+        logger.warn('🚨 [FORCE STREAM STATE] CAMBIO MANUAL DE ESTADO DETECTADO');
+        logger.warn(`🚨 [FORCE STREAM STATE] Estado anterior: ${previousState || 'unknown'}`);
+        logger.warn(`🚨 [FORCE STREAM STATE] Nuevo estado: ${is_live ? 'true' : 'false'}`);
+        logger.warn(`🚨 [FORCE STREAM STATE] Razón: ${reason || 'No especificada'}`);
+        logger.warn(`🚨 [FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`);
+        logger.warn('🚨 [FORCE STREAM STATE] ==========================================');
+
+        // Actualizar estado con TTL
+        await redis.set('stream:is_live', is_live ? 'true' : 'false', 'EX', 7200);
+        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 7200);
+
+        // Marcar que fue un cambio manual
+        await redis.set('stream:last_manual_override', JSON.stringify({
+            previous_state: previousState || 'unknown',
+            new_state: is_live ? 'true' : 'false',
+            reason: reason || 'No especificada',
+            timestamp: new Date().toISOString()
+        }), 'EX', 86400); // 24 horas
+
+        if (is_live) {
+            // Si se fuerza a online, crear información básica
+            const streamInfo = {
+                title: 'Stream manual override',
+                broadcaster: 'Manual',
+                updated_by: 'manual_override',
+                last_update: new Date().toISOString()
+            };
+            await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
+        } else {
+            // Si se fuerza a offline, limpiar información
+            await redis.del('stream:current_info');
+        }
+
+        res.json({
+            success: true,
+            message: '✅ Estado del stream actualizado manualmente',
+            previous_state: previousState || 'unknown',
+            new_state: is_live ? 'true' : 'false',
+            reason: reason || 'No especificada',
+            warning: '⚠️ Este cambio se revertirá si llega un webhook de Kick',
+            ttl_hours: 2,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        logger.error('🚨 [FORCE STREAM STATE] Error:', error);
         res.status(500).json({
             success: false,
             error: error.message
