@@ -1086,12 +1086,22 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
             logger.info(`✅ [STREAM STATUS] Estado sin cambios: ${isLive ? 'online' : 'offline'}`);
         }
 
-        // 🎥 Actualizar estado en Redis con TTL de seguridad
-        // TTL de 2 horas: si no hay actualizaciones en 2h, el estado expirará
-        await redis.set('stream:is_live', isLive ? 'true' : 'false', 'EX', 7200);
+        // 🎥 Actualizar estado en Redis
+        // ✅ SOLUCIÓN AL PROBLEMA: Solo usar TTL cuando el stream está OFFLINE
+        // Cuando está ONLINE, persistir indefinidamente (sin TTL)
+        // El evento metadata.updated sirve como heartbeat adicional
+        if (isLive) {
+            // Stream ONLINE: SIN TTL (persiste indefinidamente)
+            await redis.set('stream:is_live', 'true');
+            logger.info('✅ [STREAM STATUS] Estado ONLINE guardado SIN TTL (persistente)');
+        } else {
+            // Stream OFFLINE: CON TTL de 24 horas para limpieza automática
+            await redis.set('stream:is_live', 'false', 'EX', 86400);
+            logger.info('✅ [STREAM STATUS] Estado OFFLINE guardado CON TTL de 24h (limpieza)');
+        }
 
-        // Guardar timestamp de última actualización
-        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 7200);
+        // Guardar timestamp de última actualización (siempre con TTL para limpieza)
+        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 86400);
 
         // Guardar información adicional del stream
         if (isLive) {
@@ -1101,7 +1111,8 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
                 broadcaster: payload.broadcaster?.username,
                 updated_by: 'status.updated'
             };
-            await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
+            // Info del stream SIN TTL mientras esté online
+            await redis.set('stream:current_info', JSON.stringify(streamInfo));
         } else {
             // Al terminar el stream, limpiar información
             await redis.del('stream:current_info');
@@ -1113,7 +1124,6 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
             '🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS'
         );
 
-        logger.info(`⏰ [STREAM STATUS] Estado guardado con TTL de 2 horas`);
         logger.info('🎥 [STREAM STATUS] ==========================================');
 
     } catch (error) {
@@ -1155,13 +1165,16 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
             logger.warn('⚠️  [STREAM METADATA] Pero metadata.updated indica que el stream ESTÁ EN VIVO');
             logger.warn('🔧 [STREAM METADATA] CORRECCIÓN AUTOMÁTICA: Actualizando a true');
 
-            // Corregir automáticamente el estado
-            await redis.set('stream:is_live', 'true', 'EX', 7200);
+            // Corregir automáticamente el estado (SIN TTL porque está online)
+            await redis.set('stream:is_live', 'true');
+            logger.info('✅ [STREAM METADATA] Estado corregido a ONLINE (persistente, sin TTL)');
         } else {
             logger.info('✅ [STREAM METADATA] Estado consistente: stream online confirmado');
+            // Renovar el estado online sin TTL (por si acaso tenía uno antiguo)
+            await redis.set('stream:is_live', 'true');
         }
 
-        // Actualizar información del stream en Redis
+        // Actualizar información del stream en Redis (SIN TTL porque está online)
         const streamInfo = {
             title: payload.metadata.title || 'Sin título',
             category: payload.metadata.category?.name || 'Sin categoría',
@@ -1173,13 +1186,15 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
             last_update: new Date().toISOString()
         };
 
-        await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
-        await redis.set('stream:last_metadata_update', new Date().toISOString(), 'EX', 7200);
+        // Info del stream SIN TTL mientras esté online
+        await redis.set('stream:current_info', JSON.stringify(streamInfo));
+        // Timestamp de última actualización de metadata (con TTL para limpieza)
+        await redis.set('stream:last_metadata_update', new Date().toISOString(), 'EX', 86400);
 
-        logger.info('💾 [STREAM METADATA] Información del stream actualizada en Redis');
+        logger.info('💾 [STREAM METADATA] Información del stream actualizada en Redis (persistente)');
         logger.info(`📺 [STREAM METADATA] Título: "${streamInfo.title}"`);
         logger.info(`🎮 [STREAM METADATA] Categoría: "${streamInfo.category}"`);
-        logger.info('🎬 [STREAM METADATA] ==========================================');
+        logger.info('🔄 [STREAM METADATA] Actuando como HEARTBEAT del estado online');        logger.info('🎬 [STREAM METADATA] ==========================================');
 
     } catch (error) {
         logger.error('[Kick Webhook][Livestream Metadata] Error:', error.message);
@@ -2409,9 +2424,16 @@ exports.forceStreamState = async (req, res) => {
         logger.warn(`🚨 [FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`);
         logger.warn('🚨 [FORCE STREAM STATE] ==========================================');
 
-        // Actualizar estado con TTL
-        await redis.set('stream:is_live', is_live ? 'true' : 'false', 'EX', 7200);
-        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 7200);
+        // Actualizar estado con lógica consistente: SIN TTL si está online, CON TTL si está offline
+        if (is_live) {
+            await redis.set('stream:is_live', 'true');
+            logger.warn('✅ [FORCE STREAM STATE] Estado forzado a ONLINE (persistente, sin TTL)');
+        } else {
+            await redis.set('stream:is_live', 'false', 'EX', 86400);
+            logger.warn('✅ [FORCE STREAM STATE] Estado forzado a OFFLINE (TTL 24h)');
+        }
+
+        await redis.set('stream:last_status_update', new Date().toISOString(), 'EX', 86400);
 
         // Marcar que fue un cambio manual
         await redis.set('stream:last_manual_override', JSON.stringify({
@@ -2422,14 +2444,14 @@ exports.forceStreamState = async (req, res) => {
         }), 'EX', 86400); // 24 horas
 
         if (is_live) {
-            // Si se fuerza a online, crear información básica
+            // Si se fuerza a online, crear información básica (SIN TTL)
             const streamInfo = {
                 title: 'Stream manual override',
                 broadcaster: 'Manual',
                 updated_by: 'manual_override',
                 last_update: new Date().toISOString()
             };
-            await redis.set('stream:current_info', JSON.stringify(streamInfo), 'EX', 7200);
+            await redis.set('stream:current_info', JSON.stringify(streamInfo));
         } else {
             // Si se fuerza a offline, limpiar información
             await redis.del('stream:current_info');
