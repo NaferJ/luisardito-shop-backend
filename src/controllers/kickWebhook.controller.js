@@ -1251,8 +1251,8 @@ async function handleKicksGifted(payload, metadata) {
             return;
         }
 
-        // Los puntos a otorgar son equivalentes a la cantidad de kicks regalados
-        const pointsToAward = kickAmount;
+        // Los puntos a otorgar son el doble de la cantidad de kicks regalados (x2)
+        const pointsToAward = kickAmount * 2;
 
         if (pointsToAward <= 0) {
             logger.info('[Kick Webhook][Kicks Gifted] Cantidad de kicks es 0 o inválida');
