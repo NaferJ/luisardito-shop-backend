@@ -560,11 +560,12 @@ async function handleChatMessage(payload, metadata) {
         let pointsToAward = basePoints;
         let userType = 'regular';
 
-        if (isVipActive && configMap['chat_points_vip']) {
+        if (isSubscriber) {
+            userType = 'subscriber';
+            // Los puntos ya están asignados en basePoints (chat_points_subscriber)
+        } else if (isVipActive && configMap['chat_points_vip']) {
             pointsToAward = configMap['chat_points_vip'];
             userType = 'vip';
-        } else if (isSubscriber) {
-            userType = 'subscriber';
         }
 
         logger.info(`🎯 [CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Tipo: ${userType}, Puntos: ${pointsToAward}`);
