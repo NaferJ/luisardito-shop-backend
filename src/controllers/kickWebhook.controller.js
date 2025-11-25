@@ -506,66 +506,31 @@ async function handleChatMessage(payload, metadata) {
     }
 
     // ==========================================
-    // 🤖 Comandos del BOT (!tienda/!shop, !puntos)
+    // 🤖 Comandos del BOT (Sistema Dinámico desde DB)
     // Se responden SIEMPRE, independientemente del estado del stream
     // ==========================================
     try {
       const content = String(payload.content || "").trim();
       if (content.startsWith("!")) {
-        const channelId = String(
-          payload.channel_id ||
-            payload?.broadcaster?.id ||
-            payload?.channel?.id ||
-            "",
-        );
         const bot = require("../services/kickBot.service");
+        const commandHandler = require("../services/kickBotCommandHandler.service");
 
-        // !tienda | !shop
-        if (/^!(tienda|shop)\b/i.test(content)) {
-          const reply = `${kickUsername} tienda del canal: https://shop.luisardito.com/`;
-          try {
-            await bot.sendMessage(reply);
-          } catch (error) {
-            logger.error(
-              "[Chat Command] Error enviando mensaje de tienda:",
-              error.message,
-            );
-          }
-        }
+        // Procesar comando dinámicamente desde la base de datos
+        const commandProcessed = await commandHandler.processMessage(
+          content,
+          kickUsername,
+          payload.channel?.username || "luisardito",
+          bot,
+        );
 
-        // !puntos [username?]
-        if (/^!puntos\b/i.test(content)) {
-          const parts = content.split(/\s+/);
-          const lookupName = parts[1]
-            ? parts[1].replace(/^@/, "")
-            : kickUsername;
-
-          const { Usuario } = require("../models");
-          const { Op } = require("sequelize");
-
-          try {
-            const targetUser = await Usuario.findOne({
-              where: {
-                nickname: { [Op.like]: lookupName },
-              },
-            });
-
-            const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
-            const reply =
-              puntos !== null
-                ? `${lookupName} tiene ${puntos} puntos.`
-                : `${lookupName} no existe o no tiene puntos registrados.`;
-
-            await bot.sendMessage(reply);
-          } catch (error) {
-            logger.error(
-              "[Chat Command] Error procesando comando !puntos:",
-              error.message,
-            );
-            await bot.sendMessage(
-              `Ocurrió un error al verificar los puntos de ${lookupName}`,
-            );
-          }
+        if (commandProcessed) {
+          logger.info(
+            `✅ [BOT-COMMAND] Comando procesado exitosamente para ${kickUsername}`,
+          );
+        } else {
+          logger.debug(
+            `ℹ️ [BOT-COMMAND] Comando no registrado: ${content.split(/\s+/)[0]}`,
+          );
         }
       }
     } catch (cmdErr) {

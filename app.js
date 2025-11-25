@@ -21,6 +21,7 @@ const kickSubscriptionRoutes = require("./src/routes/kickSubscription.routes");
 const kickPointsConfigRoutes = require("./src/routes/kickPointsConfig.routes");
 const kickBroadcasterRoutes = require("./src/routes/kickBroadcaster.routes");
 const kickAdminRoutes = require("./src/routes/kickAdmin.routes");
+const kickBotCommandsRoutes = require("./src/routes/kickBotCommands.routes");
 
 const app = express();
 
@@ -35,14 +36,18 @@ app.use(express.json());
 
 // Middleware específico para webhooks con logging optimizado
 app.use("/api/kick-webhook", (req, res, next) => {
-    const hasKickHeaders = Object.keys(req.headers).some(key =>
-        key.toLowerCase().startsWith('kick-event')
-    );
+  const hasKickHeaders = Object.keys(req.headers).some((key) =>
+    key.toLowerCase().startsWith("kick-event"),
+  );
 
-    if (hasKickHeaders) {
-        logger.info('🎯 [WEBHOOK] Nueva petición de Kick:', req.method, req.originalUrl);
-    }
-    next();
+  if (hasKickHeaders) {
+    logger.info(
+      "🎯 [WEBHOOK] Nueva petición de Kick:",
+      req.method,
+      req.originalUrl,
+    );
+  }
+  next();
 });
 
 // Rutas principales
@@ -56,6 +61,7 @@ app.use("/api/kick", kickSubscriptionRoutes);
 app.use("/api/kick", kickPointsConfigRoutes);
 app.use("/api/kick", kickBroadcasterRoutes);
 app.use("/api/kick-admin", kickAdminRoutes);
+app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {
