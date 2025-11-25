@@ -1,5 +1,6 @@
 const Usuario = require("../models/usuario.model");
 const LeaderboardSnapshot = require("../models/leaderboardSnapshot.model");
+const KickUserTracking = require("../models/kickUserTracking.model");
 const { sequelize } = require("../models/database");
 const logger = require("../utils/logger");
 const { Op } = require("sequelize");
@@ -39,6 +40,25 @@ class LeaderboardService {
           if (usuario) {
             const position =
               currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
+
+            // Obtener estado de suscriptor desde KickUserTracking
+            let isSubscriber = false;
+            if (usuario.user_id_ext) {
+              const userTracking = await KickUserTracking.findOne({
+                where: { kick_user_id: usuario.user_id_ext },
+                attributes: ["is_subscribed", "subscription_expires_at"],
+                raw: true,
+              });
+
+              if (userTracking?.is_subscribed) {
+                const now = new Date();
+                const expiresAt = userTracking.subscription_expires_at
+                  ? new Date(userTracking.subscription_expires_at)
+                  : null;
+                isSubscriber = !expiresAt || expiresAt > now;
+              }
+            }
+
             userPosition = {
               usuario_id: usuario.id,
               nickname: usuario.nickname,
@@ -47,6 +67,7 @@ class LeaderboardService {
               position_change: 0,
               change_indicator: "neutral",
               is_vip: usuario.is_vip && usuario.isVipActive(),
+              is_subscriber: isSubscriber,
               kick_data: usuario.kick_data,
             };
           }
@@ -94,6 +115,7 @@ class LeaderboardService {
         "is_vip",
         "vip_expires_at",
         "kick_data",
+        "user_id_ext",
       ],
       order: [
         ["puntos", "DESC"],
@@ -102,24 +124,45 @@ class LeaderboardService {
       raw: true,
     });
 
-    // Asignar posiciones
-    return usuarios.map((usuario, index) => {
-      const isVipActive =
-        usuario.is_vip &&
-        (!usuario.vip_expires_at ||
-          new Date(usuario.vip_expires_at) > new Date());
-      const isSubscriber = usuario.kick_data?.is_subscriber || false;
+    // Asignar posiciones y obtener estado de suscriptor desde KickUserTracking
+    const usuariosConPosicion = await Promise.all(
+      usuarios.map(async (usuario, index) => {
+        const isVipActive =
+          usuario.is_vip &&
+          (!usuario.vip_expires_at ||
+            new Date(usuario.vip_expires_at) > new Date());
 
-      return {
-        usuario_id: usuario.id,
-        nickname: usuario.nickname,
-        puntos: usuario.puntos,
-        position: index + 1,
-        is_vip: isVipActive,
-        is_subscriber: isSubscriber,
-        kick_data: usuario.kick_data,
-      };
-    });
+        // Obtener estado de suscriptor desde KickUserTracking
+        let isSubscriber = false;
+        if (usuario.user_id_ext) {
+          const userTracking = await KickUserTracking.findOne({
+            where: { kick_user_id: usuario.user_id_ext },
+            attributes: ["is_subscribed", "subscription_expires_at"],
+            raw: true,
+          });
+
+          if (userTracking?.is_subscribed) {
+            const now = new Date();
+            const expiresAt = userTracking.subscription_expires_at
+              ? new Date(userTracking.subscription_expires_at)
+              : null;
+            isSubscriber = !expiresAt || expiresAt > now;
+          }
+        }
+
+        return {
+          usuario_id: usuario.id,
+          nickname: usuario.nickname,
+          puntos: usuario.puntos,
+          position: index + 1,
+          is_vip: isVipActive,
+          is_subscriber: isSubscriber,
+          kick_data: usuario.kick_data,
+        };
+      }),
+    );
+
+    return usuariosConPosicion;
   }
 
   /**
