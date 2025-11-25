@@ -19,6 +19,7 @@ const KickBotToken = require("./kickBotToken.model");
 const KickBotCommand = require("./kickBotCommand.model");
 const RefreshToken = require("./refreshToken.model");
 const BotrixMigrationConfig = require("./botrixMigrationConfig.model");
+const LeaderboardSnapshot = require("./leaderboardSnapshot.model");
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
@@ -59,6 +60,10 @@ HistorialPunto.belongsTo(Usuario, { foreignKey: "usuario_id" });
 Usuario.hasMany(RefreshToken, { foreignKey: "usuario_id" });
 RefreshToken.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
+// Asociaciones de LeaderboardSnapshot
+Usuario.hasMany(LeaderboardSnapshot, { foreignKey: "usuario_id" });
+LeaderboardSnapshot.belongsTo(Usuario, { foreignKey: "usuario_id" });
+
 // Exportar sequelize y todos los modelos
 module.exports = {
   sequelize,
@@ -79,4 +84,5 @@ module.exports = {
   KickBotCommand,
   RefreshToken,
   BotrixMigrationConfig,
+  LeaderboardSnapshot,
 };

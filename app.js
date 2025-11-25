@@ -9,6 +9,7 @@ const logger = require("./src/utils/logger");
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
 const VipCleanupTask = require("./src/services/vipCleanup.task");
 const botMaintenanceService = require("./src/services/botMaintenance.service");
+const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -22,6 +23,7 @@ const kickPointsConfigRoutes = require("./src/routes/kickPointsConfig.routes");
 const kickBroadcasterRoutes = require("./src/routes/kickBroadcaster.routes");
 const kickAdminRoutes = require("./src/routes/kickAdmin.routes");
 const kickBotCommandsRoutes = require("./src/routes/kickBotCommands.routes");
+const leaderboardRoutes = require("./src/routes/leaderboard.routes");
 
 const app = express();
 
@@ -62,6 +64,7 @@ app.use("/api/kick", kickPointsConfigRoutes);
 app.use("/api/kick", kickBroadcasterRoutes);
 app.use("/api/kick-admin", kickAdminRoutes);
 app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
+app.use("/api/leaderboard", leaderboardRoutes);
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {
@@ -107,6 +110,9 @@ const start = async () => {
 
     // Iniciar mantenimiento automático del bot de Kick
     botMaintenanceService.start();
+
+    // Iniciar snapshots automáticos del leaderboard
+    LeaderboardSnapshotTask.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
