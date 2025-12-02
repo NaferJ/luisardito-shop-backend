@@ -126,6 +126,7 @@ class KickBotService {
 
     /**
      * Resuelve el token de acceso, renovándolo si es necesario
+     * PRIORIDAD: DB primero, archivo como fallback
      * @returns {Promise<string>} - Token de acceso
      */
     async resolveAccessToken() {
@@ -137,24 +138,7 @@ class KickBotService {
             return this.accessToken;
         }
 
-        // Primero intentar con tokens.json
-        try {
-            const tokens = await this.readTokensFromFile();
-            if (tokens && tokens.accessToken) {
-                // Verificar si el token está por expirar (en menos de 5 minutos)
-                if (tokens.expiresAt > Date.now() + 5 * 60 * 1000) {
-                    logger.info('[KickBot] ✅ Token válido desde archivo');
-                    return tokens.accessToken;
-                } else {
-                    logger.info('[KickBot] ⏳ Token expirado o por expirar, renovando desde archivo...');
-                    return await this.refreshAccessToken();
-                }
-            }
-        } catch (error) {
-            logger.info('[KickBot] ⚠️ Error leyendo tokens.json, intentando con DB:', error.message);
-        }
-
-        // Fallback a DB si no hay archivo o falla
+        // PRIORIDAD 1: Intentar con la base de datos (más confiable)
         try {
             const where = this.botUsername ? { 
                 kick_username: this.botUsername, 
@@ -163,68 +147,75 @@ class KickBotService {
                 is_active: true 
             };
             
-            logger.info('[KickBot] 🔍 Buscando tokens en DB...');
             const records = await KickBotToken.findAll({
                 where,
                 order: [['updated_at', 'DESC']] 
             });
             
-            if (!records || records.length === 0) {
-                logger.info('[KickBot] ❌ No se encontraron tokens activos en la base de datos');
-                return null;
-            }
+            if (records && records.length > 0) {
+                logger.info(`[KickBot] 🔍 Encontrados ${records.length} tokens activos en DB`);
 
-            logger.info(`[KickBot] 🔍 Encontrados ${records.length} tokens activos`);
+                // Probar cada token hasta encontrar uno válido
+                for (const record of records) {
+                    // Verificar si el token está por expirar (en menos de 45 minutos) o ya expiró
+                    const now = new Date();
+                    const expiresAt = new Date(record.token_expires_at);
+                    const expiresIn = expiresAt - now;
+                    const fortyFiveMinutes = 45 * 60 * 1000;
+                    
+                    if (expiresIn < fortyFiveMinutes) {
+                        const isExpired = expiresIn < 0;
+                        const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
 
-            // Probar cada token hasta encontrar uno válido
-            for (const record of records) {
-                logger.info(`[KickBot] 🔍 Probando token para ${record.kick_username}`, {
-                    expira_en: record.token_expires_at,
-                    activo: record.is_active,
-                    tiene_refresh: !!record.refresh_token
-                });
+                        if (isExpired) {
+                            logger.info(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos, renovando...`);
+                        } else {
+                            logger.info(`[KickBot] ⏳ Token expira en ${minutesUntilExpiry} minutos, renovando proactivamente...`);
+                        }
 
-                // Verificar si el token está por expirar (en menos de 30 minutos) o ya expiró
-                const now = new Date();
-                const expiresAt = new Date(record.token_expires_at);
-                const expiresIn = expiresAt - now;
-                const thirtyMinutes = 30 * 60 * 1000;
-                if (expiresIn < thirtyMinutes) {
-                    const isExpired = expiresIn < 0;
-                    const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
-
-                    if (isExpired) {
-                        logger.info(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos, intentando renovar...`);
+                        try {
+                            const updatedRecord = await this.refreshToken(record);
+                            this.accessToken = updatedRecord.access_token;
+                            logger.info(`[KickBot] ✅ Token renovado desde DB para ${record.kick_username}`);
+                            return this.accessToken;
+                        } catch (error) {
+                            logger.error(`[KickBot] ❌ Renovación falló para ${record.kick_username}:`, error.message);
+                            // Continuar con el siguiente token
+                            continue;
+                        }
                     } else {
-                        logger.info(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos), renovando...`);
-                    }
-
-                    try {
-                        const updatedRecord = await this.refreshToken(record);
-                        this.accessToken = updatedRecord.access_token;
-                        logger.info(`[KickBot] ✅ Token renovado y seleccionado para ${record.kick_username}`);
+                        // Token válido, usarlo
+                        this.accessToken = record.access_token;
+                        logger.info(`[KickBot] ✅ Token válido desde DB para ${record.kick_username} (expira en ${Math.round(expiresIn / 1000 / 60)} min)`);
                         return this.accessToken;
-                    } catch (error) {
-                        logger.error(`[KickBot] ❌ Renovación falló para ${record.kick_username}:`, error.message);
-                        // Continuar con el siguiente token
-                        continue;
                     }
-                } else {
-                    // Token válido, usarlo
-                    this.accessToken = record.access_token;
-                    logger.info(`[KickBot] ✅ Token válido seleccionado para ${record.kick_username}`);
-                    return this.accessToken;
                 }
             }
-
-            // Si ningún token funcionó
-            logger.info('[KickBot] ❌ Ningún token pudo ser renovado o es válido');
-            return null;
-
-        } catch (e) {
-            logger.error('[KickBot] ❌ Error resolviendo token desde DB:', e.message);
-            return null;
+        } catch (dbError) {
+            logger.warn('[KickBot] ⚠️ Error consultando DB, intentando con archivo:', dbError.message);
         }
+
+        // PRIORIDAD 2: Fallback a tokens.json si la DB no tiene tokens
+        try {
+            const tokens = await this.readTokensFromFile();
+            if (tokens && tokens.accessToken) {
+                // Verificar si el token está por expirar (en menos de 45 minutos)
+                if (tokens.expiresAt > Date.now() + 45 * 60 * 1000) {
+                    logger.info('[KickBot] ✅ Token válido desde archivo (fallback)');
+                    return tokens.accessToken;
+                } else {
+                    logger.info('[KickBot] ⏳ Token del archivo por expirar, renovando...');
+                    return await this.refreshAccessToken();
+                }
+            }
+        } catch (fileError) {
+            logger.warn('[KickBot] ⚠️ Archivo tokens.json no disponible o inválido');
+        }
+
+        // Si llegamos aquí, no hay tokens disponibles
+        logger.error('[KickBot] ❌ No hay tokens disponibles (ni DB ni archivo)');
+        logger.error('[KickBot] 🚨 Requiere re-autenticación en: https://luisardito.shop/api/auth/kick-bot');
+        return null;
     }
 
     /**
@@ -387,65 +378,84 @@ class KickBotService {
 
     /**
      * Inicia el proceso de auto-refresh de tokens en segundo plano
+     * Renovación cada 10 minutos, sin delay inicial
      */
     startAutoRefresh() {
-        logger.info('[KickBot] ⏰ Iniciando refresh automático de tokens cada 15 minutos (con delay inicial de 30 minutos)');
+        logger.info('[KickBot] ⏰ Iniciando sistema de renovación automática de tokens cada 10 minutos');
 
-        // Esperar 30 minutos antes de iniciar el refresh automático para evitar problemas con tokens recién obtenidos
-        setTimeout(() => {
-            logger.info('[KickBot] ⏰ Delay inicial completado, iniciando refresh automático');
+        // Primera ejecución inmediata (después de 2 minutos para dar tiempo a que se cargue el sistema)
+        setTimeout(async () => {
+            logger.info('[KickBot] 🔄 Primera verificación de tokens...');
+            try {
+                await this.performAutoRefresh();
+            } catch (error) {
+                logger.error('[KickBot] ❌ Error en primera verificación:', error.message);
+            }
+        }, 2 * 60 * 1000); // 2 minutos inicial
 
-            setInterval(async () => {
-                try {
-                    logger.info('[KickBot] 🔄 Verificando si el token necesita refresh...');
-                    const needsRefresh = await this.checkIfTokenNeedsRefresh();
-                    if (needsRefresh) {
-                        logger.info('[KickBot] 🔄 Token necesita refresh, ejecutando...');
-                        await this.refreshAccessToken();
-                        logger.info('[KickBot] ✅ Refresh automático completado');
-                    } else {
-                        logger.info('[KickBot] ✅ Token aún válido, no se refresca');
-                    }
-                } catch (error) {
-                    logger.error('[KickBot] ❌ Error en el refresh automático:', error.message);
-                }
-            }, 15 * 60 * 1000); // Cada 15 minutos
-        }, 30 * 60 * 1000); // Delay inicial de 30 minutos
+        // Luego cada 10 minutos
+        setInterval(async () => {
+            try {
+                await this.performAutoRefresh();
+            } catch (error) {
+                logger.error('[KickBot] ❌ Error en refresh automático:', error.message);
+            }
+        }, 10 * 60 * 1000); // Cada 10 minutos
     }
 
     /**
-     * Verifica si el token actual necesita ser renovado
-     * @returns {Promise<boolean>} True si necesita refresh
+     * Ejecuta el proceso de auto-refresh
      */
-    async checkIfTokenNeedsRefresh() {
+    async performAutoRefresh() {
+        logger.info('[KickBot] 🔄 Verificando si los tokens necesitan renovación...');
+        
         try {
-            const tokens = await this.readTokensFromFile();
-            if (!tokens || !tokens.expiresAt) {
-                logger.info('[KickBot] ⚠️ No hay tokens guardados o sin fecha de expiración');
-                return true; // Necesita refresh si no hay tokens
+            const where = this.botUsername ? { 
+                kick_username: this.botUsername, 
+                is_active: true 
+            } : { 
+                is_active: true 
+            };
+            
+            const records = await KickBotToken.findAll({
+                where,
+                order: [['updated_at', 'DESC']] 
+            });
+            
+            if (!records || records.length === 0) {
+                logger.warn('[KickBot] ⚠️ No hay tokens activos en DB para auto-renovar');
+                return;
             }
 
-            const now = new Date();
-            const expiresAt = new Date(tokens.expiresAt);
-            const expiresIn = expiresAt - now;
-            const thirtyMinutes = 30 * 60 * 1000;
+            for (const record of records) {
+                const now = new Date();
+                const expiresAt = new Date(record.token_expires_at);
+                const expiresIn = expiresAt - now;
+                const fortyFiveMinutes = 45 * 60 * 1000;
 
-            if (expiresIn < thirtyMinutes) {
-                const isExpired = expiresIn < 0;
-                const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
-
-                if (isExpired) {
-                    logger.info(`[KickBot] ⚠️ Token expiró hace ${Math.abs(minutesUntilExpiry)} minutos`);
+                if (expiresIn < fortyFiveMinutes) {
+                    const minutesLeft = Math.round(expiresIn / 1000 / 60);
+                    logger.info(`[KickBot] 🔄 Token de ${record.kick_username} expira en ${minutesLeft} min, renovando...`);
+                    
+                    try {
+                        await this.refreshToken(record);
+                        logger.info(`[KickBot] ✅ Token auto-renovado exitosamente para ${record.kick_username}`);
+                    } catch (error) {
+                        logger.error(`[KickBot] ❌ Error auto-renovando token para ${record.kick_username}:`, error.message);
+                        
+                        // Si el refresh token expiró, alertar
+                        if (error.code === 'REFRESH_TOKEN_EXPIRED') {
+                            logger.error(`[KickBot] 🚨 ALERTA: Refresh token expirado para ${record.kick_username}. Re-autenticación requerida.`);
+                            logger.error(`[KickBot] 🔗 Re-autenticar en: https://luisardito.shop/api/auth/kick-bot`);
+                        }
+                    }
                 } else {
-                    logger.info(`[KickBot] ⏳ Token expira pronto (en ${minutesUntilExpiry} minutos)`);
+                    const minutesLeft = Math.round(expiresIn / 1000 / 60);
+                    logger.info(`[KickBot] ✅ Token de ${record.kick_username} aún válido (${minutesLeft} min restantes)`);
                 }
-                return true;
             }
-
-            return false; // No necesita refresh
         } catch (error) {
-            logger.error('[KickBot] ❌ Error verificando si necesita refresh:', error.message);
-            return true; // En caso de error, intentar refresh
+            logger.error('[KickBot] ❌ Error en performAutoRefresh:', error.message);
         }
     }
 
