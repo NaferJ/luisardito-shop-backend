@@ -1249,8 +1249,10 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
         const now = new Date();
         const minutesSinceMetadata = (now - lastMetadataTime) / 1000 / 60;
 
-        // Si recibimos metadata hace menos de 3 minutos, el stream está REALMENTE online
-        if (minutesSinceMetadata < 3) {
+        // 🎯 PROTECCIÓN MEJORADA: Si recibimos metadata hace menos de 30 minutos, el stream está REALMENTE online
+        // metadata.updated SOLO se envía cuando el stream está EN VIVO (según documentación de Kick)
+        // Aumentado de 3 a 30 minutos para mayor resistencia a glitches de la API de Kick
+        if (minutesSinceMetadata < 30) {
           logger.warn(
             "🚨 [STREAM STATUS] ==========================================",
           );
@@ -1263,6 +1265,9 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
           );
           logger.warn(
             "🚨 [STREAM STATUS] IGNORANDO evento offline - Manteniendo estado ONLINE",
+          );
+          logger.warn(
+            `🚨 [STREAM STATUS] Ventana de protección: 30 minutos (actual: ${minutesSinceMetadata.toFixed(2)} min)`,
           );
           logger.warn(
             "🚨 [STREAM STATUS] ==========================================",
@@ -1285,7 +1290,23 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
             "🎥 [STREAM STATUS] ==========================================",
           );
           return;
+        } else {
+          // Más de 30 minutos sin metadata.updated - probablemente es un offline real
+          logger.info(
+            `ℹ️  [STREAM STATUS] Sin metadata.updated desde hace ${minutesSinceMetadata.toFixed(2)} minutos`,
+          );
+          logger.info(
+            "ℹ️  [STREAM STATUS] Procesando evento offline como válido",
+          );
         }
+      } else {
+        // No hay registro de metadata.updated - aceptar el offline
+        logger.info(
+          "ℹ️  [STREAM STATUS] Sin historial de metadata.updated",
+        );
+        logger.info(
+          "ℹ️  [STREAM STATUS] Procesando evento offline como válido",
+        );
       }
 
       // Stream OFFLINE: CON TTL de 24 horas para limpieza automática
