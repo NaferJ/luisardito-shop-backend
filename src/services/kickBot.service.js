@@ -12,7 +12,6 @@ const logger = require('../utils/logger');
 class KickBotService {
     constructor() {
         this.apiBase = String(config.kick.apiBaseUrl || '').replace(/\/$/, '');
-        this.accessToken = config.kickBot?.accessToken;
         this.botUsername = config.kickBot?.username || 'Bot';
         this.tokensFile = path.join(__dirname, '../../tokens/tokens.json');
 
@@ -132,11 +131,8 @@ class KickBotService {
     async resolveAccessToken() {
         logger.info('[KickBot] 🔍 Resolviendo access token...');
         
-        // Si hay un token en la configuración, usarlo (para desarrollo)
-        if (this.accessToken && String(this.accessToken).length > 10) {
-            logger.info('[KickBot] ✅ Usando token de configuración');
-            return this.accessToken;
-        }
+        // SIEMPRE usar DB/archivo, nunca confiar en token en memoria
+        // (el token en memoria puede haber expirado)
 
         // PRIORIDAD 1: Intentar con la base de datos (más confiable)
         try {
@@ -175,9 +171,8 @@ class KickBotService {
 
                         try {
                             const updatedRecord = await this.refreshToken(record);
-                            this.accessToken = updatedRecord.access_token;
                             logger.info(`[KickBot] ✅ Token renovado desde DB para ${record.kick_username}`);
-                            return this.accessToken;
+                            return updatedRecord.access_token;
                         } catch (error) {
                             logger.error(`[KickBot] ❌ Renovación falló para ${record.kick_username}:`, error.message);
                             // Continuar con el siguiente token
@@ -185,9 +180,8 @@ class KickBotService {
                         }
                     } else {
                         // Token válido, usarlo
-                        this.accessToken = record.access_token;
                         logger.info(`[KickBot] ✅ Token válido desde DB para ${record.kick_username} (expira en ${Math.round(expiresIn / 1000 / 60)} min)`);
-                        return this.accessToken;
+                        return record.access_token;
                     }
                 }
             }
