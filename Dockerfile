@@ -4,8 +4,8 @@ FROM node:20-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install docker-cli for backups (needs docker socket mounted)
-RUN apk add --no-cache docker-cli
+# Install docker-cli and git for backups
+RUN apk add --no-cache docker-cli git
 
 # Install dependencies first (only production deps)
 COPY package.json package-lock.json* ./
