@@ -44,3 +44,8 @@ tokens.json
 
 # Tokens directory (sensitive data)
 tokens/
+
+# Backups (never commit to main repo)
+backups/
+*.sql
+*.sql.gz

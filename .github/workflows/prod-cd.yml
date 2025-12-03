@@ -115,6 +115,14 @@ jobs:
             echo "LEADERBOARD_SNAPSHOT_INTERVAL_HOURS=336" >> "$ENV_PATH"
             echo "LEADERBOARD_CLEANUP_DAYS=30" >> "$ENV_PATH"
 
+            # Backup configuration
+            echo "BACKUP_ENABLED=true" >> "$ENV_PATH"
+            echo "BACKUP_GITHUB_REPO_URL=${{ secrets.BACKUP_GITHUB_REPO_URL }}" >> "$ENV_PATH"
+            echo "BACKUP_GITHUB_TOKEN=${{ secrets.BACKUP_GITHUB_TOKEN }}" >> "$ENV_PATH"
+            echo "BACKUP_GITHUB_USER_EMAIL=${{ secrets.BACKUP_GITHUB_USER_EMAIL }}" >> "$ENV_PATH"
+            echo "BACKUP_TIME=03:00" >> "$ENV_PATH"
+            echo "BACKUP_RETENTION_DAYS=3" >> "$ENV_PATH"
+
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"

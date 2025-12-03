@@ -10,6 +10,7 @@ const tokenRefreshService = require("./src/services/tokenRefresh.service");
 const VipCleanupTask = require("./src/services/vipCleanup.task");
 const botMaintenanceService = require("./src/services/botMaintenance.service");
 const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
+const backupScheduler = require("./src/services/backup.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -113,6 +114,9 @@ const start = async () => {
 
     // Iniciar snapshots automáticos del leaderboard
     LeaderboardSnapshotTask.start();
+
+    // Iniciar backups automáticos
+    backupScheduler.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
