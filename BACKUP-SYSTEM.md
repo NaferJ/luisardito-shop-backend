@@ -206,8 +206,11 @@ El backup está integrado en el ciclo de vida de la aplicación. Al iniciar, ver
 
 **Solución**:
 ```bash
-# Verificar que MySQL está corriendo
+# Verificar que MySQL está corriendo y accesible
 docker ps | grep luisardito-mysql
+
+# Probar conexión desde el contenedor backend
+docker exec luisardito-backend mysql -h db -u root -proot -e "SELECT 1"
 
 # Ver logs de MySQL
 docker logs luisardito-mysql

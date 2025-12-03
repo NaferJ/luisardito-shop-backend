@@ -4,6 +4,9 @@ FROM node:20-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Install mysql-client for backups
+RUN apk add --no-cache mysql-client
+
 # Install dependencies first (only production deps)
 COPY package.json package-lock.json* ./
 RUN npm install --production

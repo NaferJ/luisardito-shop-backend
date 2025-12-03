@@ -98,7 +98,10 @@ class BackupService {
     async dumpDatabase(outputPath) {
         logger.info('📦 Creando dump de MySQL...');
 
-        const command = `docker exec ${this.config.dbContainer} mysqldump ` +
+        // Conectar directamente a MySQL usando hostname de Docker (db)
+        const dbHost = process.env.DB_HOST || 'db';
+        const command = `mysqldump ` +
+            `-h ${dbHost} ` +
             `-u ${this.config.dbUser} ` +
             `-p${this.config.dbPassword} ` +
             `--single-transaction ` +
@@ -306,8 +309,10 @@ class BackupService {
                 await execAsync(`gunzip -c "${backupPath}" > "${sqlFile}"`);
             }
 
-            // Restaurar en MySQL
-            const command = `docker exec -i ${this.config.dbContainer} mysql ` +
+            // Restaurar en MySQL (conexión directa por red Docker)
+            const dbHost = process.env.DB_HOST || 'db';
+            const command = `mysql ` +
+                `-h ${dbHost} ` +
                 `-u ${this.config.dbUser} ` +
                 `-p${this.config.dbPassword} ` +
                 `${this.config.dbName} < "${sqlFile}"`;
