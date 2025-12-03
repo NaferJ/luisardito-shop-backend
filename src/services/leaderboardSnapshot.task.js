@@ -70,8 +70,9 @@ class LeaderboardSnapshotTask {
                 );
             }
 
-            // 2. Limpiar snapshots antiguos (se ejecuta solo una vez al día)
-            if (this._shouldCleanup()) {
+            // 2. Limpiar snapshots antiguos solo si realmente hay datos que limpiar
+            const shouldCleanup = await this._shouldCleanup();
+            if (shouldCleanup) {
                 logger.info(`🧹 [LEADERBOARD-SNAPSHOT] Iniciando limpieza de snapshots antiguos (>${this.cleanupDays} días)...`);
 
                 const cleanupResult = await leaderboardService.cleanOldSnapshots(this.cleanupDays);
@@ -81,8 +82,8 @@ class LeaderboardSnapshotTask {
                         `✅ [LEADERBOARD-SNAPSHOT] Limpieza completada: ${cleanupResult.deleted_count} registros eliminados`
                     );
                 }
-
-                this._markCleanupDone();
+            } else {
+                logger.info('✅ [LEADERBOARD-SNAPSHOT] No hay snapshots antiguos para limpiar');
             }
 
         } catch (error) {
@@ -93,22 +94,39 @@ class LeaderboardSnapshotTask {
 
     /**
      * Verifica si debe ejecutarse la limpieza de snapshots antiguos
-     * Se ejecuta solo una vez al día
+     * Consulta directamente la base de datos para determinar si hay snapshots
+     * más antiguos que el período de retención configurado
      * @private
      */
-    _shouldCleanup() {
-        const lastCleanup = this._getLastCleanupDate();
-        if (!lastCleanup) return true;
+    async _shouldCleanup() {
+        try {
+            const LeaderboardSnapshot = require('../models/leaderboardSnapshot.model');
+            
+            // Calcular la fecha límite de retención
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - this.cleanupDays);
 
-        const now = new Date();
-        const hoursSinceLastCleanup = (now - lastCleanup) / (1000 * 60 * 60);
+            // Verificar si existen snapshots más antiguos que el límite
+            const oldSnapshotsCount = await LeaderboardSnapshot.count({
+                where: {
+                    snapshot_date: {
+                        [require('sequelize').Op.lt]: cutoffDate
+                    }
+                }
+            });
 
-        return hoursSinceLastCleanup >= 24;
+            // Solo ejecutar limpieza si hay snapshots antiguos
+            return oldSnapshotsCount > 0;
+        } catch (error) {
+            logger.error('❌ [LEADERBOARD-SNAPSHOT] Error al verificar necesidad de limpieza:', error);
+            return false; // En caso de error, no ejecutar limpieza por seguridad
+        }
     }
 
     /**
-     * Obtiene la fecha de la última limpieza
+     * Obtiene la fecha de la última limpieza (deprecated - mantenido por compatibilidad)
      * @private
+     * @deprecated Ya no se usa, la lógica ahora consulta directamente la BD
      */
     _getLastCleanupDate() {
         if (!this._lastCleanupDate) {
@@ -118,8 +136,9 @@ class LeaderboardSnapshotTask {
     }
 
     /**
-     * Marca que se ejecutó la limpieza
+     * Marca que se ejecutó la limpieza (deprecated - mantenido por compatibilidad)
      * @private
+     * @deprecated Ya no se usa, la lógica ahora consulta directamente la BD
      */
     _markCleanupDone() {
         this._lastCleanupDate = new Date();
