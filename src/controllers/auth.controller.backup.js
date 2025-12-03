@@ -1,13 +1,3 @@
-        console.log(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
-        return cloudinaryUrl;
-
-    } catch (error) {
-        console.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
-        // No fallar el proceso de autenticación por problemas con el avatar
-        return null;
-    }
-}
-
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
@@ -729,4 +719,12 @@ async function processKickAvatar(kickUser, userId) {
         console.log(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
 
         const cloudinaryUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
+        console.log(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
+        return cloudinaryUrl;
 
+    } catch (error) {
+        console.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
+        // No fallar el proceso de autenticación por problemas con el avatar
+        return null;
+    }
+}
