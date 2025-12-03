@@ -108,6 +108,7 @@ class BackupService {
             `--routines ` +
             `--triggers ` +
             `--events ` +
+            `--skip-ssl ` +
             `${this.config.dbName} > "${outputPath}"`;
 
         try {
@@ -315,6 +316,7 @@ class BackupService {
                 `-h ${dbHost} ` +
                 `-u ${this.config.dbUser} ` +
                 `-p${this.config.dbPassword} ` +
+                `--skip-ssl ` +
                 `${this.config.dbName} < "${sqlFile}"`;
 
             await execAsync(command);
