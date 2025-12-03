@@ -4,8 +4,8 @@ FROM node:20-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install mysql-client for backups
-RUN apk add --no-cache mysql-client
+# Install docker-cli for backups (needs docker socket mounted)
+RUN apk add --no-cache docker-cli
 
 # Install dependencies first (only production deps)
 COPY package.json package-lock.json* ./
