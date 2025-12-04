@@ -15,6 +15,11 @@ const Canje = sequelize.define('Canje', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    precio_al_canje: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: 'Precio en puntos al momento del canje'
+    },
     estado: {
         type: DataTypes.ENUM('pendiente', 'entregado', 'cancelado', 'devuelto'),
         defaultValue: 'pendiente'

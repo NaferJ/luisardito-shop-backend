@@ -29,8 +29,12 @@ exports.crear = async (req, res) => {
             return res.status(400).json({ error: 'Puntos insuficientes' });
         }
 
-        // 2) Crear canje
-        const canje = await Canje.create({ usuario_id: usuario.id, producto_id }, { transaction: t });
+        // 2) Crear canje con precio histórico
+        const canje = await Canje.create({ 
+            usuario_id: usuario.id, 
+            producto_id,
+            precio_al_canje: producto.precio  // 🔒 Guardar precio al momento del canje
+        }, { transaction: t });
 
         // 3) Descontar stock del producto
         await producto.update({ stock: stockActual - 1 }, { transaction: t });
@@ -343,7 +347,9 @@ exports.devolverCanje = async (req, res) => {
 
         const usuario = canje.Usuario;
         const producto = canje.Producto;
-        const puntosADevolver = producto.precio;
+        
+        // 🔒 Usar precio histórico del canje, con fallback al precio actual del producto
+        const puntosADevolver = canje.precio_al_canje || producto.precio;
         const puntosAnteriores = usuario.puntos;
 
         // 1. Marcar canje como devuelto
