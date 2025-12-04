@@ -1528,8 +1528,16 @@ async function handleKicksGifted(payload, metadata) {
     // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
     await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
 
-    // Los puntos a otorgar son el doble de la cantidad de kicks regalados (x2)
-    const pointsToAward = kickAmount * 2;
+    // Obtener el multiplicador desde la configuración
+    const config = await KickPointsConfig.findOne({
+      where: {
+        config_key: 'kicks_gifted_multiplier',
+        enabled: true
+      }
+    });
+
+    const multiplier = config?.config_value || 2; // Por defecto x2
+    const pointsToAward = kickAmount * multiplier;
 
     if (pointsToAward <= 0) {
       logger.info(

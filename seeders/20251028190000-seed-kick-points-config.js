@@ -74,6 +74,15 @@ module.exports = {
         enabled: true,
         created_at: new Date(),
         updated_at: new Date()
+      },
+      {
+        id: 9,
+        config_key: 'kicks_gifted_multiplier',
+        config_value: 2,
+        description: 'Multiplicador de puntos por kicks regalados',
+        enabled: true,
+        created_at: new Date(),
+        updated_at: new Date()
       }
     ];
 

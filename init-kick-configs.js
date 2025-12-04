@@ -63,6 +63,12 @@ async function initializeKickConfigs() {
                 config_value: 400,
                 description: 'Puntos por recibir una suscripción regalada',
                 enabled: true
+            },
+            {
+                config_key: 'kicks_gifted_multiplier',
+                config_value: 2,
+                description: 'Multiplicador de puntos por kicks regalados',
+                enabled: true
             }
         ];
 

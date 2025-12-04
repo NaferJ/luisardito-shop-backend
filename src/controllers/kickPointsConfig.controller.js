@@ -66,6 +66,12 @@ exports.getConfig = async (req, res) => {
                     config_value: 400,
                     description: 'Puntos por recibir una suscripción regalada',
                     enabled: true
+                },
+                {
+                    config_key: 'kicks_gifted_multiplier',
+                    config_value: 2,
+                    description: 'Multiplicador de puntos por kicks regalados',
+                    enabled: true
                 }
             ];
 
@@ -229,6 +235,12 @@ exports.initializeConfig = async (req, res) => {
                 config_key: 'gift_received_points',
                 config_value: 400,
                 description: 'Puntos por recibir una suscripción regalada',
+                enabled: true
+            },
+            {
+                config_key: 'kicks_gifted_multiplier',
+                config_value: 2,
+                description: 'Multiplicador de puntos por kicks regalados',
                 enabled: true
             }
         ];
