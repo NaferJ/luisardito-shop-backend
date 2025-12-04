@@ -1,6 +1,6 @@
 const { Usuario } = require('../models');
 const { Op } = require('sequelize');
-const { getRedisClient } = require('./redis.util');
+const { getRedisClient } = require('../config/redis.config');
 const logger = require('./logger');
 
 /**
