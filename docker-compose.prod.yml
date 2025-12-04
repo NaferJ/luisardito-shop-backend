@@ -17,3 +17,9 @@ services:
       - ./tokens:/app/tokens
       - ./backups:/app/backups
       - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  db_data:
+    name: luisardito_prod_db_data
+  redis_data:
+    name: luisardito_prod_redis_data
