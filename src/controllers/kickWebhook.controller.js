@@ -13,6 +13,7 @@ const VipService = require("../services/vip.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
+const { syncUsernameIfNeeded } = require("../utils/usernameSync.util");
 
 /**
  * 🔍 DIAGNÓSTICO: monitorear Redis
@@ -573,6 +574,9 @@ async function handleChatMessage(payload, metadata) {
       return;
     }
 
+    // 🔄 Sincronizar username si cambió (con throttling de 24h)
+    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, false);
+
     // Obtener configuración de puntos
     const configs = await KickPointsConfig.findAll({
       where: { enabled: true },
@@ -788,6 +792,9 @@ async function handleChannelFollowed(payload, metadata) {
       return;
     }
 
+    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+
     // Verificar si ya siguió antes (solo primera vez)
     let userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
@@ -896,6 +903,9 @@ async function handleNewSubscription(payload, metadata) {
       return;
     }
 
+    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+
     // Obtener configuración de puntos por nueva suscripción
     const config = await KickPointsConfig.findOne({
       where: {
@@ -983,6 +993,9 @@ async function handleSubscriptionRenewal(payload, metadata) {
       );
       return;
     }
+
+    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
 
     // Obtener configuración de puntos por renovación
     const config = await KickPointsConfig.findOne({
@@ -1077,6 +1090,10 @@ async function handleSubscriptionGifts(payload, metadata) {
         logger.info(
           "🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos",
         );
+        
+        // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+        await syncUsernameIfNeeded(gifterUsuario, gifter.username, gifterKickUserId, true);
+        
         const totalPoints = pointsForGifter * giftees.length;
         await gifterUsuario.increment("puntos", { by: totalPoints });
 
@@ -1119,6 +1136,9 @@ async function handleSubscriptionGifts(payload, metadata) {
         });
 
         if (gifteeUsuario) {
+          // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+          await syncUsernameIfNeeded(gifteeUsuario, gifteeUsername, gifteeKickUserId, true);
+          
           await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
 
           await HistorialPunto.create({
@@ -1504,6 +1524,9 @@ async function handleKicksGifted(payload, metadata) {
       );
       return;
     }
+
+    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
 
     // Los puntos a otorgar son el doble de la cantidad de kicks regalados (x2)
     const pointsToAward = kickAmount * 2;
