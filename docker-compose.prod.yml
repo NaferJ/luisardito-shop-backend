@@ -9,7 +9,7 @@ services:
     env_file:
       - ${HOME}/.env.backend.production
     command: >
-      sh -c "npx sequelize db:migrate --debug && npm run start"
+      sh -c "npx sequelize db:migrate --debug && npx sequelize db:seed:all || true && npm run start"
     ports:
       - "3001:3000"
     restart: unless-stopped
@@ -20,6 +20,6 @@ services:
 
 volumes:
   db_data:
-    name: luisardito_prod_db_data
+    name: luisardito-shop-backend_db_data
   redis_data:
-    name: luisardito_prod_redis_data
+    name: luisardito-shop-backend_redis_data
