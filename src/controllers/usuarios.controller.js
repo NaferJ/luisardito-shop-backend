@@ -644,14 +644,23 @@ exports.actualizarPuntos = async (req, res) => {
   const t = await Usuario.sequelize.transaction();
   try {
     const { id } = req.params;
-    const { puntos, motivo } = req.body;
+    const { puntos, motivo, operation = 'set' } = req.body; // operation: 'add' | 'set'
     const adminNickname = req.user.nickname;
 
     const puntosNum = Number(puntos);
-    if (!Number.isFinite(puntosNum) || puntosNum < 0) {
+    
+    // Validar operation
+    if (!['add', 'set'].includes(operation)) {
+      await t.rollback();
+      return res.status(400).json({ error: "Operation debe ser 'add' o 'set'" });
+    }
+    
+    // Para 'add', permitir negativos (restar); para 'set', no permitir negativos
+    if (!Number.isFinite(puntosNum) || (operation === 'set' && puntosNum < 0)) {
       await t.rollback();
       return res.status(400).json({ error: "Cantidad de puntos inválida" });
     }
+    
     if (!motivo || String(motivo).trim() === "") {
       await t.rollback();
       return res.status(400).json({ error: "Motivo es requerido" });
@@ -664,9 +673,19 @@ exports.actualizarPuntos = async (req, res) => {
     }
 
     const puntosAnteriores = usuario.puntos;
-    const cambio = puntosNum - puntosAnteriores;
+    let puntosNuevos, cambio;
+    
+    if (operation === 'add') {
+      // Sumar o restar puntos
+      cambio = puntosNum;
+      puntosNuevos = Math.max(0, puntosAnteriores + puntosNum); // No permitir puntos negativos
+    } else {
+      // Establecer puntos directamente
+      puntosNuevos = puntosNum;
+      cambio = puntosNum - puntosAnteriores;
+    }
 
-    await usuario.update({ puntos: puntosNum }, { transaction: t });
+    await usuario.update({ puntos: puntosNuevos }, { transaction: t });
 
     await HistorialPunto.create(
       {
@@ -674,7 +693,7 @@ exports.actualizarPuntos = async (req, res) => {
         puntos: cambio, // La cantidad del cambio (positivo o negativo)
         cambio, // Campo legacy para compatibilidad
         tipo: cambio > 0 ? "ganado" : cambio < 0 ? "gastado" : "ajuste",
-        concepto: `Ajuste de puntos: ${motivo} (Admin: ${adminNickname})`,
+        concepto: `Ajuste de puntos [${operation === 'add' ? 'SUMA/RESTA' : 'ESTABLECER'}]: ${motivo} (Admin: ${adminNickname})`,
         motivo: `${motivo} (Admin: ${adminNickname})`, // Campo legacy para compatibilidad
       },
       { transaction: t },
@@ -688,9 +707,10 @@ exports.actualizarPuntos = async (req, res) => {
         id: usuario.id,
         nickname: usuario.nickname,
         puntosAnteriores,
-        puntosNuevos: puntosNum,
+        puntosNuevos,
         cambio,
       },
+      operation, // Informar qué operación se realizó
       motivo,
       administrador: adminNickname,
     });
