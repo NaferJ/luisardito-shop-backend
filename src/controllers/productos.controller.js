@@ -1,5 +1,6 @@
-const { Producto, sequelize } = require('../models');
+const { Producto, Promocion, sequelize } = require('../models');
 const { Op } = require('sequelize');
+const promocionService = require('../services/promocion.service');
 
 // Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
 exports.listar = async (req, res) => {
@@ -40,7 +41,34 @@ exports.listar = async (req, res) => {
         }
     });
 
-    res.json(productos);
+    // Agregar información de descuentos a cada producto
+    const usuarioId = req.user ? req.user.id : null;
+    const productosConDescuentos = await Promise.all(
+        productos.map(async (producto) => {
+            const infoDescuento = await promocionService.calcularMejorDescuento(
+                producto.id,
+                producto.precio,
+                usuarioId
+            );
+
+            const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, usuarioId);
+
+            return {
+                ...producto.toJSON(),
+                descuento: infoDescuento,
+                promociones_activas: promocionesActivas.map(p => ({
+                    id: p.id,
+                    codigo: p.codigo,
+                    titulo: p.titulo,
+                    tipo_descuento: p.tipo_descuento,
+                    valor_descuento: p.valor_descuento
+                })),
+                promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null
+            };
+        })
+    );
+
+    res.json(productosConDescuentos);
 };
 
 exports.obtener = async (req, res) => {
@@ -55,7 +83,34 @@ exports.obtener = async (req, res) => {
         }
     });
     if (!producto) return res.status(404).json({ error: 'No encontrado' });
-    res.json(producto);
+
+    // Agregar información de descuento
+    const usuarioId = req.user ? req.user.id : null;
+    const infoDescuento = await promocionService.calcularMejorDescuento(
+        producto.id,
+        producto.precio,
+        usuarioId
+    );
+
+    // Obtener promociones activas del producto
+    const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, usuarioId);
+
+    res.json({
+        ...producto.toJSON(),
+        descuento: infoDescuento,
+        promociones_activas: promocionesActivas.map(p => ({
+            id: p.id,
+            codigo: p.codigo,
+            titulo: p.titulo,
+            descripcion: p.descripcion,
+            tipo_descuento: p.tipo_descuento,
+            valor_descuento: p.valor_descuento,
+            fecha_fin: p.fecha_fin,
+            metadata_visual: p.metadata_visual,
+            requiere_codigo: p.requiere_codigo
+        })),
+        promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null
+    });
 };
 
 exports.obtenerPorSlug = async (req, res) => {
@@ -85,7 +140,33 @@ exports.obtenerPorSlug = async (req, res) => {
             return res.status(404).json({ error: 'Producto no encontrado' });
         }
 
-        res.json(producto);
+        // Agregar información de descuento
+        const usuarioId = req.user ? req.user.id : null;
+        const infoDescuento = await promocionService.calcularMejorDescuento(
+            producto.id,
+            producto.precio,
+            usuarioId
+        );
+
+        // Obtener promociones activas del producto
+        const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, usuarioId);
+
+        res.json({
+            ...producto.toJSON(),
+            descuento: infoDescuento,
+            promociones_activas: promocionesActivas.map(p => ({
+                id: p.id,
+                codigo: p.codigo,
+                titulo: p.titulo,
+                descripcion: p.descripcion,
+                tipo_descuento: p.tipo_descuento,
+                valor_descuento: p.valor_descuento,
+                fecha_fin: p.fecha_fin,
+                metadata_visual: p.metadata_visual,
+                requiere_codigo: p.requiere_codigo
+            })),
+            promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null
+        });
     } catch (error) {
         console.error('Error al buscar producto por slug:', error);
         res.status(500).json({ error: 'Error interno del servidor' });
@@ -117,6 +198,64 @@ exports.eliminar = async (req, res) => {
     if (!producto) return res.status(404).json({ error: 'No encontrado' });
     await producto.destroy();
     res.json({ message: 'Producto eliminado' });
+};
+
+/**
+ * Actualizar promociones de un producto
+ */
+exports.actualizarPromociones = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { promocion_ids } = req.body; // Array de IDs de promociones a asignar
+
+        if (!Array.isArray(promocion_ids)) {
+            return res.status(400).json({ error: 'promocion_ids debe ser un array' });
+        }
+
+        const producto = await Producto.findByPk(id);
+        if (!producto) {
+            return res.status(404).json({ error: 'Producto no encontrado' });
+        }
+
+        const { PromocionProducto } = require('../models');
+
+        // Para cada promoción seleccionada, actualizar su lista de productos
+        // Primero obtenemos todas las promociones activas
+        const todasPromociones = await Promocion.findAll({
+            attributes: ['id']
+        });
+
+        for (const promo of todasPromociones) {
+            const debeEstar = promocion_ids.includes(promo.id);
+            const estaAsignado = await PromocionProducto.findOne({
+                where: {
+                    promocion_id: promo.id,
+                    producto_id: id
+                }
+            });
+
+            if (debeEstar && !estaAsignado) {
+                // Agregar relación
+                await PromocionProducto.create({
+                    promocion_id: promo.id,
+                    producto_id: id
+                });
+            } else if (!debeEstar && estaAsignado) {
+                // Eliminar relación
+                await estaAsignado.destroy();
+            }
+        }
+
+        res.json({
+            message: 'Promociones actualizadas correctamente',
+            producto_id: id,
+            promociones_asignadas: promocion_ids
+        });
+
+    } catch (error) {
+        console.error('Error al actualizar promociones del producto:', error);
+        res.status(500).json({ error: 'Error al actualizar promociones' });
+    }
 };
 
 // Endpoint de debug para ver todos los productos sin filtros
@@ -181,5 +320,33 @@ exports.listarAdmin = async (req, res) => {
             ]
         }
     });
-    res.json(productos);
+
+    // Agregar información de descuentos a cada producto
+    // ⚠️ ADMIN: No filtrar por usuario - mostrar todas las promociones del producto
+    const productosConDescuentos = await Promise.all(
+        productos.map(async (producto) => {
+            const infoDescuento = await promocionService.calcularMejorDescuento(
+                producto.id,
+                producto.precio,
+                null  // null = no filtrar por usuario
+            );
+
+            const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, null);
+
+            return {
+                ...producto.toJSON(),
+                descuento: infoDescuento,
+                promociones_activas: promocionesActivas.map(p => ({
+                    id: p.id,
+                    codigo: p.codigo,
+                    titulo: p.titulo,
+                    tipo_descuento: p.tipo_descuento,
+                    valor_descuento: p.valor_descuento
+                })),
+                promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null
+            };
+        })
+    );
+
+    res.json(productosConDescuentos);
 };

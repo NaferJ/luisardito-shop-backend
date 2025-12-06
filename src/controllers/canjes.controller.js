@@ -1,6 +1,7 @@
 const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking } = require('../models');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
+const promocionService = require('../services/promocion.service');
 
 exports.crear = async (req, res) => {
     const t = await Canje.sequelize.transaction();
@@ -24,40 +25,73 @@ exports.crear = async (req, res) => {
             await t.rollback();
             return res.status(404).json({ error: 'Usuario no encontrado' });
         }
-        if (usuario.puntos < producto.precio) {
+
+        // Calcular precio con descuento si hay promoción
+        const infoDescuento = await promocionService.calcularMejorDescuento(
+            producto.id,
+            producto.precio,
+            usuarioId
+        );
+
+        const precioFinal = infoDescuento.precioFinal;
+        const promocionAplicada = infoDescuento.promocion;
+
+        if (usuario.puntos < precioFinal) {
             await t.rollback();
-            return res.status(400).json({ error: 'Puntos insuficientes' });
+            return res.status(400).json({ 
+                error: 'Puntos insuficientes',
+                precio_requerido: precioFinal,
+                puntos_disponibles: usuario.puntos
+            });
         }
 
-        // 2) Crear canje con precio histórico
+        // 2) Crear canje con precio histórico y promoción
         const canje = await Canje.create({ 
             usuario_id: usuario.id, 
             producto_id,
-            precio_al_canje: producto.precio  // 🔒 Guardar precio al momento del canje
+            precio_al_canje: precioFinal  // 🔒 Guardar precio FINAL (con descuento) al momento del canje
         }, { transaction: t });
 
         // 3) Descontar stock del producto
         await producto.update({ stock: stockActual - 1 }, { transaction: t });
 
         // 4) Restar puntos al usuario
-        const puntosNuevos = usuario.puntos - producto.precio;
+        const puntosNuevos = usuario.puntos - precioFinal;
         await usuario.update({ puntos: puntosNuevos }, { transaction: t });
 
-        // 5) Registrar historial de puntos
+        // 5) Registrar uso de la promoción si se aplicó
+        if (promocionAplicada) {
+            await promocionService.aplicarPromocion(
+                promocionAplicada.id,
+                usuarioId,
+                producto_id,
+                canje.id,
+                t  // ✅ Pasar la transacción existente
+            );
+        }
+
+        // 6) Registrar historial de puntos
+        const conceptoCanje = promocionAplicada 
+            ? `Canje producto: ${producto.nombre} (Promoción: ${promocionAplicada.titulo} - Ahorro: ${infoDescuento.descuento} pts)`
+            : `Canje producto: ${producto.nombre}`;
+
         await HistorialPunto.create({
             usuario_id: usuario.id,
-            puntos: -producto.precio,  // Cantidad negativa porque se gastan puntos
-            cambio: -producto.precio,  // Campo legacy para compatibilidad
+            puntos: -precioFinal,
+            cambio: -precioFinal,
             tipo: 'gastado',
-            concepto: `Canje producto: ${producto.nombre}`,
-            motivo: `Canje producto ${producto.nombre}`  // Campo legacy para compatibilidad
+            concepto: conceptoCanje,
+            motivo: conceptoCanje
         }, { transaction: t });
 
         await t.commit();
 
         // 📢 Enviar mensaje automático al chat de Kick
         try {
-            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}.`;
+            const mensajeDescuento = promocionAplicada 
+                ? ` con ${infoDescuento.porcentajeDescuento}% de descuento (${promocionAplicada.titulo})`
+                : '';
+            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
             await KickBotService.sendMessage(mensaje);
             console.log(`[Canje] ✅ Mensaje enviado al chat: "${mensaje}"`);
         } catch (botError) {
@@ -65,7 +99,18 @@ exports.crear = async (req, res) => {
             // No fallar la respuesta si falla el mensaje del bot
         }
 
-        res.status(201).json(canje);
+        res.status(201).json({
+            ...canje.toJSON(),
+            precio_original: producto.precio,
+            precio_pagado: precioFinal,
+            descuento_aplicado: infoDescuento.descuento,
+            promocion: promocionAplicada ? {
+                id: promocionAplicada.id,
+                titulo: promocionAplicada.titulo,
+                tipo: promocionAplicada.tipo_descuento,
+                valor: promocionAplicada.valor_descuento
+            } : null
+        });
     } catch (err) {
         await t.rollback();
         res.status(500).json({ error: err.message });

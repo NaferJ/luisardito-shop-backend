@@ -23,6 +23,7 @@ router.get('/:id', productosCtrl.obtener); // ← Esta debe ir al final
 // ✅ Rutas protegidas con modificación
 router.post('/', authRequired, permiso('crear_producto'), productosCtrl.crear);
 router.put('/:id', authRequired, permiso('editar_producto'), productosCtrl.editar);
+router.put('/:id/promociones', authRequired, permiso('editar_producto'), productosCtrl.actualizarPromociones);
 router.delete('/:id', authRequired, permiso('eliminar_producto'), productosCtrl.eliminar);
 
 module.exports = router;
