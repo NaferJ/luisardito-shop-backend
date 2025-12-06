@@ -503,6 +503,7 @@ exports.exportarPDF = async (req, res) => {
             where.fecha_fin = { [Op.gte]: ahora };
         }
 
+        // Separar queries para evitar problemas con GROUP BY
         const promociones = await Promocion.findAll({
             where,
             include: [
@@ -511,27 +512,42 @@ exports.exportarPDF = async (req, res) => {
                     as: 'productos',
                     through: { attributes: [] },
                     attributes: ['id', 'nombre', 'precio']
-                },
-                {
-                    model: UsoPromocion,
-                    as: 'usos',
-                    attributes: []
                 }
             ],
-            attributes: {
-                include: [
-                    [sequelize.fn('COUNT', sequelize.col('usos.id')), 'total_usos'],
-                    [sequelize.fn('SUM', sequelize.col('usos.descuento_aplicado')), 'puntos_descontados']
-                ]
-            },
-            group: ['Promocion.id'],
             order: [['estado', 'ASC'], ['prioridad', 'DESC']]
         });
+
+        console.log(`[PDF Export] Total promociones encontradas: ${promociones.length}`);
+
+        // Obtener estadísticas de uso por separado y preparar datos
+        const promocionesConEstadisticas = [];
+        
+        for (const promocion of promociones) {
+            const estadisticas = await UsoPromocion.findOne({
+                where: { promocion_id: promocion.id },
+                attributes: [
+                    [sequelize.fn('COUNT', sequelize.col('id')), 'total_usos'],
+                    [sequelize.fn('SUM', sequelize.col('descuento_aplicado')), 'puntos_descontados']
+                ],
+                raw: true
+            });
+
+            // Convertir a objeto plano para facilitar acceso en PDF
+            const promocionData = {
+                ...promocion.toJSON(),
+                total_usos: parseInt(estadisticas?.total_usos) || 0,
+                puntos_descontados: parseInt(estadisticas?.puntos_descontados) || 0
+            };
+
+            promocionesConEstadisticas.push(promocionData);
+        }
+
+        console.log('[PDF Export] Ejemplo de datos:', promocionesConEstadisticas[0]);
 
         // Importar utilidad PDF
         const generarPDFPromociones = require('../utils/promociones.pdf');
         
-        const pdfBuffer = await generarPDFPromociones(promociones);
+        const pdfBuffer = await generarPDFPromociones(promocionesConEstadisticas);
 
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename=promociones-${Date.now()}.pdf`);

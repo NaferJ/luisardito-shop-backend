@@ -8,10 +8,12 @@ const PDFDocument = require('pdfkit');
 async function generarPDFPromociones(promociones) {
     return new Promise((resolve, reject) => {
         try {
+            console.log(`[PDF Generator] Generando PDF con ${promociones.length} promociones`);
+            
             const doc = new PDFDocument({ 
                 size: 'A4', 
                 margin: 50,
-                bufferPages: true 
+                bufferPages: false  // Desactivado para evitar problemas de paginación
             });
             
             const buffers = [];
@@ -61,8 +63,8 @@ async function generarPDFPromociones(promociones) {
             let totalPuntosDescontados = 0;
 
             promociones.forEach(promo => {
-                const usos = parseInt(promo.getDataValue ? promo.getDataValue('total_usos') : promo.total_usos) || 0;
-                const puntos = parseInt(promo.getDataValue ? promo.getDataValue('puntos_descontados') : promo.puntos_descontados) || 0;
+                const usos = parseInt(promo.total_usos) || 0;
+                const puntos = parseInt(promo.puntos_descontados) || 0;
                 totalUsos += usos;
                 totalPuntosDescontados += puntos;
             });
@@ -88,11 +90,15 @@ async function generarPDFPromociones(promociones) {
             
             doc.moveDown(0.5);
 
+            console.log(`[PDF Generator] Promociones a procesar: ${promociones.length}`);
+            
             if (promociones.length === 0) {
+                console.log('[PDF Generator] No hay promociones - mostrando mensaje');
                 doc.fontSize(10)
                    .font('Helvetica-Oblique')
                    .text('No hay promociones para mostrar.', { align: 'center' });
             } else {
+                console.log('[PDF Generator] Renderizando tabla de promociones');
                 // Encabezados de la tabla
                 const tableTop = doc.y;
                 const col1 = 50;
@@ -118,7 +124,9 @@ async function generarPDFPromociones(promociones) {
                 let currentY = tableTop + 18;
 
                 // Contenido de la tabla
+                console.log(`[PDF Generator] Iterando sobre ${promociones.length} promociones`);
                 promociones.forEach((promo, index) => {
+                    console.log(`[PDF Generator] Procesando promoción ${index + 1}: ${promo.titulo || promo.nombre}`);
                     // Verificar si necesitamos una nueva página
                     if (currentY > 720) {
                         doc.addPage();
@@ -144,8 +152,8 @@ async function generarPDFPromociones(promociones) {
                     const estado = promo.estado || 'N/A';
                     const tipoDesc = promo.tipo_descuento || 'N/A';
                     const valorDesc = promo.valor_descuento || 0;
-                    const usos = parseInt(promo.getDataValue ? promo.getDataValue('total_usos') : promo.total_usos) || 0;
-                    const puntosDesc = parseInt(promo.getDataValue ? promo.getDataValue('puntos_descontados') : promo.puntos_descontados) || 0;
+                    const usos = parseInt(promo.total_usos) || 0;
+                    const puntosDesc = parseInt(promo.puntos_descontados) || 0;
 
                     // Determinar color según estado
                     let estadoColor = '#000000';
@@ -193,30 +201,26 @@ async function generarPDFPromociones(promociones) {
             }
 
             // ========================================
-            // PIE DE PÁGINA
+            // PIE DE PÁGINA - Usar moveTo para posicionar sin crear página
             // ========================================
-            const range = doc.bufferedPageRange();
-            for (let i = range.start; i < range.start + range.count; i++) {
-                doc.switchToPage(i);
-                
-                doc.fontSize(8)
-                   .font('Helvetica-Oblique')
-                   .fillColor('#999999')
-                   .text(
-                       `Página ${i + 1} de ${range.count}`,
-                       50,
-                       doc.page.height - 50,
-                       { align: 'center' }
-                   );
+            const footerY = doc.page.height - 50;
+            
+            doc.fontSize(8)
+               .font('Helvetica-Oblique')
+               .fillColor('#999999');
+            
+            doc.text(
+                'Luisardito Shop - Sistema de Promociones',
+                50,
+                footerY,
+                { 
+                    align: 'center',
+                    width: 495,
+                    continued: false
+                }
+            );
 
-                doc.text(
-                    'Luisardito Shop - Sistema de Promociones',
-                    50,
-                    doc.page.height - 35,
-                    { align: 'center' }
-                );
-            }
-
+            console.log('[PDF Generator] PDF finalizado correctamente');
             // Finalizar documento
             doc.end();
 
