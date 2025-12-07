@@ -1771,21 +1771,23 @@ async function processRedemption(localReward, kickUserId, kickUsername, redempti
     logger.info(
       `[Kick Webhook][Reward Redemption] 💰 Total puntos de ${kickUsername}: ${updatedUser.puntos}`,
     );
-
-    // Si auto_accept está activado y el estado es pending, actualizar a accepted
-    if (localReward.auto_accept && status === "pending") {
-      logger.info(
-        `[Kick Webhook][Reward Redemption] Auto-aceptando redención ${redemptionId}...`,
-      );
-      await KickRewardService.updateRedemptionStatus(redemptionId, "accepted");
-    }
   } catch (transactionError) {
-    await transaction.rollback();
+    // Solo hacer rollback si la transacción no se ha completado
+    if (!transaction.finished) {
+      await transaction.rollback();
+    }
     logger.error(
       `[Kick Webhook][Reward Redemption] ❌ Error en transacción para ${kickUsername}:`,
       transactionError.message,
     );
     throw transactionError;
+  }
+
+  // Auto-aceptar DESPUÉS de la transacción (no disponible en API actual)
+  if (localReward.auto_accept && status === "pending") {
+    logger.info(
+      `[Kick Webhook][Reward Redemption] 🔄 Recompensa configurada para auto-aceptar (debes aceptar manualmente en Kick.com)`,
+    );
   }
 }
 
