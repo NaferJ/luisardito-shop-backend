@@ -1627,6 +1627,11 @@ async function handleKicksGifted(payload, metadata) {
  */
 async function handleRewardRedemption(payload, metadata) {
   try {
+    // 🎁 Log completo del evento para debugging
+    logger.info("🎁 [Kick Webhook][Reward Redemption] ═══════════════════════════════════");
+    logger.info("🎁 [Kick Webhook][Reward Redemption] EVENTO RECIBIDO - Payload completo:", JSON.stringify(payload, null, 2));
+    logger.info("🎁 [Kick Webhook][Reward Redemption] ═══════════════════════════════════");
+
     const redemptionId = payload.id;
     const userInput = payload.user_input || null;
     const status = payload.status; // "pending", "accepted", "rejected"
@@ -1640,7 +1645,7 @@ async function handleRewardRedemption(payload, metadata) {
     const kickUserId = String(redeemer.user_id);
     const kickUsername = redeemer.username;
 
-    logger.info("[Kick Webhook][Reward Redemption]", {
+    logger.info("🎁 [Kick Webhook][Reward Redemption] Procesando:", {
       redemption_id: redemptionId,
       broadcaster: payload.broadcaster.username,
       redeemer: kickUsername,
@@ -1669,34 +1674,9 @@ async function handleRewardRedemption(payload, metadata) {
         `[Kick Webhook][Reward Redemption] ⚠️ Recompensa no encontrada en BD: ${rewardTitle} (${kickRewardId})`,
       );
       logger.info(
-        `[Kick Webhook][Reward Redemption] Sincronizando recompensas desde Kick...`,
+        `[Kick Webhook][Reward Redemption] 💡 Configura esta recompensa con: INSERT INTO kick_rewards (kick_reward_id, title, cost, puntos_a_otorgar) VALUES ('${kickRewardId}', '${rewardTitle}', ${rewardCost}, PUNTOS_DESEADOS);`,
       );
-      
-      // Intentar sincronizar recompensas desde Kick
-      try {
-        await KickRewardService.syncRewardsFromKick();
-        
-        // Buscar de nuevo
-        const syncedReward = await KickReward.findOne({
-          where: { kick_reward_id: kickRewardId },
-        });
-        
-        if (!syncedReward) {
-          logger.error(
-            `[Kick Webhook][Reward Redemption] ❌ Recompensa no encontrada después de sincronización`,
-          );
-          return;
-        }
-        
-        // Continuar con la recompensa sincronizada
-        return await processRedemption(syncedReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt);
-      } catch (syncError) {
-        logger.error(
-          `[Kick Webhook][Reward Redemption] ❌ Error sincronizando recompensas:`,
-          syncError.message,
-        );
-        return;
-      }
+      return;
     }
 
     // Verificar si la recompensa está habilitada
