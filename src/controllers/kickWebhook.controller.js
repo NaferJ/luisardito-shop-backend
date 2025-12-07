@@ -4,12 +4,14 @@ const {
   KickPointsConfig,
   KickChatCooldown,
   KickUserTracking,
+  KickReward,
   Usuario,
   HistorialPunto,
   sequelize,
 } = require("../models");
 const BotrixMigrationService = require("../services/botrixMigration.service");
 const VipService = require("../services/vip.service");
+const KickRewardService = require("../services/kickReward.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
@@ -466,6 +468,10 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 
     case "kicks.gifted":
       await handleKicksGifted(payload, metadata);
+      break;
+
+    case "channel.reward.redemption.updated":
+      await handleRewardRedemption(payload, metadata);
       break;
 
     default:
@@ -1612,6 +1618,194 @@ async function handleKicksGifted(payload, metadata) {
     }
   } catch (error) {
     logger.error("[Kick Webhook][Kicks Gifted] Error:", error.message);
+  }
+}
+
+/**
+ * Maneja canjeos de recompensas (channel.reward.redemption.updated)
+ * Otorga puntos según la configuración de la recompensa
+ */
+async function handleRewardRedemption(payload, metadata) {
+  try {
+    const redemptionId = payload.id;
+    const userInput = payload.user_input || null;
+    const status = payload.status; // "pending", "accepted", "rejected"
+    const redeemedAt = payload.redeemed_at;
+    const reward = payload.reward;
+    const redeemer = payload.redeemer;
+
+    const kickRewardId = reward.id;
+    const rewardTitle = reward.title;
+    const rewardCost = reward.cost;
+    const kickUserId = String(redeemer.user_id);
+    const kickUsername = redeemer.username;
+
+    logger.info("[Kick Webhook][Reward Redemption]", {
+      redemption_id: redemptionId,
+      broadcaster: payload.broadcaster.username,
+      redeemer: kickUsername,
+      reward_title: rewardTitle,
+      reward_cost: rewardCost,
+      status: status,
+      user_input: userInput,
+      redeemed_at: redeemedAt,
+    });
+
+    // Solo procesar si el estado es "accepted" o si está en "pending" y auto_accept está activado
+    if (status === "rejected") {
+      logger.info(
+        `[Kick Webhook][Reward Redemption] Redención rechazada, no se otorgarán puntos`,
+      );
+      return;
+    }
+
+    // Buscar la recompensa en nuestra base de datos
+    const localReward = await KickReward.findOne({
+      where: { kick_reward_id: kickRewardId },
+    });
+
+    if (!localReward) {
+      logger.warn(
+        `[Kick Webhook][Reward Redemption] ⚠️ Recompensa no encontrada en BD: ${rewardTitle} (${kickRewardId})`,
+      );
+      logger.info(
+        `[Kick Webhook][Reward Redemption] Sincronizando recompensas desde Kick...`,
+      );
+      
+      // Intentar sincronizar recompensas desde Kick
+      try {
+        await KickRewardService.syncRewardsFromKick();
+        
+        // Buscar de nuevo
+        const syncedReward = await KickReward.findOne({
+          where: { kick_reward_id: kickRewardId },
+        });
+        
+        if (!syncedReward) {
+          logger.error(
+            `[Kick Webhook][Reward Redemption] ❌ Recompensa no encontrada después de sincronización`,
+          );
+          return;
+        }
+        
+        // Continuar con la recompensa sincronizada
+        return await processRedemption(syncedReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt);
+      } catch (syncError) {
+        logger.error(
+          `[Kick Webhook][Reward Redemption] ❌ Error sincronizando recompensas:`,
+          syncError.message,
+        );
+        return;
+      }
+    }
+
+    // Verificar si la recompensa está habilitada
+    if (!localReward.is_enabled) {
+      logger.info(
+        `[Kick Webhook][Reward Redemption] Recompensa deshabilitada: ${rewardTitle}`,
+      );
+      return;
+    }
+
+    await processRedemption(localReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt);
+
+  } catch (error) {
+    logger.error(
+      "[Kick Webhook][Reward Redemption] Error:",
+      error.message,
+    );
+  }
+}
+
+/**
+ * Procesa la redención de una recompensa y otorga puntos
+ */
+async function processRedemption(localReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt) {
+  const pointsToAward = localReward.puntos_a_otorgar;
+
+  if (pointsToAward <= 0) {
+    logger.info(
+      `[Kick Webhook][Reward Redemption] Recompensa "${localReward.title}" no tiene puntos configurados`,
+    );
+    return;
+  }
+
+  // Buscar usuario en nuestra BD
+  const usuario = await Usuario.findOne({
+    where: { user_id_ext: kickUserId },
+  });
+
+  if (!usuario) {
+    logger.warn(
+      `[Kick Webhook][Reward Redemption] ⚠️ Usuario ${kickUsername} no registrado en la BD`,
+    );
+    return;
+  }
+
+  // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
+  await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+
+  // Iniciar transacción para garantizar atomicidad
+  const transaction = await sequelize.transaction({
+    isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
+  });
+
+  try {
+    // Otorgar puntos
+    await usuario.increment("puntos", { by: pointsToAward }, { transaction });
+
+    // Registrar en historial
+    await HistorialPunto.create(
+      {
+        usuario_id: usuario.id,
+        puntos: pointsToAward,
+        tipo: "ganado",
+        concepto: `Canje de recompensa: ${localReward.title}${userInput ? ` - "${userInput}"` : ""}`,
+        kick_event_data: {
+          event_type: "channel.reward.redemption.updated",
+          kick_user_id: kickUserId,
+          kick_username: kickUsername,
+          redemption_id: redemptionId,
+          reward_id: localReward.kick_reward_id,
+          reward_title: localReward.title,
+          reward_cost: localReward.cost,
+          user_input: userInput,
+          status: status,
+          redeemed_at: redeemedAt,
+        },
+      },
+      { transaction },
+    );
+
+    // Incrementar contador de canjeos de la recompensa
+    await localReward.increment("total_redemptions", { by: 1 });
+
+    await transaction.commit();
+
+    logger.info(
+      `[Kick Webhook][Reward Redemption] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} por canjear "${localReward.title}"`,
+    );
+
+    // Recargar usuario para mostrar total actualizado
+    const updatedUser = await usuario.reload();
+    logger.info(
+      `[Kick Webhook][Reward Redemption] 💰 Total puntos de ${kickUsername}: ${updatedUser.puntos}`,
+    );
+
+    // Si auto_accept está activado y el estado es pending, actualizar a accepted
+    if (localReward.auto_accept && status === "pending") {
+      logger.info(
+        `[Kick Webhook][Reward Redemption] Auto-aceptando redención ${redemptionId}...`,
+      );
+      await KickRewardService.updateRedemptionStatus(redemptionId, "accepted");
+    }
+  } catch (transactionError) {
+    await transaction.rollback();
+    logger.error(
+      `[Kick Webhook][Reward Redemption] ❌ Error en transacción para ${kickUsername}:`,
+      transactionError.message,
+    );
+    throw transactionError;
   }
 }
 

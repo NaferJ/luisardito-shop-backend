@@ -23,6 +23,7 @@ const LeaderboardSnapshot = require("./leaderboardSnapshot.model");
 const Promocion = require("./promocion.model");
 const PromocionProducto = require("./promocionProducto.model");
 const UsoPromocion = require("./usoPromocion.model");
+const KickReward = require("./kickReward.model");
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
@@ -121,4 +122,5 @@ module.exports = {
   Promocion,
   PromocionProducto,
   UsoPromocion,
+  KickReward,
 };
