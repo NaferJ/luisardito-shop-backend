@@ -1269,10 +1269,10 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
         const now = new Date();
         const minutesSinceMetadata = (now - lastMetadataTime) / 1000 / 60;
 
-        // 🎯 PROTECCIÓN MEJORADA: Si recibimos metadata hace menos de 30 minutos, el stream está REALMENTE online
+        // 🎯 PROTECCIÓN MEJORADA: Si recibimos metadata hace menos de 15 minutos, el stream está REALMENTE online
         // metadata.updated SOLO se envía cuando el stream está EN VIVO (según documentación de Kick)
-        // Aumentado de 3 a 30 minutos para mayor resistencia a glitches de la API de Kick
-        if (minutesSinceMetadata < 30) {
+        // Ventana de 15 minutos: balance entre protección contra glitches y detección rápida de offline real
+        if (minutesSinceMetadata < 15) {
           logger.warn(
             "🚨 [STREAM STATUS] ==========================================",
           );
@@ -1287,7 +1287,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
             "🚨 [STREAM STATUS] IGNORANDO evento offline - Manteniendo estado ONLINE",
           );
           logger.warn(
-            `🚨 [STREAM STATUS] Ventana de protección: 30 minutos (actual: ${minutesSinceMetadata.toFixed(2)} min)`,
+            `🚨 [STREAM STATUS] Ventana de protección: 15 minutos (actual: ${minutesSinceMetadata.toFixed(2)} min)`,
           );
           logger.warn(
             "🚨 [STREAM STATUS] ==========================================",
@@ -1311,21 +1311,24 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
           );
           return;
         } else {
-          // Más de 30 minutos sin metadata.updated - probablemente es un offline real
+          // Más de 15 minutos sin metadata.updated - es un offline real
           logger.info(
-            `ℹ️  [STREAM STATUS] Sin metadata.updated desde hace ${minutesSinceMetadata.toFixed(2)} minutos`,
+            "✅ [STREAM STATUS] ==========================================",
           );
           logger.info(
-            "ℹ️  [STREAM STATUS] Procesando evento offline como válido",
+            `✅ [STREAM STATUS] Offline VÁLIDO detectado: ${minutesSinceMetadata.toFixed(2)} minutos sin metadata.updated`,
+          );
+          logger.info(
+            "✅ [STREAM STATUS] Procesando cambio a OFFLINE",
+          );
+          logger.info(
+            "✅ [STREAM STATUS] ==========================================",
           );
         }
       } else {
         // No hay registro de metadata.updated - aceptar el offline
         logger.info(
-          "ℹ️  [STREAM STATUS] Sin historial de metadata.updated",
-        );
-        logger.info(
-          "ℹ️  [STREAM STATUS] Procesando evento offline como válido",
+          "ℹ️  [STREAM STATUS] Sin historial de metadata.updated - Aceptando evento offline",
         );
       }
 
@@ -2953,6 +2956,33 @@ exports.getPublicPointsConfig = async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
+    });
+  }
+};
+
+/**
+ * 🔍 ENDPOINT: Verificación manual del timeout del stream
+ * POST /api/kick-webhook/debug/check-stream-timeout
+ */
+exports.manualCheckStreamTimeout = async (req, res) => {
+  try {
+    const streamStatusMonitor = require('../services/streamStatusMonitor.task');
+    
+    logger.info('🔍 [Manual Check] Verificación manual del timeout iniciada');
+    
+    const result = await streamStatusMonitor.manualCheck();
+    
+    res.json({
+      success: true,
+      timestamp: new Date().toISOString(),
+      check_result: result
+    });
+  } catch (error) {
+    logger.error('🔍 [Manual Check] Error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 };

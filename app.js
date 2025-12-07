@@ -11,6 +11,7 @@ const VipCleanupTask = require("./src/services/vipCleanup.task");
 const botMaintenanceService = require("./src/services/botMaintenance.service");
 const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
 const backupScheduler = require("./src/services/backup.task");
+const streamStatusMonitor = require("./src/services/streamStatusMonitor.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -26,6 +27,7 @@ const kickAdminRoutes = require("./src/routes/kickAdmin.routes");
 const kickBotCommandsRoutes = require("./src/routes/kickBotCommands.routes");
 const leaderboardRoutes = require("./src/routes/leaderboard.routes");
 const promocionesRoutes = require("./src/routes/promociones.routes");
+const broadcasterInfoRoutes = require("./src/routes/broadcasterInfo.routes");
 
 const app = express();
 
@@ -68,6 +70,7 @@ app.use("/api/kick-admin", kickAdminRoutes);
 app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/promociones", promocionesRoutes);
+app.use("/api/broadcaster", broadcasterInfoRoutes); // ✅ Ruta pública para info del broadcaster
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {
@@ -119,6 +122,9 @@ const start = async () => {
 
     // Iniciar backups automáticos
     backupScheduler.start();
+
+    // Iniciar monitor de estado del stream (detecta timeout cuando Kick no envía webhooks)
+    streamStatusMonitor.startStreamMonitor();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
