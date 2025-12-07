@@ -1656,13 +1656,25 @@ async function handleRewardRedemption(payload, metadata) {
       redeemed_at: redeemedAt,
     });
 
-    // Solo procesar si el estado es "accepted" o si está en "pending" y auto_accept está activado
-    if (status === "rejected") {
+    // Solo procesar cuando el estado sea "accepted"
+    if (status === "pending") {
       logger.info(
-        `[Kick Webhook][Reward Redemption] Redención rechazada, no se otorgarán puntos`,
+        `[Kick Webhook][Reward Redemption] ⏳ Redención pendiente de aprobación, esperando estado final...`,
       );
       return;
     }
+
+    if (status === "rejected") {
+      logger.info(
+        `[Kick Webhook][Reward Redemption] ❌ Redención rechazada, no se otorgarán puntos`,
+      );
+      return;
+    }
+
+    // Solo continúa si status === "accepted"
+    logger.info(
+      `[Kick Webhook][Reward Redemption] ✅ Redención aceptada, procesando puntos...`,
+    );
 
     // Buscar la recompensa en nuestra base de datos
     const localReward = await KickReward.findOne({
@@ -1781,13 +1793,6 @@ async function processRedemption(localReward, kickUserId, kickUsername, redempti
       transactionError.message,
     );
     throw transactionError;
-  }
-
-  // Auto-aceptar DESPUÉS de la transacción (no disponible en API actual)
-  if (localReward.auto_accept && status === "pending") {
-    logger.info(
-      `[Kick Webhook][Reward Redemption] 🔄 Recompensa configurada para auto-aceptar (debes aceptar manualmente en Kick.com)`,
-    );
   }
 }
 
