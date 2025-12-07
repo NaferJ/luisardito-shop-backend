@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { getRedisClient } = require('../config/redis');
+const { getRedisClient } = require('../config/redis.config');
 const logger = require('../utils/logger');
 
 /**
