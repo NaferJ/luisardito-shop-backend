@@ -21,8 +21,9 @@ class LeaderboardSnapshotTask {
 
         logger.info(`🚀 [LEADERBOARD-SNAPSHOT] Iniciando tarea programada (cada ${this.intervalHours} horas)`);
 
-        // Ejecutar inmediatamente al iniciar (opcional, comentar si no se desea)
-        this._executeSnapshot();
+        // NO ejecutar inmediatamente al iniciar para evitar limpieza accidental en cada reinicio
+        // Solo ejecutar en el intervalo programado
+        // this._executeSnapshot();
 
         // Programar ejecución periódica
         const intervalMs = this.intervalHours * 60 * 60 * 1000;
