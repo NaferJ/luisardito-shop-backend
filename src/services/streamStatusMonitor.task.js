@@ -1,122 +1,215 @@
 const cron = require('node-cron');
+const axios = require('axios');
 const { getRedisClient } = require('../config/redis.config');
 const logger = require('../utils/logger');
 
 /**
- * 🔍 Monitor de estado del stream
+ * 🔍 Monitor de estado del stream mediante API oficial de Kick
  * 
- * Verifica cada 5 minutos si el stream debería estar offline
- * basándose en la ausencia de metadata.updated
+ * Problema: Kick no siempre envía el webhook livestream.status.updated con is_live=false
+ * cuando un stream termina.
  * 
- * LÓGICA:
- * - metadata.updated SOLO se envía cuando el stream está EN VIVO
- * - Si pasan más de 15 minutos sin metadata.updated, el stream está offline
- * - Esto detecta casos donde Kick no envió el webhook de status.updated
+ * Solución OFICIAL: Consultar periódicamente la API pública de Kick para verificar
+ * el estado real del stream y sincronizar con Redis.
+ * 
+ * API: GET https://kick.com/api/v2/channels/{username}/livestream
+ * - Retorna datos del stream si está online
+ * - Retorna null o 404 si está offline
  */
 
-const METADATA_TIMEOUT_MINUTES = 15; // Timeout en minutos
-const CHECK_INTERVAL_MINUTES = 5;     // Frecuencia de verificación
+const CHECK_INTERVAL_MINUTES = 2; // Verificar cada 2 minutos
 
 /**
- * Verifica si el stream está realmente online basado en metadata.updated
+ * Obtiene el username del broadcaster desde la configuración
  */
-async function checkStreamTimeout() {
+async function getBroadcasterUsername() {
+    // Intentar obtener desde Redis cache primero
+    const redis = getRedisClient();
+    const cachedUsername = await redis.get('broadcaster:username');
+    
+    if (cachedUsername) {
+        return cachedUsername;
+    }
+    
+    // Si no está en cache, usar el servicio de broadcasterInfo
     try {
-        const redis = getRedisClient();
+        const broadcasterInfo = require('./broadcasterInfo.service');
+        const info = await broadcasterInfo.getBroadcasterInfo();
         
-        // Obtener estado actual
-        const isLive = await redis.get('stream:is_live');
-        const lastMetadataUpdate = await redis.get('stream:last_metadata_update');
-        
-        // Solo verificar si está marcado como online
-        if (isLive !== 'true') {
-            logger.debug('🔍 [STREAM MONITOR] Stream ya está offline, no hay nada que verificar');
-            return;
+        if (info && info.username) {
+            // Cachear por 24 horas
+            await redis.set('broadcaster:username', info.username, 'EX', 86400);
+            return info.username;
         }
+    } catch (error) {
+        logger.error('❌ [STREAM MONITOR] Error obteniendo username del broadcaster:', error.message);
+    }
+    
+    // Fallback: usar 'luisardito' (hardcoded como último recurso)
+    logger.warn('⚠️  [STREAM MONITOR] Usando username hardcoded: luisardito');
+    return 'luisardito';
+}
+
+/**
+ * Consulta la API oficial de Kick para obtener el estado real del stream
+ */
+async function checkStreamStatusViaAPI() {
+    try {
+        const username = await getBroadcasterUsername();
+        const apiUrl = `https://kick.com/api/v2/channels/${username}/livestream`;
         
-        // Si no hay metadata, no podemos determinar nada
-        if (!lastMetadataUpdate) {
-            logger.debug('🔍 [STREAM MONITOR] No hay historial de metadata.updated');
-            return;
-        }
+        logger.debug(`🔍 [STREAM MONITOR] Consultando API de Kick: ${apiUrl}`);
         
-        // Calcular tiempo transcurrido desde el último metadata.updated
-        const lastMetadataTime = new Date(lastMetadataUpdate);
-        const now = new Date();
-        const minutesSinceMetadata = (now - lastMetadataTime) / 1000 / 60;
+        const response = await axios.get(apiUrl, {
+            timeout: 10000,
+            headers: {
+                'User-Agent': 'LuisarditoBot/1.0'
+            }
+        });
         
-        logger.debug(
-            `🔍 [STREAM MONITOR] Verificación: ${minutesSinceMetadata.toFixed(2)} minutos sin metadata.updated (límite: ${METADATA_TIMEOUT_MINUTES} min)`
-        );
+        const livestreamData = response.data;
         
-        // Si pasó el timeout, marcar como offline
-        if (minutesSinceMetadata > METADATA_TIMEOUT_MINUTES) {
-            logger.warn(
-                '⚠️ [STREAM MONITOR] =========================================='
-            );
-            logger.warn(
-                '⚠️ [STREAM MONITOR] TIMEOUT DETECTADO - Stream probablemente offline'
-            );
-            logger.warn(
-                `⚠️ [STREAM MONITOR] Han pasado ${minutesSinceMetadata.toFixed(2)} minutos sin metadata.updated`
-            );
-            logger.warn(
-                `⚠️ [STREAM MONITOR] Límite de timeout: ${METADATA_TIMEOUT_MINUTES} minutos`
-            );
-            logger.warn(
-                '⚠️ [STREAM MONITOR] Causa probable: Kick no envió webhook de status.updated'
-            );
-            logger.warn(
-                '⚠️ [STREAM MONITOR] Marcando stream como OFFLINE automáticamente'
-            );
-            logger.warn(
-                '⚠️ [STREAM MONITOR] =========================================='
-            );
+        // Si hay datos de livestream, el stream está online
+        if (livestreamData && livestreamData.id) {
+            logger.info(`✅ [STREAM MONITOR] API confirma: Stream ONLINE`);
+            logger.debug(`📺 [STREAM MONITOR] Stream ID: ${livestreamData.id}`);
+            logger.debug(`📺 [STREAM MONITOR] Título: "${livestreamData.session_title || 'Sin título'}"`);
             
-            // Marcar como offline con TTL de 24 horas
-            await redis.set('stream:is_live', 'false', 'EX', 86400);
-            
-            // Actualizar timestamp de última actualización de status
-            await redis.set(
-                'stream:last_status_update',
-                new Date().toISOString(),
-                'EX',
-                86400
-            );
-            
-            // Limpiar información del stream
-            await redis.del('stream:current_info');
-            
-            // Registrar el timeout automático
-            await redis.set(
-                'stream:last_auto_timeout',
-                JSON.stringify({
-                    timestamp: new Date().toISOString(),
-                    minutes_since_metadata: minutesSinceMetadata.toFixed(2),
-                    reason: 'No metadata.updated received - webhook probably failed',
-                    last_metadata_update: lastMetadataUpdate
-                }),
-                'EX',
-                86400 * 7 // 7 días para debugging
-            );
-            
-            logger.info(
-                '✅ [STREAM MONITOR] Stream marcado como OFFLINE automáticamente'
-            );
-            logger.info(
-                '🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS (timeout automático)'
-            );
-            
+            return {
+                is_live: true,
+                stream_data: {
+                    id: livestreamData.id,
+                    title: livestreamData.session_title,
+                    started_at: livestreamData.created_at,
+                    category: livestreamData.categories?.[0]?.name || null,
+                    viewers: livestreamData.viewer_count || 0
+                }
+            };
         } else {
-            // Todo está bien, el stream sigue recibiendo metadata.updated
-            logger.debug(
-                `✅ [STREAM MONITOR] Stream online confirmado (${minutesSinceMetadata.toFixed(2)} min desde último metadata)`
-            );
+            logger.info(`🔴 [STREAM MONITOR] API confirma: Stream OFFLINE (sin datos de livestream)`);
+            return {
+                is_live: false,
+                stream_data: null
+            };
         }
         
     } catch (error) {
-        logger.error('❌ [STREAM MONITOR] Error verificando timeout:', error.message);
-        logger.error('❌ [STREAM MONITOR] Stack:', error.stack);
+        // 404 o error de red significa que el stream está offline
+        if (error.response?.status === 404) {
+            logger.info(`🔴 [STREAM MONITOR] API confirma: Stream OFFLINE (404)`);
+            return {
+                is_live: false,
+                stream_data: null
+            };
+        }
+        
+        logger.error('❌ [STREAM MONITOR] Error consultando API de Kick:', error.message);
+        
+        // En caso de error, retornar estado desconocido
+        return {
+            is_live: null,
+            error: error.message
+        };
+    }
+}
+
+/**
+ * Sincroniza el estado del stream en Redis con el estado real de la API
+ */
+async function syncStreamStatus() {
+    try {
+        const redis = getRedisClient();
+        
+        // 1. Obtener estado actual en Redis
+        const currentRedisState = await redis.get('stream:is_live');
+        
+        // 2. Consultar estado real desde la API de Kick
+        const apiStatus = await checkStreamStatusViaAPI();
+        
+        // 3. Si hubo error en la API, no hacer nada
+        if (apiStatus.is_live === null) {
+            logger.warn('⚠️  [STREAM MONITOR] No se pudo verificar estado - manteniendo estado actual');
+            return {
+                action: 'none',
+                reason: 'api_error',
+                current_redis_state: currentRedisState || 'not_set'
+            };
+        }
+        
+        // 4. Comparar estados
+        const apiState = apiStatus.is_live ? 'true' : 'false';
+        const statesMatch = currentRedisState === apiState;
+        
+        if (statesMatch) {
+            logger.debug(`✅ [STREAM MONITOR] Estados sincronizados: ${apiState}`);
+            return {
+                action: 'none',
+                reason: 'states_match',
+                state: apiState
+            };
+        }
+        
+        // 5. Estados NO coinciden - sincronizar Redis con la realidad
+        logger.warn('🔄 [STREAM MONITOR] ==========================================');
+        logger.warn('🔄 [STREAM MONITOR] INCONSISTENCIA DETECTADA');
+        logger.warn(`🔄 [STREAM MONITOR] Redis dice: ${currentRedisState || 'not_set'}`);
+        logger.warn(`🔄 [STREAM MONITOR] API dice: ${apiState}`);
+        logger.warn('🔄 [STREAM MONITOR] CORRIGIENDO estado en Redis...');
+        logger.warn('🔄 [STREAM MONITOR] ==========================================');
+        
+        const now = new Date();
+        
+        if (apiStatus.is_live) {
+            // Stream está ONLINE según API - actualizar Redis
+            await redis.set('stream:is_live', 'true');
+            await redis.set('stream:last_status_update', now.toISOString(), 'EX', 86400);
+            
+            // Guardar información del stream
+            const streamInfo = {
+                title: apiStatus.stream_data.title || 'Sin título',
+                category: apiStatus.stream_data.category || 'Sin categoría',
+                started_at: apiStatus.stream_data.started_at,
+                viewers: apiStatus.stream_data.viewers,
+                updated_by: 'api_sync',
+                last_update: now.toISOString()
+            };
+            await redis.set('stream:current_info', JSON.stringify(streamInfo));
+            
+            logger.info('✅ [STREAM MONITOR] Estado corregido a ONLINE');
+            logger.info('🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS');
+            
+        } else {
+            // Stream está OFFLINE según API - actualizar Redis
+            await redis.set('stream:is_live', 'false', 'EX', 86400);
+            await redis.set('stream:last_status_update', now.toISOString(), 'EX', 86400);
+            await redis.del('stream:current_info');
+            
+            // Registrar corrección automática
+            await redis.set('stream:last_auto_correction', JSON.stringify({
+                corrected_at: now.toISOString(),
+                previous_redis_state: currentRedisState || 'not_set',
+                api_state: 'offline',
+                reason: 'api_sync'
+            }), 'EX', 86400);
+            
+            logger.info('✅ [STREAM MONITOR] Estado corregido a OFFLINE');
+            logger.info('🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS');
+        }
+        
+        return {
+            action: 'corrected',
+            previous_state: currentRedisState || 'not_set',
+            new_state: apiState,
+            method: 'api_sync',
+            stream_data: apiStatus.stream_data
+        };
+        
+    } catch (error) {
+        logger.error('❌ [STREAM MONITOR] Error sincronizando estado:', error.message);
+        return {
+            action: 'error',
+            error: error.message
+        };
     }
 }
 
@@ -124,41 +217,43 @@ async function checkStreamTimeout() {
  * Inicia el monitor de estado del stream
  */
 function startStreamMonitor() {
-    // Ejecutar cada 5 minutos
-    const cronExpression = `*/${CHECK_INTERVAL_MINUTES} * * * *`;
-    
     logger.info('🔍 [STREAM MONITOR] ==========================================');
     logger.info('🔍 [STREAM MONITOR] Iniciando monitor de estado del stream');
+    logger.info('🔍 [STREAM MONITOR] Método: Polling a API oficial de Kick');
     logger.info(`🔍 [STREAM MONITOR] Frecuencia: cada ${CHECK_INTERVAL_MINUTES} minutos`);
-    logger.info(`🔍 [STREAM MONITOR] Timeout de metadata: ${METADATA_TIMEOUT_MINUTES} minutos`);
-    logger.info('🔍 [STREAM MONITOR] Expresión cron:', cronExpression);
+    logger.info('🔍 [STREAM MONITOR] API: https://kick.com/api/v2/channels/{username}/livestream');
     logger.info('🔍 [STREAM MONITOR] ==========================================');
     
-    // Programar tarea
+    // Ejecutar verificación cada CHECK_INTERVAL_MINUTES minutos
+    const cronExpression = `*/${CHECK_INTERVAL_MINUTES} * * * *`;
+    
     cron.schedule(cronExpression, async () => {
-        logger.debug('🔍 [STREAM MONITOR] Ejecutando verificación periódica...');
-        await checkStreamTimeout();
+        logger.info('🔍 [STREAM MONITOR] Ejecutando verificación periódica...');
+        const result = await syncStreamStatus();
+        logger.debug('🔍 [STREAM MONITOR] Resultado:', JSON.stringify(result, null, 2));
     });
     
-    // Ejecutar primera verificación inmediatamente
-    logger.info('🔍 [STREAM MONITOR] Ejecutando verificación inicial...');
-    setTimeout(() => {
-        checkStreamTimeout();
-    }, 5000); // Esperar 5 segundos después del inicio
+    logger.info(`✅ [STREAM MONITOR] Monitor iniciado - cron: ${cronExpression}`);
     
-    logger.info('✅ [STREAM MONITOR] Monitor iniciado correctamente');
+    // Ejecutar una verificación inicial inmediatamente
+    setTimeout(async () => {
+        logger.info('🔍 [STREAM MONITOR] Ejecutando verificación inicial...');
+        await syncStreamStatus();
+    }, 5000); // Esperar 5 segundos después del inicio
 }
 
 /**
- * Verificación manual del estado (para debugging)
+ * Función exportada para verificación manual
  */
 async function manualCheck() {
-    logger.info('🔧 [STREAM MONITOR] Verificación manual solicitada');
-    await checkStreamTimeout();
+    logger.info('🔧 [STREAM MONITOR] Verificación MANUAL solicitada');
+    const result = await syncStreamStatus();
+    logger.info('🔧 [STREAM MONITOR] Resultado verificación manual:', JSON.stringify(result, null, 2));
+    return result;
 }
 
 module.exports = {
     startStreamMonitor,
-    checkStreamTimeout,
+    syncStreamStatus,
     manualCheck
 };
