@@ -1731,6 +1731,18 @@ async function processRedemption(localReward, kickUserId, kickUsername, redempti
     logger.warn(
       `[Kick Webhook][Reward Redemption] ⚠️ Usuario ${kickUsername} no registrado en la BD`,
     );
+    
+    // Enviar mensaje al chat informando al usuario
+    try {
+      const KickBotService = require('../services/kickBot.service');
+      const bot = new KickBotService();
+      const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos!`;
+      await bot.sendMessage(message);
+      logger.info(`[Kick Webhook][Reward Redemption] 📨 Mensaje enviado a ${kickUsername} sobre registro`);
+    } catch (botError) {
+      logger.error(`[Kick Webhook][Reward Redemption] ❌ Error enviando mensaje del bot:`, botError.message);
+    }
+    
     return;
   }
 
