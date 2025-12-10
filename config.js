@@ -56,7 +56,13 @@ module.exports = {
         sameSite: 'lax'
     },
     frontendUrl: process.env.FRONTEND_URL,
-    port: Number(process.env.PORT || 3000)
+    port: Number(process.env.PORT || 3000),
+    discord: {
+        botToken: process.env.DISCORD_BOT_TOKEN,
+        clientId: process.env.DISCORD_CLIENT_ID,
+        clientSecret: process.env.DISCORD_CLIENT_SECRET,
+        guildId: process.env.DISCORD_GUILD_ID
+    }
 };
 
 console.log('🔍 DEBUG - Config resultante:');

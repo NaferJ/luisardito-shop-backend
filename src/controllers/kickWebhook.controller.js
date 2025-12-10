@@ -663,6 +663,7 @@ async function handleChatMessage(payload, metadata) {
           kickUsername,
           payload.channel?.username || "luisardito",
           bot,
+          null // No hay contexto de mensaje para webhooks
         );
 
         if (commandProcessed) {

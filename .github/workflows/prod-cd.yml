@@ -123,6 +123,12 @@ jobs:
             echo "BACKUP_TIME=03:00" >> "$ENV_PATH"
             echo "BACKUP_RETENTION_DAYS=3" >> "$ENV_PATH"
 
+            # Discord Bot Configuration
+            echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" >> "$ENV_PATH"
+            echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> "$ENV_PATH"
+            echo "DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}" >> "$ENV_PATH"
+            echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> "$ENV_PATH"
+
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"

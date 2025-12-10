@@ -17,9 +17,10 @@ class KickBotCommandHandlerService {
      * @param {string} username - Usuario que envió el mensaje
      * @param {string} channelName - Nombre del canal
      * @param {object} bot - Instancia del bot service
+     * @param {object} messageContext - Contexto del mensaje (para Discord)
      * @returns {Promise<boolean>} - True si se procesó un comando, false si no
      */
-    async processMessage(message, username, channelName, bot) {
+    async processMessage(message, username, channelName, bot, messageContext = null) {
         try {
             const content = String(message || '').trim();
 
@@ -48,7 +49,7 @@ class KickBotCommandHandlerService {
 
             // Enviar la respuesta si existe
             if (response) {
-                await bot.sendMessage(response);
+                await bot.sendMessage(response, messageContext);
 
                 // Incrementar contador de uso
                 await command.incrementUsage();
