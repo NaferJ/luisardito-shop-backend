@@ -4,14 +4,12 @@ const {
   KickPointsConfig,
   KickChatCooldown,
   KickUserTracking,
-  KickReward,
   Usuario,
   HistorialPunto,
   sequelize,
 } = require("../models");
 const BotrixMigrationService = require("../services/botrixMigration.service");
 const VipService = require("../services/vip.service");
-const KickRewardService = require("../services/kickReward.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
@@ -468,10 +466,6 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 
     case "kicks.gifted":
       await handleKicksGifted(payload, metadata);
-      break;
-
-    case "channel.reward.redemption.updated":
-      await handleRewardRedemption(payload, metadata);
       break;
 
     default:
@@ -1255,93 +1249,19 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       );
     }
 
-    // 🎥 Actualizar estado en Redis
-    // ✅ SOLUCIÓN AL PROBLEMA: Solo usar TTL cuando el stream está OFFLINE
-    // Cuando está ONLINE, persistir indefinidamente (sin TTL)
-    // El evento metadata.updated sirve como heartbeat adicional
+    // 🎥 Actualizar estado en Redis basándose 100% en payload.is_live
+    // Este webhook es la FUENTE DE VERDAD para el estado del stream
     if (isLive) {
       // Stream ONLINE: SIN TTL (persiste indefinidamente)
       await redis.set("stream:is_live", "true");
       logger.info(
-        "✅ [STREAM STATUS] Estado ONLINE guardado SIN TTL (persistente)",
+        "✅ [STREAM STATUS] Estado ONLINE guardado (según payload.is_live=true)",
       );
     } else {
-      // 🛡️ PROTECCIÓN CONTRA FALSOS NEGATIVOS
-      // Verificar si recientemente recibimos un metadata.updated (que solo llega cuando está online)
-      const lastMetadataUpdate = await redis.get("stream:last_metadata_update");
-
-      if (lastMetadataUpdate) {
-        const lastMetadataTime = new Date(lastMetadataUpdate);
-        const now = new Date();
-        const minutesSinceMetadata = (now - lastMetadataTime) / 1000 / 60;
-
-        // 🎯 PROTECCIÓN MEJORADA: Si recibimos metadata hace menos de 15 minutos, el stream está REALMENTE online
-        // metadata.updated SOLO se envía cuando el stream está EN VIVO (según documentación de Kick)
-        // Ventana de 15 minutos: balance entre protección contra glitches y detección rápida de offline real
-        if (minutesSinceMetadata < 15) {
-          logger.warn(
-            "🚨 [STREAM STATUS] ==========================================",
-          );
-          logger.warn("🚨 [STREAM STATUS] FALSO NEGATIVO DETECTADO!");
-          logger.warn(
-            `🚨 [STREAM STATUS] Kick dice offline, pero metadata.updated recibido hace ${minutesSinceMetadata.toFixed(2)} minutos`,
-          );
-          logger.warn(
-            "🚨 [STREAM STATUS] metadata.updated SOLO llega cuando el stream está ONLINE",
-          );
-          logger.warn(
-            "🚨 [STREAM STATUS] IGNORANDO evento offline - Manteniendo estado ONLINE",
-          );
-          logger.warn(
-            `🚨 [STREAM STATUS] Ventana de protección: 15 minutos (actual: ${minutesSinceMetadata.toFixed(2)} min)`,
-          );
-          logger.warn(
-            "🚨 [STREAM STATUS] ==========================================",
-          );
-
-          // Mantener el estado online y no procesar el falso offline
-          await redis.set("stream:is_live", "true");
-
-          // Registrar este evento sospechoso para debugging
-          const suspiciousEvents =
-            (await redis.get("stream:suspicious_offline_events")) || "0";
-          await redis.set(
-            "stream:suspicious_offline_events",
-            String(parseInt(suspiciousEvents) + 1),
-            "EX",
-            86400,
-          );
-
-          logger.info(
-            "🎥 [STREAM STATUS] ==========================================",
-          );
-          return;
-        } else {
-          // Más de 15 minutos sin metadata.updated - es un offline real
-          logger.info(
-            "✅ [STREAM STATUS] ==========================================",
-          );
-          logger.info(
-            `✅ [STREAM STATUS] Offline VÁLIDO detectado: ${minutesSinceMetadata.toFixed(2)} minutos sin metadata.updated`,
-          );
-          logger.info(
-            "✅ [STREAM STATUS] Procesando cambio a OFFLINE",
-          );
-          logger.info(
-            "✅ [STREAM STATUS] ==========================================",
-          );
-        }
-      } else {
-        // No hay registro de metadata.updated - aceptar el offline
-        logger.info(
-          "ℹ️  [STREAM STATUS] Sin historial de metadata.updated - Aceptando evento offline",
-        );
-      }
-
       // Stream OFFLINE: CON TTL de 24 horas para limpieza automática
       await redis.set("stream:is_live", "false", "EX", 86400);
       logger.info(
-        "✅ [STREAM STATUS] Estado OFFLINE guardado CON TTL de 24h (limpieza)",
+        "✅ [STREAM STATUS] Estado OFFLINE guardado (según payload.is_live=false)",
       );
     }
 
@@ -1386,25 +1306,13 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
 
 /**
  * Maneja actualizaciones de metadatos de transmisión
- * IMPORTANTE: Este evento SOLO se dispara cuando el stream está EN VIVO
- * Lo usamos como validación cruzada y heartbeat del estado del stream
+ * IMPORTANTE: Este evento NO indica si el stream está online/offline
+ * Solo actualiza información (título, categoría, etc.) del stream
+ * NO debe cambiar el estado stream:is_live
  */
 async function handleLivestreamMetadataUpdated(payload, metadata) {
   try {
     const redis = getRedisClient();
-
-    // 📊 Log detallado del payload completo
-    logger.info(
-      "🎬 [STREAM METADATA] ==========================================",
-    );
-    logger.info(
-      "🎬 [STREAM METADATA] Payload completo:",
-      JSON.stringify(payload, null, 2),
-    );
-    logger.info(
-      "🎬 [STREAM METADATA] Metadata:",
-      JSON.stringify(metadata, null, 2),
-    );
 
     logger.info("[Kick Webhook][Livestream Metadata]", {
       broadcaster: payload.broadcaster.username,
@@ -1412,39 +1320,12 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
       category: payload.metadata.category?.name,
       language: payload.metadata.language,
       has_mature_content: payload.metadata.has_mature_content,
-      timestamp_evento: metadata.timestamp,
-      timestamp_actual: new Date().toISOString(),
     });
 
-    // 🎯 VALIDACIÓN CRUZADA: Este evento solo llega si el stream está EN VIVO
+    // Obtener estado actual (NO lo modificamos aquí)
     const currentState = await redis.get("stream:is_live");
 
-    if (currentState !== "true") {
-      logger.warn("⚠️  [STREAM METADATA] INCONSISTENCIA DETECTADA!");
-      logger.warn(
-        `⚠️  [STREAM METADATA] Redis dice: ${currentState || "unknown"}`,
-      );
-      logger.warn(
-        "⚠️  [STREAM METADATA] Pero metadata.updated indica que el stream ESTÁ EN VIVO",
-      );
-      logger.warn(
-        "🔧 [STREAM METADATA] CORRECCIÓN AUTOMÁTICA: Actualizando a true",
-      );
-
-      // Corregir automáticamente el estado (SIN TTL porque está online)
-      await redis.set("stream:is_live", "true");
-      logger.info(
-        "✅ [STREAM METADATA] Estado corregido a ONLINE (persistente, sin TTL)",
-      );
-    } else {
-      logger.info(
-        "✅ [STREAM METADATA] Estado consistente: stream online confirmado",
-      );
-      // Renovar el estado online sin TTL (por si acaso tenía uno antiguo)
-      await redis.set("stream:is_live", "true");
-    }
-
-    // Actualizar información del stream en Redis (SIN TTL porque está online)
+    // Actualizar solo la información de metadatos
     const streamInfo = {
       title: payload.metadata.title || "Sin título",
       category: payload.metadata.category?.name || "Sin categoría",
@@ -1456,30 +1337,17 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
       last_update: new Date().toISOString(),
     };
 
-    // Info del stream SIN TTL mientras esté online
+    // Info del stream SIN TTL
     await redis.set("stream:current_info", JSON.stringify(streamInfo));
-    // Timestamp de última actualización de metadata (con TTL para limpieza)
-    await redis.set(
-      "stream:last_metadata_update",
-      new Date().toISOString(),
-      "EX",
-      86400,
-    );
 
     logger.info(
-      "💾 [STREAM METADATA] Información del stream actualizada en Redis (persistente)",
-    );
-    logger.info(`📺 [STREAM METADATA] Título: "${streamInfo.title}"`);
-    logger.info(`🎮 [STREAM METADATA] Categoría: "${streamInfo.category}"`);
-    logger.info(
-      "🔄 [STREAM METADATA] Actuando como HEARTBEAT del estado online",
+      `💾 [STREAM METADATA] Metadatos actualizados: "${streamInfo.title}" - ${streamInfo.category}`,
     );
     logger.info(
-      "🎬 [STREAM METADATA] ==========================================",
+      `ℹ️  [STREAM METADATA] Estado actual del stream: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (sin cambios)`,
     );
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);
-    logger.error("[Kick Webhook][Livestream Metadata] Stack:", error.stack);
   }
 }
 
@@ -1618,193 +1486,6 @@ async function handleKicksGifted(payload, metadata) {
     }
   } catch (error) {
     logger.error("[Kick Webhook][Kicks Gifted] Error:", error.message);
-  }
-}
-
-/**
- * Maneja canjeos de recompensas (channel.reward.redemption.updated)
- * Otorga puntos según la configuración de la recompensa
- */
-async function handleRewardRedemption(payload, metadata) {
-  try {
-    // 🎁 Log completo del evento para debugging
-    logger.info("🎁 [Kick Webhook][Reward Redemption] ═══════════════════════════════════");
-    logger.info("🎁 [Kick Webhook][Reward Redemption] EVENTO RECIBIDO - Payload completo:", JSON.stringify(payload, null, 2));
-    logger.info("🎁 [Kick Webhook][Reward Redemption] ═══════════════════════════════════");
-
-    const redemptionId = payload.id;
-    const userInput = payload.user_input || null;
-    const status = payload.status; // "pending", "accepted", "rejected"
-    const redeemedAt = payload.redeemed_at;
-    const reward = payload.reward;
-    const redeemer = payload.redeemer;
-
-    const kickRewardId = reward.id;
-    const rewardTitle = reward.title;
-    const rewardCost = reward.cost;
-    const kickUserId = String(redeemer.user_id);
-    const kickUsername = redeemer.username;
-
-    logger.info("🎁 [Kick Webhook][Reward Redemption] Procesando:", {
-      redemption_id: redemptionId,
-      broadcaster: payload.broadcaster.username,
-      redeemer: kickUsername,
-      reward_title: rewardTitle,
-      reward_cost: rewardCost,
-      status: status,
-      user_input: userInput,
-      redeemed_at: redeemedAt,
-    });
-
-    // Solo procesar cuando el estado sea "accepted"
-    if (status === "pending") {
-      logger.info(
-        `[Kick Webhook][Reward Redemption] ⏳ Redención pendiente de aprobación, esperando estado final...`,
-      );
-      return;
-    }
-
-    if (status === "rejected") {
-      logger.info(
-        `[Kick Webhook][Reward Redemption] ❌ Redención rechazada, no se otorgarán puntos`,
-      );
-      return;
-    }
-
-    // Solo continúa si status === "accepted"
-    logger.info(
-      `[Kick Webhook][Reward Redemption] ✅ Redención aceptada, procesando puntos...`,
-    );
-
-    // Buscar la recompensa en nuestra base de datos
-    const localReward = await KickReward.findOne({
-      where: { kick_reward_id: kickRewardId },
-    });
-
-    if (!localReward) {
-      logger.warn(
-        `[Kick Webhook][Reward Redemption] ⚠️ Recompensa no encontrada en BD: ${rewardTitle} (${kickRewardId})`,
-      );
-      logger.info(
-        `[Kick Webhook][Reward Redemption] 💡 Configura esta recompensa con: INSERT INTO kick_rewards (kick_reward_id, title, cost, puntos_a_otorgar) VALUES ('${kickRewardId}', '${rewardTitle}', ${rewardCost}, PUNTOS_DESEADOS);`,
-      );
-      return;
-    }
-
-    // Verificar si la recompensa está habilitada
-    if (!localReward.is_enabled) {
-      logger.info(
-        `[Kick Webhook][Reward Redemption] Recompensa deshabilitada: ${rewardTitle}`,
-      );
-      return;
-    }
-
-    await processRedemption(localReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt);
-
-  } catch (error) {
-    logger.error(
-      "[Kick Webhook][Reward Redemption] Error:",
-      error.message,
-    );
-  }
-}
-
-/**
- * Procesa la redención de una recompensa y otorga puntos
- */
-async function processRedemption(localReward, kickUserId, kickUsername, redemptionId, userInput, status, redeemedAt) {
-  const pointsToAward = localReward.puntos_a_otorgar;
-
-  if (pointsToAward <= 0) {
-    logger.info(
-      `[Kick Webhook][Reward Redemption] Recompensa "${localReward.title}" no tiene puntos configurados`,
-    );
-    return;
-  }
-
-  // Buscar usuario en nuestra BD
-  const usuario = await Usuario.findOne({
-    where: { user_id_ext: kickUserId },
-  });
-
-  if (!usuario) {
-    logger.warn(
-      `[Kick Webhook][Reward Redemption] ⚠️ Usuario ${kickUsername} no registrado en la BD`,
-    );
-    
-    // Enviar mensaje al chat informando al usuario
-    try {
-      const KickBotService = require('../services/kickBot.service');
-      const bot = new KickBotService();
-      const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos!`;
-      await bot.sendMessage(message);
-      logger.info(`[Kick Webhook][Reward Redemption] 📨 Mensaje enviado a ${kickUsername} sobre registro`);
-    } catch (botError) {
-      logger.error(`[Kick Webhook][Reward Redemption] ❌ Error enviando mensaje del bot:`, botError.message);
-    }
-    
-    return;
-  }
-
-  // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-  await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
-
-  // Iniciar transacción para garantizar atomicidad
-  const transaction = await sequelize.transaction({
-    isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
-  });
-
-  try {
-    // Otorgar puntos
-    await usuario.increment("puntos", { by: pointsToAward }, { transaction });
-
-    // Registrar en historial
-    await HistorialPunto.create(
-      {
-        usuario_id: usuario.id,
-        puntos: pointsToAward,
-        tipo: "ganado",
-        concepto: `Canje de recompensa: ${localReward.title}${userInput ? ` - "${userInput}"` : ""}`,
-        kick_event_data: {
-          event_type: "channel.reward.redemption.updated",
-          kick_user_id: kickUserId,
-          kick_username: kickUsername,
-          redemption_id: redemptionId,
-          reward_id: localReward.kick_reward_id,
-          reward_title: localReward.title,
-          reward_cost: localReward.cost,
-          user_input: userInput,
-          status: status,
-          redeemed_at: redeemedAt,
-        },
-      },
-      { transaction },
-    );
-
-    // Incrementar contador de canjeos de la recompensa
-    await localReward.increment("total_redemptions", { by: 1 });
-
-    await transaction.commit();
-
-    logger.info(
-      `[Kick Webhook][Reward Redemption] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} por canjear "${localReward.title}"`,
-    );
-
-    // Recargar usuario para mostrar total actualizado
-    const updatedUser = await usuario.reload();
-    logger.info(
-      `[Kick Webhook][Reward Redemption] 💰 Total puntos de ${kickUsername}: ${updatedUser.puntos}`,
-    );
-  } catch (transactionError) {
-    // Solo hacer rollback si la transacción no se ha completado
-    if (!transaction.finished) {
-      await transaction.rollback();
-    }
-    logger.error(
-      `[Kick Webhook][Reward Redemption] ❌ Error en transacción para ${kickUsername}:`,
-      transactionError.message,
-    );
-    throw transactionError;
   }
 }
 
@@ -3149,33 +2830,6 @@ exports.getPublicPointsConfig = async (req, res) => {
     res.status(500).json({
       success: false,
       error: "Error interno del servidor",
-    });
-  }
-};
-
-/**
- * 🔍 ENDPOINT: Verificación manual del timeout del stream
- * POST /api/kick-webhook/debug/check-stream-timeout
- */
-exports.manualCheckStreamTimeout = async (req, res) => {
-  try {
-    const streamStatusMonitor = require('../services/streamStatusMonitor.task');
-    
-    logger.info('🔍 [Manual Check] Verificación manual del timeout iniciada');
-    
-    const result = await streamStatusMonitor.manualCheck();
-    
-    res.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      check_result: result
-    });
-  } catch (error) {
-    logger.error('🔍 [Manual Check] Error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      timestamp: new Date().toISOString()
     });
   }
 };

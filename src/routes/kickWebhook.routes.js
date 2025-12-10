@@ -49,7 +49,6 @@ router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
 // Stream
 router.get('/debug-stream-status', kickWebhookCtrl.debugStreamStatus);
 router.post('/debug/force-stream-state', kickWebhookCtrl.forceStreamState);
-router.post('/debug/check-stream-timeout', kickWebhookCtrl.manualCheckStreamTimeout);
 
 // 📊 ENDPOINT PÚBLICO: Configuración de puntos
 router.get('/public/points-config', kickWebhookCtrl.getPublicPointsConfig);

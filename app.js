@@ -11,7 +11,6 @@ const VipCleanupTask = require("./src/services/vipCleanup.task");
 const botMaintenanceService = require("./src/services/botMaintenance.service");
 const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
 const backupScheduler = require("./src/services/backup.task");
-const streamStatusMonitor = require("./src/services/streamStatusMonitor.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -122,9 +121,6 @@ const start = async () => {
 
     // Iniciar backups automáticos
     backupScheduler.start();
-
-    // Iniciar monitor de estado del stream (detecta timeout cuando Kick no envía webhooks)
-    streamStatusMonitor.startStreamMonitor();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
