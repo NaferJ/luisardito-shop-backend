@@ -487,16 +487,56 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
  */
 async function handleRewardRedemption(payload, metadata) {
   try {
-    const { id: redemptionId, reward, user, status, user_input } = payload;
+    const { id: redemptionId, reward, user, status, user_input, redeemer } = payload;
     const kickRewardId = reward.id;
-    const kickUserId = String(user.user_id);
-    const kickUsername = user.username;
+    
+    // El usuario puede venir en "user" o "redeemer" dependiendo del payload
+    const userInfo = user || redeemer;
+    if (!userInfo) {
+      logger.error(`❌ [Reward Redemption] No se encontró información del usuario en el payload`);
+      return;
+    }
+    
+    const kickUserId = String(userInfo.user_id || userInfo.id);
+    const kickUsername = userInfo.username;
 
     logger.info(`🎁 [Reward Redemption] ${kickUsername} canjeó "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
 
-    // Solo procesar si el status es "accepted"
+    // Buscar la recompensa en nuestra BD
+    const localReward = await KickReward.findOne({
+      where: { kick_reward_id: kickRewardId }
+    });
+
+    if (!localReward) {
+      logger.warn(`⚠️ [Reward Redemption] Recompensa "${reward.title}" (${kickRewardId}) no configurada en BD`);
+      return;
+    }
+
+    // SIEMPRE buscar el usuario en nuestra BD (para ambos casos: pending y accepted)
+    let usuario = await Usuario.findOne({
+      where: { user_id_ext: kickUserId }
+    });
+
+    // Si es pending y el usuario no existe, enviar mensaje
+    if (status === 'pending' && !usuario) {
+      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} no registrado en la tienda`);
+      
+      // Enviar mensaje en chat notificando al usuario INMEDIATAMENTE
+      try {
+        const KickBotService = require('../services/kickBot.service');
+        const bot = new KickBotService();
+        const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos! 🎁`;
+        await bot.sendMessage(message);
+        logger.info(`📢 [Reward Redemption] Mensaje enviado a ${kickUsername} en chat`);
+      } catch (botError) {
+        logger.error(`❌ [Reward Redemption] Error enviando mensaje al chat:`, botError.message);
+      }
+      return;
+    }
+
+    // Si es pending y el usuario SÍ existe, solo esperar
     if (status === 'pending') {
-      logger.info(`⏳ [Reward Redemption] Canje pendiente de aprobación - esperando...`);
+      logger.info(`⏳ [Reward Redemption] Usuario registrado. Canje pendiente de aprobación - esperando...`);
       return;
     }
 
@@ -510,39 +550,21 @@ async function handleRewardRedemption(payload, metadata) {
       return;
     }
 
-    // Buscar la recompensa en nuestra BD
-    const localReward = await KickReward.findOne({
-      where: { kick_reward_id: kickRewardId }
-    });
+    // VOLVER A BUSCAR el usuario por si se registró después del pending
+    if (!usuario) {
+      usuario = await Usuario.findOne({
+        where: { user_id_ext: kickUserId }
+      });
+    }
 
-    if (!localReward) {
-      logger.warn(`⚠️ [Reward Redemption] Recompensa "${reward.title}" (${kickRewardId}) no configurada en BD`);
+    // Si después de accepted el usuario TODAVÍA no existe
+    if (!usuario) {
+      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} sigue sin registrarse. No se otorgan puntos.`);
       return;
     }
 
     if (!localReward.is_enabled) {
       logger.info(`🔒 [Reward Redemption] Recompensa "${localReward.title}" deshabilitada`);
-      return;
-    }
-
-    // Buscar el usuario en nuestra BD
-    const usuario = await Usuario.findOne({
-      where: { user_id_ext: kickUserId }
-    });
-
-    if (!usuario) {
-      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} no registrado en la tienda`);
-      
-      // Enviar mensaje en chat notificando al usuario
-      try {
-        const KickBotService = require('../services/kickBot.service');
-        const bot = new KickBotService();
-        const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos! 🎁`;
-        await bot.sendMessage(message);
-        logger.info(`📢 [Reward Redemption] Mensaje enviado a ${kickUsername} en chat`);
-      } catch (botError) {
-        logger.error(`❌ [Reward Redemption] Error enviando mensaje al chat:`, botError.message);
-      }
       return;
     }
 
