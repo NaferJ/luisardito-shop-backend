@@ -6,6 +6,7 @@ const {
   KickUserTracking,
   Usuario,
   HistorialPunto,
+  KickReward,
   sequelize,
 } = require("../models");
 const BotrixMigrationService = require("../services/botrixMigration.service");
@@ -468,6 +469,10 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
       await handleKicksGifted(payload, metadata);
       break;
 
+    case "channel.reward.redemption.updated":
+      await handleRewardRedemption(payload, metadata);
+      break;
+
     default:
       logger.info(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
   }
@@ -476,6 +481,122 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 // ============================================================================
 // Handlers para cada tipo de evento
 // ============================================================================
+
+/**
+ * 🎁 Maneja canjeos de recompensas de canal
+ */
+async function handleRewardRedemption(payload, metadata) {
+  try {
+    const { id: redemptionId, reward, user, status, user_input } = payload;
+    const kickRewardId = reward.id;
+    const kickUserId = String(user.user_id);
+    const kickUsername = user.username;
+
+    logger.info(`🎁 [Reward Redemption] ${kickUsername} canjeó "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
+
+    // Solo procesar si el status es "accepted"
+    if (status === 'pending') {
+      logger.info(`⏳ [Reward Redemption] Canje pendiente de aprobación - esperando...`);
+      return;
+    }
+
+    if (status === 'rejected') {
+      logger.info(`❌ [Reward Redemption] Canje rechazado - no se procesan puntos`);
+      return;
+    }
+
+    if (status !== 'accepted') {
+      logger.warn(`⚠️ [Reward Redemption] Status desconocido: ${status}`);
+      return;
+    }
+
+    // Buscar la recompensa en nuestra BD
+    const localReward = await KickReward.findOne({
+      where: { kick_reward_id: kickRewardId }
+    });
+
+    if (!localReward) {
+      logger.warn(`⚠️ [Reward Redemption] Recompensa "${reward.title}" (${kickRewardId}) no configurada en BD`);
+      return;
+    }
+
+    if (!localReward.is_enabled) {
+      logger.info(`🔒 [Reward Redemption] Recompensa "${localReward.title}" deshabilitada`);
+      return;
+    }
+
+    // Buscar el usuario en nuestra BD
+    const usuario = await Usuario.findOne({
+      where: { user_id_ext: kickUserId }
+    });
+
+    if (!usuario) {
+      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} no registrado en la tienda`);
+      
+      // Enviar mensaje en chat notificando al usuario
+      try {
+        const KickBotService = require('../services/kickBot.service');
+        const bot = new KickBotService();
+        const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos! 🎁`;
+        await bot.sendMessage(message);
+        logger.info(`📢 [Reward Redemption] Mensaje enviado a ${kickUsername} en chat`);
+      } catch (botError) {
+        logger.error(`❌ [Reward Redemption] Error enviando mensaje al chat:`, botError.message);
+      }
+      return;
+    }
+
+    // Otorgar puntos
+    const puntosAOtorgar = localReward.puntos_a_otorgar;
+    
+    if (puntosAOtorgar <= 0) {
+      logger.info(`ℹ️ [Reward Redemption] Recompensa "${localReward.title}" no otorga puntos (configurado en 0)`);
+      return;
+    }
+
+    const transaction = await sequelize.transaction({
+      isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
+    });
+
+    try {
+      // Incrementar puntos del usuario
+      await usuario.increment('puntos', {
+        by: puntosAOtorgar,
+        transaction
+      });
+
+      // Registrar en historial
+      await HistorialPunto.create({
+        usuario_id: usuario.id,
+        cantidad: puntosAOtorgar,
+        tipo: 'ganancia',
+        descripcion: `Canje de recompensa: ${localReward.title}`,
+        kick_reward_id: localReward.id,
+        kick_redemption_id: redemptionId
+      }, { transaction });
+
+      // Incrementar contador de canjeos
+      await localReward.increment('total_redemptions', {
+        by: 1,
+        transaction
+      });
+
+      await transaction.commit();
+
+      await usuario.reload();
+      logger.info(`✅ [Reward Redemption] ${kickUsername} recibió ${puntosAOtorgar} puntos. Total: ${usuario.puntos}`);
+
+    } catch (error) {
+      if (!transaction.finished) {
+        await transaction.rollback();
+      }
+      throw error;
+    }
+
+  } catch (error) {
+    logger.error('[Reward Redemption] ❌ Error:', error.message);
+  }
+}
 
 /**
  * Maneja mensajes de chat
