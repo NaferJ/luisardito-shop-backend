@@ -11,7 +11,7 @@ const KickBotCommandHandlerService = require('./kickBotCommandHandler.service');
 class DiscordBotService {
     constructor() {
         this.client = null;
-        this.commandHandler = new KickBotCommandHandlerService();
+        this.commandHandler = KickBotCommandHandlerService;
         this.isReady = false;
     }
 
