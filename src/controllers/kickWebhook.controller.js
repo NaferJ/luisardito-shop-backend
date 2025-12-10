@@ -487,18 +487,10 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
  */
 async function handleRewardRedemption(payload, metadata) {
   try {
-    const { id: redemptionId, reward, user, status, user_input, redeemer } = payload;
+    const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
-    
-    // El usuario puede venir en "user" o "redeemer" dependiendo del payload
-    const userInfo = user || redeemer;
-    if (!userInfo) {
-      logger.error(`❌ [Reward Redemption] No se encontró información del usuario en el payload`);
-      return;
-    }
-    
-    const kickUserId = String(userInfo.user_id || userInfo.id);
-    const kickUsername = userInfo.username;
+    const kickUserId = String(redeemer.user_id);
+    const kickUsername = redeemer.username;
 
     logger.info(`🎁 [Reward Redemption] ${kickUsername} canjeó "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
 
@@ -590,11 +582,17 @@ async function handleRewardRedemption(payload, metadata) {
       // Registrar en historial
       await HistorialPunto.create({
         usuario_id: usuario.id,
-        cantidad: puntosAOtorgar,
-        tipo: 'ganancia',
-        descripcion: `Canje de recompensa: ${localReward.title}`,
-        kick_reward_id: localReward.id,
-        kick_redemption_id: redemptionId
+        puntos: puntosAOtorgar,
+        tipo: 'ganado',
+        concepto: `Canje de recompensa: ${localReward.title}`,
+        kick_event_data: {
+          event_type: 'channel.reward.redemption.updated',
+          redemption_id: redemptionId,
+          reward_id: kickRewardId,
+          reward_title: localReward.title,
+          reward_cost: reward.cost,
+          user_input: user_input || ''
+        }
       }, { transaction });
 
       // Incrementar contador de canjeos
