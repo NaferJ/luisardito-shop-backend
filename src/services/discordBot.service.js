@@ -123,7 +123,7 @@ class DiscordBotService {
                 } else if (content && typeof content === 'object') {
                     // Verificar si es un objeto con embeds (múltiples embeds)
                     if (content.embeds) {
-                        await message.reply(content);
+                        await message.reply({ embeds: content.embeds });
                     }
                     // Verificar si es un embed individual (compatibilidad hacia atrás)
                     else if (content.data) {
@@ -165,9 +165,18 @@ class DiscordBotService {
             if (channel && channel.isTextBased()) {
                 if (typeof content === 'string') {
                     await channel.send(content);
-                } else if (content && typeof content === 'object' && content.data) {
-                    // Es un embed
-                    await channel.send({ embeds: [content] });
+                } else if (content && typeof content === 'object') {
+                    // Verificar si es un objeto con embeds (múltiples embeds)
+                    if (content.embeds) {
+                        await channel.send({ embeds: content.embeds });
+                    }
+                    // Verificar si es un embed individual (compatibilidad hacia atrás)
+                    else if (content.data) {
+                        await channel.send({ embeds: [content] });
+                    }
+                    else {
+                        await channel.send(String(content));
+                    }
                 } else {
                     await channel.send(String(content));
                 }
