@@ -162,7 +162,7 @@ class KickBotCommandHandlerService {
             } else {
                 // No hay argumentos, mostrar puntos del usuario actual
                 if (!usuario) {
-                    return `No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord?`;
+                    return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
                 }
 
                 const puntos = Number(usuario.puntos || 0);

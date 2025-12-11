@@ -660,10 +660,11 @@ async function handleChatMessage(payload, metadata) {
         // Procesar comando dinámicamente desde la base de datos
         const commandProcessed = await commandHandler.processMessage(
           content,
-          kickUsername,
+          kickUserId, // Usar ID numérico para buscar en user_id_ext
           payload.channel?.username || "luisardito",
           bot,
-          null // No hay contexto de mensaje para webhooks
+          null, // No hay contexto de mensaje para webhooks
+          'kick' // Especificar plataforma
         );
 
         if (commandProcessed) {
