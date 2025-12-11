@@ -45,11 +45,18 @@ class KickBotCommandHandlerService {
             const command = await KickBotCommand.findByCommand(content);
 
             if (!command) {
+                // Comando especial !discord para Discord - generar embed directamente
+                if (platform === 'discord' && content.trim() === '!discord') {
+                    logger.info(`🤖 [BOT-COMMAND] Comando especial !discord detectado en Discord (no existe en DB), generando embed`);
+                    await bot.sendMessage(this.createDiscordEmbed(), messageContext);
+                    return true;
+                }
+
                 // No es un comando registrado
                 return false;
             }
 
-            logger.info(`🤖 [BOT-COMMAND] Ejecutando comando: !${command.command} por ${username} (${platform})`);
+            logger.info(`🤖 [BOT-COMMAND] Ejecutando comando: !${command.command} por ${username} (${platform}) - Tipo: ${command.command_type}`);
 
             // Encontrar el usuario en la base de datos
             let usuario = null;
@@ -100,6 +107,7 @@ class KickBotCommandHandlerService {
 
         // Comando especial !discord con embed elegante para Discord
         if (command.command === 'discord' && platform === 'discord') {
+            logger.info(`🤖 [BOT-COMMAND] Generando embed para !discord desde executeSimpleCommand`);
             return this.createDiscordEmbed();
         }
 

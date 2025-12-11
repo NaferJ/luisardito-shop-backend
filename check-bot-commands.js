@@ -15,6 +15,18 @@ async function checkCommands() {
       console.log('❌ Comando !puntos NO existe - esto es un problema');
     }
 
+    // Buscar comando discord
+    const existingDiscord = await KickBotCommand.findOne({ where: { command: 'discord' } });
+    if (existingDiscord) {
+      console.log('✅ Comando !discord existe:', existingDiscord.command);
+      console.log('   - Tipo:', existingDiscord.command_type);
+      console.log('   - Handler:', existingDiscord.dynamic_handler);
+      console.log('   - Respuesta:', existingDiscord.response_message);
+      console.log('   - Habilitado:', existingDiscord.enabled);
+    } else {
+      console.log('❌ Comando !discord NO existe - necesitamos crearlo');
+    }
+
     console.log('✅ Verificación completada');
   } catch (error) {
     console.error('❌ Error:', error.message);
