@@ -297,15 +297,16 @@ class KickBotCommandHandlerService {
 
         const embed = new EmbedBuilder()
             .setColor(0x9B59B6) // Color morado/púrpura
-            .setImage(bannerUrl) // Banner morado degradado
-            .setTitle('POXY CLUB') // Título sin emoji
-            .setURL('https://discord.gg/arsANX7aWt') // Hace el título clickable
-            .setDescription('Unite a la comunidad de gaming, anime y streams en Discord. Eventos, giveaways y mas.')
+            .setImage(bannerUrl) // Banner decorativo al inicio visual
+            .setTitle('POXY CLUB')
+            .setURL('https://discord.gg/arsANX7aWt')
+            .setDescription('¡Saludos a todos! Únete a la comunidad de gaming, anime y streams en Discord.\n\n**Beneficios:**')
             .addFields(
-                { name: 'Miembros', value: serverInfo.memberCount || '> 1.2K', inline: true },
-                { name: 'Enlace directo', value: '[Entrar ahora](https://discord.gg/arsANX7aWt)', inline: false }
+                { name: '🎮 Gaming', value: 'Eventos y torneos', inline: true },
+                { name: '📺 Streams', value: 'Transmisiones en vivo', inline: true },
+                { name: '🎬 Contenido', value: 'Anime y clips', inline: true }
             )
-            .setFooter({ text: 'Bot de NaferJ | 2025' })
+            .setFooter({ text: '🥇 Participante | 🧢 Coach' })
             .setTimestamp();
 
         return embed;
