@@ -6,39 +6,38 @@ Esta carpeta contiene recursos estáticos como imágenes, banners, etc.
 
 - `discordbanner.jpg`: Banner para el comando !discord con degradado morado
 
-## Cómo configurar el banner
+## Cómo configurar el banner con Cloudinary
 
-### Opción 1: URL Externa (Recomendado)
-Para que Discord pueda acceder al banner desde cualquier lugar:
+### 🚀 Método Recomendado: Usar tu sistema existente
 
-1. **Sube tu imagen** a un servicio externo (Imgur, Discord CDN, etc.)
-2. **Configura la variable de entorno**:
+Como ya tienes Cloudinary configurado en el frontend:
+
+1. **Sube tu banner** desde tu frontend a Cloudinary (como haces con otras imágenes)
+2. **Copia la URL** que devuelve Cloudinary
+3. **Agrega al .env**:
    ```bash
-   # En desarrollo (.env)
-   DISCORD_BANNER_URL=https://i.imgur.com/tu-banner.jpg
-
-   # En producción
-   DISCORD_BANNER_URL=https://tu-cdn.com/banner.jpg
+   DISCORD_BANNER_URL=https://res.cloudinary.com/tu-cloud/image/upload/v1234567890/banner-morado.jpg
    ```
+4. **Reinicia el servidor**
 
-### Opción 2: Archivo Local
-Solo funciona si tu servidor es accesible públicamente:
+### 📁 Método Alternativo: Archivo Local
+
+Si tienes un dominio público:
 
 1. **Coloca tu imagen** en `assets/images/discordbanner.jpg`
-2. **Asegúrate** de que tu dominio sea accesible desde internet
-3. **La URL se genera automáticamente** como `https://tu-dominio.com/assets/images/discordbanner.jpg`
+2. **Asegúrate** de que `https://tu-dominio.com` sea accesible
+3. **La URL se genera automáticamente**
 
 ## Especificaciones del Banner
 
 - **Nombre del archivo**: `discordbanner.jpg`
-- **Ubicación**: `assets/images/discordbanner.jpg`
-- **Formato**: JPG (recomendado para banners con degradados)
+- **Formato**: JPG (recomendado para degradados)
 - **Tamaño recomendado**: 800x200px
-- **Contenido**: Degradado morado de abajo hacia arriba
-- **Colores sugeridos**: #9B59B6 → #7C3AED → #581C87
+- **Contenido**: Degradado morado #9B59B6 → #7C3AED → #581C87
+- **Dirección**: De abajo hacia arriba
 
 ## Solución de problemas
 
-- **Banner no aparece**: Verifica que la URL sea accesible desde internet
+- **Banner no aparece**: Verifica que la URL de Cloudinary sea pública y accesible
 - **Color incorrecto**: El embed usa color morado (#9B59B6)
-- **Miembros incorrectos**: Verifica configuración de `DISCORD_BOT_TOKEN` y `DISCORD_GUILD_ID`
+- **Miembros incorrectos**: Verifica `DISCORD_BOT_TOKEN` y `DISCORD_GUILD_ID`

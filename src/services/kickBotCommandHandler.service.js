@@ -376,22 +376,13 @@ class KickBotCommandHandlerService {
             return process.env.DISCORD_BANNER_URL;
         }
 
-        // En desarrollo, usar localhost (pero Discord no podrá acceder)
-        // Por ahora, usar una URL externa por defecto hasta que se suba a producción
-        const baseUrl = process.env.FRONTEND_URL || `http://localhost:${config.port}`;
-
-        // Verificar si el archivo existe localmente
-        const fs = require('fs');
-        const path = require('path');
-        const imagePath = path.join(__dirname, '../../assets/images/discordbanner.jpg');
-
-        if (fs.existsSync(imagePath)) {
-            return `${baseUrl}/assets/images/discordbanner.jpg`;
+        // Usar URL de Cloudinary si está configurada
+        if (process.env.DISCORD_BANNER_URL) {
+            return process.env.DISCORD_BANNER_URL;
         }
 
-        // Si no existe, usar una URL externa por defecto (puedes cambiarla)
-        logger.warn('[DISCORD-EMBED] Banner local no encontrado, usando URL externa por defecto');
-        return 'https://i.imgur.com/placeholder-banner.jpg'; // Cambia esta URL
+        // Banner por defecto subido a Cloudinary
+        return 'https://res.cloudinary.com/naferj/image/upload/v1765492099/discordbanner_jjgpko.jpg';
     }
 
     /**
