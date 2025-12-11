@@ -1,5 +1,6 @@
 const { KickBotCommand, Usuario, DiscordUserLink } = require('../models');
 const { Op } = require('sequelize');
+const sequelize = require('sequelize');
 const logger = require('../utils/logger');
 
 /**
@@ -138,7 +139,7 @@ class KickBotCommandHandlerService {
 
                 let targetUser = null;
 
-                // Si estamos en Discord y es una mención, buscar por Discord ID
+                // Lógica específica para Discord: detectar menciones
                 if (platform === 'discord' && messageContext && lookupArg.match(/^<@!?(\d+)>$/)) {
                     const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
                     logger.info(`[BOT-COMMAND] Buscando usuario por mención Discord: ${mentionedUserId}`);
@@ -152,17 +153,16 @@ class KickBotCommandHandlerService {
                     targetUser = discordLink?.usuario;
                     logger.info(`[BOT-COMMAND] Usuario encontrado por Discord ID:`, targetUser ? targetUser.nickname : 'no encontrado');
                 } else {
-                    // Buscar por nickname (removiendo @ si existe)
+                    // Lógica para Kick y Discord (búsqueda por nickname)
                     const lookupName = lookupArg.replace(/^@/, '');
                     logger.info(`[BOT-COMMAND] Buscando usuario por nickname: ${lookupName}`);
 
+                    // Para MySQL, usar LOWER() para case insensitive
                     targetUser = await Usuario.findOne({
-                        where: {
-                            [Op.or]: [
-                                { nickname: { [Op.iLike]: lookupName } }, // case insensitive
-                                { nickname: { [Op.like]: lookupName } }   // fallback
-                            ]
-                        }
+                        where: sequelize.where(
+                            sequelize.fn('LOWER', sequelize.col('nickname')),
+                            sequelize.fn('LOWER', lookupName)
+                        )
                     });
 
                     logger.info(`[BOT-COMMAND] Usuario encontrado por nickname:`, targetUser ? targetUser.nickname : 'no encontrado');
@@ -181,7 +181,10 @@ class KickBotCommandHandlerService {
                         .replace(/{points}/g, puntos.toString());
                 } else {
                     // Usuario no encontrado - respuesta por defecto
-                    const displayName = lookupArg.replace(/^@/, '').replace(/^<@!?(\d+)>/, 'usuario mencionado');
+                    let displayName = lookupArg.replace(/^@/, '');
+                    if (lookupArg.match(/^<@!?(\d+)>/)) {
+                        displayName = 'usuario mencionado';
+                    }
                     response = `${displayName} no existe o no tiene puntos registrados.`;
                 }
 
