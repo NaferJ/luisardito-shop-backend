@@ -3,6 +3,15 @@ const { Op } = require('sequelize');
 const sequelize = require('sequelize');
 const logger = require('../utils/logger');
 
+// Importar EmbedBuilder solo si discord.js está disponible
+let EmbedBuilder;
+try {
+    EmbedBuilder = require('discord.js').EmbedBuilder;
+} catch (error) {
+    // discord.js no está disponible (ej. en entorno Kick)
+    EmbedBuilder = null;
+}
+
 /**
  * ==========================================
  * 🤖 SERVICIO DE MANEJO DE COMANDOS DEL BOT
@@ -86,8 +95,13 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando simple (respuesta estática con variables)
      */
-    async executeSimpleCommand(command, content, username, channelName, usuario = null) {
+    async executeSimpleCommand(command, content, username, channelName, usuario = null, platform = 'kick') {
         const args = this.extractArgs(content);
+
+        // Comando especial !discord con embed elegante para Discord
+        if (command.command === 'discord' && platform === 'discord') {
+            return this.createDiscordEmbed();
+        }
 
         // Reemplazar variables en el mensaje
         let response = command.response_message
@@ -253,6 +267,31 @@ class KickBotCommandHandlerService {
         // Similar a como se maneja el cooldown en kickWebhook.controller.js
 
         return true;
+    }
+
+    /**
+     * Crea un embed elegante para el comando !discord
+     */
+    createDiscordEmbed() {
+        if (!EmbedBuilder) {
+            // Fallback si discord.js no está disponible
+            return 'POXY CLUB\nUnite: https://discord.gg/arsANX7aWt\n\nComunidad de gaming, anime y streams\nPlataformas: Kick, Twitch, YouTube\nMiembros: > 1.2K\n\nEnlace directo: https://discord.gg/arsANX7aWt';
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0x5865F2) // Color azul Discord
+            .setTitle('POXY CLUB') // Título sin emoji
+            .setURL('https://discord.gg/arsANX7aWt') // Hace el título clickable
+            .setDescription('Unite a la comunidad de gaming, anime y streams en Discord. Eventos, giveaways y mas.')
+            .addFields(
+                { name: 'Plataformas', value: 'Kick, Twitch, YouTube', inline: true },
+                { name: 'Miembros', value: '> 1.2K', inline: true },
+                { name: 'Enlace directo', value: '[Entrar ahora](https://discord.gg/arsANX7aWt)', inline: false }
+            )
+            .setFooter({ text: 'Bot de NaferJ | 2025' })
+            .setTimestamp();
+
+        return embed;
     }
 }
 

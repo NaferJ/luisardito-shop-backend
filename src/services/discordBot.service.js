@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, REST } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { Routes } = require('discord-api-types/v9');
 const config = require('../../config');
 const logger = require('../utils/logger');
@@ -106,7 +106,7 @@ class DiscordBotService {
 
     /**
      * Enviar mensaje al canal actual
-     * @param {string} content - Contenido del mensaje
+     * @param {string|object} content - Contenido del mensaje (string o embed object)
      * @param {object} message - Objeto de mensaje de Discord (opcional)
      */
     async sendMessage(content, message = null) {
@@ -118,7 +118,14 @@ class DiscordBotService {
 
             // Si tenemos un mensaje de contexto, responder en ese canal
             if (message) {
-                await message.reply(content);
+                if (typeof content === 'string') {
+                    await message.reply(content);
+                } else if (content && typeof content === 'object' && content.data) {
+                    // Es un embed
+                    await message.reply({ embeds: [content] });
+                } else {
+                    await message.reply(String(content));
+                }
                 logger.info(`[Discord Bot] 📤 Mensaje enviado como respuesta`);
                 return { ok: true };
             }
@@ -137,7 +144,7 @@ class DiscordBotService {
     /**
      * Enviar mensaje a un canal específico
      * @param {string} channelId - ID del canal
-     * @param {string} content - Contenido del mensaje
+     * @param {string|object} content - Contenido del mensaje (string o embed object)
      */
     async sendMessageToChannel(channelId, content) {
         try {
@@ -147,7 +154,14 @@ class DiscordBotService {
 
             const channel = await this.client.channels.fetch(channelId);
             if (channel && channel.isTextBased()) {
-                await channel.send(content);
+                if (typeof content === 'string') {
+                    await channel.send(content);
+                } else if (content && typeof content === 'object' && content.data) {
+                    // Es un embed
+                    await channel.send({ embeds: [content] });
+                } else {
+                    await channel.send(String(content));
+                }
                 logger.info(`[Discord Bot] 📤 Mensaje enviado a canal ${channelId}`);
                 return { ok: true };
             } else {
