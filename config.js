@@ -61,7 +61,13 @@ module.exports = {
         botToken: process.env.DISCORD_BOT_TOKEN,
         clientId: process.env.DISCORD_CLIENT_ID,
         clientSecret: process.env.DISCORD_CLIENT_SECRET,
-        guildId: process.env.DISCORD_GUILD_ID
+        guildId: process.env.DISCORD_GUILD_ID,
+        // URLs de OAuth de Discord
+        oauthAuthorize: 'https://discord.com/api/oauth2/authorize',
+        oauthToken: 'https://discord.com/api/oauth2/token',
+        oauthRevoke: 'https://discord.com/api/oauth2/token/revoke',
+        apiBaseUrl: 'https://discord.com/api',
+        redirectUri: process.env.DISCORD_REDIRECT_URI || 'https://api.luisardito.com/api/auth/discord/callback'
     }
 };
 

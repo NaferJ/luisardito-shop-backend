@@ -3,7 +3,7 @@ const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
 const https  = require('https');
 const config = require('../../config');
-const { Usuario, KickBroadcasterToken, sequelize } = require('../models');
+const { Usuario, KickBroadcasterToken, sequelize, DiscordUserLink } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
 const { getKickUserData } = require('../utils/kickApi');
 const { Op } = require('sequelize');
@@ -897,6 +897,228 @@ exports.cookieStatus = async (req, res) => {
         });
     } catch (error) {
         logger.error('[Auth][cookieStatus] Error:', error.message);
+        return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+};
+
+// ==========================================
+// 🎮 OAUTH DE DISCORD
+// ==========================================
+
+/**
+ * Inicia el flujo OAuth de Discord
+ */
+exports.redirectDiscord = (req, res) => {
+    try {
+        logger.info('[Discord OAuth][redirectDiscord] Iniciando flujo OAuth de Discord');
+
+        // Verificar que el usuario esté autenticado
+        const userId = req.user?.userId;
+        if (!userId) {
+            logger.warn('[Discord OAuth][redirectDiscord] Usuario no autenticado');
+            return res.status(401).json({ error: 'Usuario no autenticado' });
+        }
+
+        const { code_verifier, code_challenge } = generatePkce();
+        logger.info('[Discord OAuth][redirectDiscord] code_verifier generado');
+
+        const statePayload = {
+            cv: code_verifier,
+            ruri: config.discord.redirectUri,
+            userId: userId,
+            iat: Math.floor(Date.now() / 1000)
+        };
+        const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
+
+        logger.info('[Discord OAuth][redirectDiscord] state creado para userId:', userId);
+
+        const params = new URLSearchParams({
+            response_type: 'code',
+            client_id: String(config.discord.clientId || ''),
+            redirect_uri: String(config.discord.redirectUri || ''),
+            scope: 'identify guilds.join',
+            code_challenge: code_challenge,
+            code_challenge_method: 'S256',
+            state
+        });
+
+        const url = `${config.discord.oauthAuthorize}?${params.toString()}`;
+        logger.info('[Discord OAuth][redirectDiscord] URL de redirección:', url);
+
+        return res.redirect(url);
+    } catch (err) {
+        logger.error('[Discord OAuth][redirectDiscord] Error:', err?.message || err);
+        return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth con Discord' });
+    }
+};
+
+/**
+ * Callback del OAuth de Discord
+ */
+exports.callbackDiscord = async (req, res) => {
+    try {
+        const { code, state } = req.query || {};
+        logger.info('[Discord OAuth][callbackDiscord] Parámetros recibidos:', { code, state });
+
+        if (!code || !state) {
+            logger.warn('[Discord OAuth][callbackDiscord] Faltan parámetros code/state');
+            return res.status(400).json({ error: 'Faltan parámetros code/state' });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(String(state), config.jwtSecret);
+            logger.info('[Discord OAuth][callbackDiscord] State decodificado:', decoded);
+        } catch (e) {
+            logger.error('[Discord OAuth][callbackDiscord] State inválido o expirado:', e?.message || e);
+            return res.status(400).json({ error: 'State inválido o expirado' });
+        }
+
+        const code_verifier = decoded?.cv;
+        const finalRedirectUri = decoded?.ruri || config.discord.redirectUri;
+        const userId = decoded?.userId;
+
+        logger.info('[Discord OAuth][callbackDiscord] Datos extraídos:', {
+            code_verifier: !!code_verifier,
+            finalRedirectUri,
+            userId
+        });
+
+        if (!code_verifier || !finalRedirectUri || !userId) {
+            logger.error('[Discord OAuth][callbackDiscord] Datos inválidos en state');
+            return res.status(400).json({ error: 'Datos inválidos en state' });
+        }
+
+        // Verificar que el usuario existe
+        const usuario = await Usuario.findByPk(userId);
+        if (!usuario) {
+            logger.error('[Discord OAuth][callbackDiscord] Usuario no encontrado:', userId);
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        // Intercambiar código por tokens
+        const tokenUrl = config.discord.oauthToken;
+        const clientId = config.discord.clientId;
+        const clientSecret = config.discord.clientSecret;
+
+        if (!clientId || !clientSecret) {
+            logger.error('[Discord OAuth][callbackDiscord] Falta configuración DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET');
+            return res.status(500).json({ error: 'Configuración del proveedor incompleta' });
+        }
+
+        const params = new URLSearchParams({
+            grant_type: 'authorization_code',
+            code,
+            redirect_uri: finalRedirectUri,
+            client_id: clientId,
+            client_secret: clientSecret,
+            code_verifier
+        });
+
+        logger.info('[Discord OAuth][callbackDiscord] Intercambiando código por tokens...');
+
+        const tokenRes = await axios.post(tokenUrl, params.toString(), {
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 10000
+        });
+
+        const tokenData = tokenRes.data;
+        logger.info('[Discord OAuth][callbackDiscord] Tokens obtenidos exitosamente');
+
+        // Obtener información del usuario de Discord
+        const userUrl = `${config.discord.apiBaseUrl}/users/@me`;
+        const userRes = await axios.get(userUrl, {
+            headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+            timeout: 10000
+        });
+
+        const discordUser = userRes.data;
+        logger.info('[Discord OAuth][callbackDiscord] Usuario de Discord obtenido:', {
+            id: discordUser.id,
+            username: discordUser.username,
+            discriminator: discordUser.discriminator
+        });
+
+        // Verificar si ya existe una vinculación
+        const existingLink = await DiscordUserLink.findOne({
+            where: { discord_user_id: discordUser.id }
+        });
+
+        if (existingLink) {
+            if (existingLink.tienda_user_id === userId) {
+                logger.info('[Discord OAuth][callbackDiscord] Usuario ya vinculado, actualizando tokens');
+                // Actualizar tokens
+                await existingLink.update({
+                    discord_username: discordUser.username,
+                    discord_discriminator: discordUser.discriminator,
+                    discord_avatar: discordUser.avatar,
+                    access_token: tokenData.access_token,
+                    refresh_token: tokenData.refresh_token || null,
+                    token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null
+                });
+            } else {
+                logger.warn('[Discord OAuth][callbackDiscord] Discord ID ya vinculado a otro usuario');
+                return res.status(409).json({ error: 'Esta cuenta de Discord ya está vinculada a otro usuario' });
+            }
+        } else {
+            // Crear nueva vinculación
+            logger.info('[Discord OAuth][callbackDiscord] Creando nueva vinculación');
+            await DiscordUserLink.create({
+                discord_user_id: discordUser.id,
+                discord_username: discordUser.username,
+                discord_discriminator: discordUser.discriminator,
+                discord_avatar: discordUser.avatar,
+                tienda_user_id: userId,
+                kick_user_id: usuario.user_id_ext,
+                access_token: tokenData.access_token,
+                refresh_token: tokenData.refresh_token || null,
+                token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null
+            });
+        }
+
+        // Actualizar discord_username en el usuario si no lo tiene
+        if (!usuario.discord_username) {
+            await usuario.update({
+                discord_username: `${discordUser.username}#${discordUser.discriminator}`
+            });
+        }
+
+        logger.info('[Discord OAuth][callbackDiscord] Vinculación completada exitosamente');
+
+        // Redirigir al frontend con éxito
+        const frontendUrl = config.frontendUrl || 'https://luisardito.com';
+        return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
+
+    } catch (error) {
+        logger.error('[Discord OAuth][callbackDiscord] Error:', error);
+        const frontendUrl = config.frontendUrl || 'https://luisardito.com';
+        return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
+    }
+};
+
+/**
+ * Vinculación manual de Discord (por código temporal)
+ */
+exports.linkDiscordManual = async (req, res) => {
+    try {
+        const { code } = req.body;
+        const userId = req.user?.userId;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Usuario no autenticado' });
+        }
+
+        if (!code) {
+            return res.status(400).json({ error: 'Código requerido' });
+        }
+
+        // Aquí implementaríamos la lógica de códigos temporales
+        // Por ahora, devolver que no está implementado
+        logger.info('[Discord OAuth][linkDiscordManual] Método no implementado aún');
+        return res.status(501).json({ error: 'Método no implementado' });
+
+    } catch (error) {
+        logger.error('[Discord OAuth][linkDiscordManual] Error:', error);
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };

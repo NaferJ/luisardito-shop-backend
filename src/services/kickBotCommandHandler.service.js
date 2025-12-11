@@ -1,4 +1,4 @@
-const { KickBotCommand, Usuario } = require('../models');
+const { KickBotCommand, Usuario, DiscordUserLink } = require('../models');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 
@@ -18,9 +18,11 @@ class KickBotCommandHandlerService {
      * @param {string} channelName - Nombre del canal
      * @param {object} bot - Instancia del bot service
      * @param {object} messageContext - Contexto del mensaje (para Discord)
+     * @param {string} platform - Plataforma: 'kick' o 'discord'
+     * @param {string} discordUserId - ID del usuario en Discord (solo para Discord)
      * @returns {Promise<boolean>} - True si se procesó un comando, false si no
      */
-    async processMessage(message, username, channelName, bot, messageContext = null) {
+    async processMessage(message, username, channelName, bot, messageContext = null, platform = 'kick', discordUserId = null) {
         try {
             const content = String(message || '').trim();
 
@@ -37,14 +39,30 @@ class KickBotCommandHandlerService {
                 return false;
             }
 
-            logger.info(`🤖 [BOT-COMMAND] Ejecutando comando: !${command.command} por ${username}`);
+            logger.info(`🤖 [BOT-COMMAND] Ejecutando comando: !${command.command} por ${username} (${platform})`);
+
+            // Encontrar el usuario en la base de datos
+            let usuario = null;
+            if (platform === 'discord' && discordUserId) {
+                // Para Discord, buscar por vinculación
+                const link = await DiscordUserLink.findOne({
+                    where: { discord_user_id: discordUserId },
+                    include: [{ model: Usuario, as: 'usuario' }]
+                });
+                usuario = link?.usuario;
+                logger.info(`🤖 [BOT-COMMAND] Usuario encontrado por Discord ID:`, usuario ? usuario.nickname : 'no encontrado');
+            } else {
+                // Para Kick, buscar por user_id_ext
+                usuario = await Usuario.findOne({ where: { user_id_ext: username } });
+                logger.info(`🤖 [BOT-COMMAND] Usuario encontrado por Kick ID:`, usuario ? usuario.nickname : 'no encontrado');
+            }
 
             // Ejecutar el comando según su tipo
             let response;
             if (command.command_type === 'dynamic') {
-                response = await this.executeDynamicCommand(command, content, username, channelName);
+                response = await this.executeDynamicCommand(command, content, username, channelName, usuario);
             } else {
-                response = await this.executeSimpleCommand(command, content, username, channelName);
+                response = await this.executeSimpleCommand(command, content, username, channelName, usuario);
             }
 
             // Enviar la respuesta si existe
@@ -67,14 +85,15 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando simple (respuesta estática con variables)
      */
-    async executeSimpleCommand(command, content, username, channelName) {
+    async executeSimpleCommand(command, content, username, channelName, usuario = null) {
         const args = this.extractArgs(content);
 
         // Reemplazar variables en el mensaje
         let response = command.response_message
             .replace(/{username}/g, username)
             .replace(/{channel}/g, channelName)
-            .replace(/{args}/g, args.join(' '));
+            .replace(/{args}/g, args.join(' '))
+            .replace(/{points}/g, usuario ? usuario.puntos.toString() : '0');
 
         return response;
     }
@@ -82,7 +101,7 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando dinámico (con lógica especial)
      */
-    async executeDynamicCommand(command, content, username, channelName) {
+    async executeDynamicCommand(command, content, username, channelName, usuario = null) {
         const handler = command.dynamic_handler;
 
         if (!handler) {
@@ -93,7 +112,7 @@ class KickBotCommandHandlerService {
         // Ejecutar el handler correspondiente
         switch (handler) {
             case 'puntos_handler':
-                return await this.puntosHandler(command, content, username, channelName);
+                return await this.puntosHandler(command, content, username, channelName, usuario);
 
             // Aquí puedes agregar más handlers según necesites
             // case 'custom_handler':
@@ -109,39 +128,54 @@ class KickBotCommandHandlerService {
      * Handler especial para el comando !puntos
      * Consulta los puntos de un usuario en la base de datos
      */
-    async puntosHandler(command, content, username, channelName) {
+    async puntosHandler(command, content, username, channelName, usuario = null) {
         try {
             const args = this.extractArgs(content);
 
-            // El usuario a consultar puede venir en los args o es el que ejecutó el comando
-            const lookupName = args.length > 0
-                ? args[0].replace(/^@/, '')
-                : username;
+            // Si hay argumentos, buscar al usuario especificado
+            if (args.length > 0) {
+                const lookupName = args[0].replace(/^@/, '');
 
-            // Buscar usuario en la base de datos
-            const targetUser = await Usuario.findOne({
-                where: {
-                    nickname: { [Op.like]: lookupName }
+                // Buscar usuario en la base de datos
+                const targetUser = await Usuario.findOne({
+                    where: {
+                        nickname: { [Op.like]: lookupName }
+                    }
+                });
+
+                const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
+
+                let response;
+                if (puntos !== null) {
+                    // Usuario encontrado - usar template del comando
+                    response = command.response_message
+                        .replace(/{username}/g, username)
+                        .replace(/{channel}/g, channelName)
+                        .replace(/{target_user}/g, lookupName)
+                        .replace(/{points}/g, puntos.toString());
+                } else {
+                    // Usuario no encontrado - respuesta por defecto
+                    response = `${lookupName} no existe o no tiene puntos registrados.`;
                 }
-            });
 
-            const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
+                return response;
+            } else {
+                // No hay argumentos, mostrar puntos del usuario actual
+                if (!usuario) {
+                    return `No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord?`;
+                }
 
-            // Construir respuesta
-            let response;
-            if (puntos !== null) {
-                // Usuario encontrado - usar template del comando
-                response = command.response_message
+                const puntos = Number(usuario.puntos || 0);
+
+                // Usar template del comando
+                const response = command.response_message
                     .replace(/{username}/g, username)
                     .replace(/{channel}/g, channelName)
-                    .replace(/{target_user}/g, lookupName)
+                    .replace(/{target_user}/g, usuario.nickname)
                     .replace(/{points}/g, puntos.toString());
-            } else {
-                // Usuario no encontrado - respuesta por defecto
-                response = `${lookupName} no existe o no tiene puntos registrados.`;
-            }
 
-            return response;
+                return response;
+            }
         } catch (error) {
             logger.error('[BOT-COMMAND] Error en puntosHandler:', error);
             return `Ocurrió un error al verificar los puntos.`;

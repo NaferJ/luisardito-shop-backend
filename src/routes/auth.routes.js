@@ -19,6 +19,11 @@ router.post('/store-tokens', authCtrl.storeTokens);
 router.get('/kick-bot', authCtrl.redirectKickBot);
 router.get('/kick-bot-callback', authCtrl.callbackKickBot);
 
+// OAuth de Discord
+router.get('/discord', authCtrl.redirectDiscord);
+router.get('/discord/callback', authCtrl.callbackDiscord);
+router.post('/discord/link', authCtrl.linkDiscordManual);
+
 // Debugging de cookies
 router.get('/cookie-status', authCtrl.cookieStatus);
 

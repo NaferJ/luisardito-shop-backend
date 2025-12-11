@@ -128,6 +128,7 @@ jobs:
             echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> "$ENV_PATH"
             echo "DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}" >> "$ENV_PATH"
             echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> "$ENV_PATH"
+            echo "DISCORD_REDIRECT_URI=https://api.luisardito.com/api/auth/discord/callback" >> "$ENV_PATH"
 
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"

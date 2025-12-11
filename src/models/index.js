@@ -24,6 +24,7 @@ const Promocion = require("./promocion.model");
 const PromocionProducto = require("./promocionProducto.model");
 const UsoPromocion = require("./usoPromocion.model");
 const KickReward = require("./kickReward.model");
+const DiscordUserLink = require("./discordUserLink.model");
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
@@ -98,6 +99,10 @@ UsoPromocion.belongsTo(Canje, { foreignKey: "canje_id" });
 Producto.hasMany(UsoPromocion, { foreignKey: "producto_id", as: "promocionesUsadas" });
 UsoPromocion.belongsTo(Producto, { foreignKey: "producto_id" });
 
+// Asociaciones de DiscordUserLink
+Usuario.hasMany(DiscordUserLink, { foreignKey: "tienda_user_id", as: "discordLinks" });
+DiscordUserLink.belongsTo(Usuario, { foreignKey: "tienda_user_id", as: "usuario" });
+
 // Exportar sequelize y todos los modelos
 module.exports = {
   sequelize,
@@ -123,4 +128,5 @@ module.exports = {
   PromocionProducto,
   UsoPromocion,
   KickReward,
+  DiscordUserLink,
 };

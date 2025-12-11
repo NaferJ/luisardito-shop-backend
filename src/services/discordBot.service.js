@@ -90,7 +90,9 @@ class DiscordBotService {
                     username,
                     channelName,
                     this, // Pasar this como bot service
-                    message // Pasar el mensaje como contexto
+                    message, // Pasar el mensaje como contexto
+                    'discord', // Indicar que viene de Discord
+                    message.author.id // Pasar el Discord user ID
                 );
 
                 if (commandProcessed) {
