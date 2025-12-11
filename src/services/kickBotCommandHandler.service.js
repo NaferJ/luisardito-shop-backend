@@ -292,19 +292,16 @@ class KickBotCommandHandlerService {
         // Obtener información dinámica del servidor de Discord
         const serverInfo = await this.getDiscordServerInfo();
 
-        // Obtener la URL base del servidor
-        const config = require('../../config');
-        const baseUrl = process.env.FRONTEND_URL || `http://localhost:${config.port}`;
-        const bannerUrl = `${baseUrl}/assets/images/discordbanner.jpg`;
+        // Obtener la URL del banner
+        const bannerUrl = this.getBannerUrl();
 
         const embed = new EmbedBuilder()
-            .setColor(0x5865F2) // Color azul Discord
-            .setImage(bannerUrl) // Banner morado degradado desde assets locales
+            .setColor(0x9B59B6) // Color morado/púrpura
+            .setImage(bannerUrl) // Banner morado degradado
             .setTitle('POXY CLUB') // Título sin emoji
             .setURL('https://discord.gg/arsANX7aWt') // Hace el título clickable
             .setDescription('Unite a la comunidad de gaming, anime y streams en Discord. Eventos, giveaways y mas.')
             .addFields(
-                { name: 'Plataformas', value: 'Kick, Twitch, YouTube', inline: true },
                 { name: 'Miembros', value: serverInfo.memberCount || '> 1.2K', inline: true },
                 { name: 'Enlace directo', value: '[Entrar ahora](https://discord.gg/arsANX7aWt)', inline: false }
             )
@@ -323,9 +320,14 @@ class KickBotCommandHandlerService {
 
             // Si no hay configuración de Discord, devolver valores por defecto
             if (!config.discord?.botToken || !config.discord?.guildId) {
-                logger.warn('[DISCORD-API] Configuración de Discord incompleta, usando valores por defecto');
+                logger.warn('[DISCORD-API] Configuración de Discord incompleta:', {
+                    hasToken: !!config.discord?.botToken,
+                    hasGuildId: !!config.discord?.guildId
+                });
                 return { memberCount: '> 1.2K' };
             }
+
+            logger.info('[DISCORD-API] Consultando información del servidor Discord...');
 
             // Hacer llamada a la API de Discord
             const response = await axios.get(
@@ -339,6 +341,10 @@ class KickBotCommandHandlerService {
             );
 
             const guildData = response.data;
+            logger.info('[DISCORD-API] Información obtenida:', {
+                name: guildData.name,
+                memberCount: guildData.approximate_member_count
+            });
 
             return {
                 memberCount: guildData.approximate_member_count ?
@@ -349,10 +355,43 @@ class KickBotCommandHandlerService {
             };
 
         } catch (error) {
-            logger.error('[DISCORD-API] Error obteniendo información del servidor:', error.message);
+            logger.error('[DISCORD-API] Error obteniendo información del servidor:', {
+                message: error.message,
+                status: error.response?.status,
+                data: error.response?.data
+            });
             // En caso de error, devolver valores por defecto
             return { memberCount: '> 1.2K' };
         }
+    }
+
+    /**
+     * Obtiene la URL del banner para el embed
+     */
+    getBannerUrl() {
+        const config = require('../../config');
+
+        // En producción, usar URL externa si está configurada
+        if (process.env.NODE_ENV === 'production' && process.env.DISCORD_BANNER_URL) {
+            return process.env.DISCORD_BANNER_URL;
+        }
+
+        // En desarrollo, usar localhost (pero Discord no podrá acceder)
+        // Por ahora, usar una URL externa por defecto hasta que se suba a producción
+        const baseUrl = process.env.FRONTEND_URL || `http://localhost:${config.port}`;
+
+        // Verificar si el archivo existe localmente
+        const fs = require('fs');
+        const path = require('path');
+        const imagePath = path.join(__dirname, '../../assets/images/discordbanner.jpg');
+
+        if (fs.existsSync(imagePath)) {
+            return `${baseUrl}/assets/images/discordbanner.jpg`;
+        }
+
+        // Si no existe, usar una URL externa por defecto (puedes cambiarla)
+        logger.warn('[DISCORD-EMBED] Banner local no encontrado, usando URL externa por defecto');
+        return 'https://i.imgur.com/placeholder-banner.jpg'; // Cambia esta URL
     }
 
     /**
