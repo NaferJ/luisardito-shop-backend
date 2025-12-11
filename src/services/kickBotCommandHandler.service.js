@@ -12,6 +12,9 @@ try {
     EmbedBuilder = null;
 }
 
+// Importar axios para llamadas HTTP
+const axios = require('axios');
+
 /**
  * ==========================================
  * 🤖 SERVICIO DE MANEJO DE COMANDOS DEL BOT
@@ -48,7 +51,7 @@ class KickBotCommandHandlerService {
                 // Comando especial !discord para Discord - generar embed directamente
                 if (platform === 'discord' && content.trim() === '!discord') {
                     logger.info(`🤖 [BOT-COMMAND] Comando especial !discord detectado en Discord (no existe en DB), generando embed`);
-                    await bot.sendMessage(this.createDiscordEmbed(), messageContext);
+                    await bot.sendMessage(await this.createDiscordEmbed(), messageContext);
                     return true;
                 }
 
@@ -108,7 +111,7 @@ class KickBotCommandHandlerService {
         // Comando especial !discord con embed elegante para Discord
         if (command.command === 'discord' && platform === 'discord') {
             logger.info(`🤖 [BOT-COMMAND] Generando embed para !discord desde executeSimpleCommand`);
-            return this.createDiscordEmbed();
+            return await this.createDiscordEmbed();
         }
 
         // Reemplazar variables en el mensaje
@@ -280,26 +283,81 @@ class KickBotCommandHandlerService {
     /**
      * Crea un embed elegante para el comando !discord
      */
-    createDiscordEmbed() {
+    async createDiscordEmbed() {
         if (!EmbedBuilder) {
             // Fallback si discord.js no está disponible
             return 'POXY CLUB\nUnite: https://discord.gg/arsANX7aWt\n\nComunidad de gaming, anime y streams\nPlataformas: Kick, Twitch, YouTube\nMiembros: > 1.2K\n\nEnlace directo: https://discord.gg/arsANX7aWt';
         }
 
+        // Obtener información dinámica del servidor de Discord
+        const serverInfo = await this.getDiscordServerInfo();
+
         const embed = new EmbedBuilder()
             .setColor(0x5865F2) // Color azul Discord
+            .setImage('https://i.imgur.com/banner-morado.png') // Banner morado degradado
             .setTitle('POXY CLUB') // Título sin emoji
             .setURL('https://discord.gg/arsANX7aWt') // Hace el título clickable
             .setDescription('Unite a la comunidad de gaming, anime y streams en Discord. Eventos, giveaways y mas.')
             .addFields(
                 { name: 'Plataformas', value: 'Kick, Twitch, YouTube', inline: true },
-                { name: 'Miembros', value: '> 1.2K', inline: true },
+                { name: 'Miembros', value: serverInfo.memberCount || '> 1.2K', inline: true },
                 { name: 'Enlace directo', value: '[Entrar ahora](https://discord.gg/arsANX7aWt)', inline: false }
             )
             .setFooter({ text: 'Bot de NaferJ | 2025' })
             .setTimestamp();
 
         return embed;
+    }
+
+    /**
+     * Obtiene información dinámica del servidor de Discord
+     */
+    async getDiscordServerInfo() {
+        try {
+            const config = require('../../config');
+
+            // Si no hay configuración de Discord, devolver valores por defecto
+            if (!config.discord?.botToken || !config.discord?.guildId) {
+                logger.warn('[DISCORD-API] Configuración de Discord incompleta, usando valores por defecto');
+                return { memberCount: '> 1.2K' };
+            }
+
+            // Hacer llamada a la API de Discord
+            const response = await axios.get(
+                `https://discord.com/api/guilds/${config.discord.guildId}`,
+                {
+                    headers: {
+                        'Authorization': `Bot ${config.discord.botToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            const guildData = response.data;
+
+            return {
+                memberCount: guildData.approximate_member_count ?
+                    this.formatMemberCount(guildData.approximate_member_count) :
+                    '> 1.2K',
+                name: guildData.name || 'POXY CLUB',
+                description: guildData.description || ''
+            };
+
+        } catch (error) {
+            logger.error('[DISCORD-API] Error obteniendo información del servidor:', error.message);
+            // En caso de error, devolver valores por defecto
+            return { memberCount: '> 1.2K' };
+        }
+    }
+
+    /**
+     * Formatea el conteo de miembros de manera legible
+     */
+    formatMemberCount(count) {
+        if (count >= 1000) {
+            return `${(count / 1000).toFixed(1)}K`;
+        }
+        return count.toString();
     }
 }
 
