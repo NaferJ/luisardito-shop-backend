@@ -913,7 +913,7 @@ exports.redirectDiscord = (req, res) => {
         logger.info('[Discord OAuth][redirectDiscord] Iniciando flujo OAuth de Discord');
 
         // Verificar que el usuario esté autenticado
-        const userId = req.user?.userId;
+        const userId = req.user?.id;
         if (!userId) {
             logger.warn('[Discord OAuth][redirectDiscord] Usuario no autenticado');
             return res.status(401).json({ error: 'Usuario no autenticado' });
@@ -1102,7 +1102,7 @@ exports.callbackDiscord = async (req, res) => {
 exports.linkDiscordManual = async (req, res) => {
     try {
         const { code } = req.body;
-        const userId = req.user?.userId;
+        const userId = req.user?.id;
 
         if (!userId) {
             return res.status(401).json({ error: 'Usuario no autenticado' });
