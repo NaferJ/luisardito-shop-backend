@@ -20,6 +20,7 @@ async function enrichUserWithDiscordInfo(user) {
   if (discordLink) {
     discordInfo = {
       linked: true,
+      id: discordLink.discord_user_id,
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
