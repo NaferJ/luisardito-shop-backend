@@ -51,7 +51,8 @@ class KickBotCommandHandlerService {
                 // Comando especial !discord para Discord - generar embed directamente
                 if (platform === 'discord' && content.trim() === '!discord') {
                     logger.info(`🤖 [BOT-COMMAND] Comando especial !discord detectado en Discord (no existe en DB), generando embed`);
-                    await bot.sendMessage(await this.createDiscordEmbed(), messageContext);
+                    const embedResult = await this.createDiscordEmbed();
+                    await bot.sendMessage(embedResult, messageContext);
                     return true;
                 }
 
@@ -289,15 +290,17 @@ class KickBotCommandHandlerService {
             return 'POXY CLUB\nUnite: https://discord.gg/arsANX7aWt\n\nComunidad de gaming, anime y streams\nPlataformas: Kick, Twitch, YouTube\nMiembros: > 1.2K\n\nEnlace directo: https://discord.gg/arsANX7aWt';
         }
 
-        // Obtener información dinámica del servidor de Discord
-        const serverInfo = await this.getDiscordServerInfo();
-
         // Obtener la URL del banner
         const bannerUrl = this.getBannerUrl();
 
-        const embed = new EmbedBuilder()
-            .setColor(0x9B59B6) // Color morado/púrpura
-            .setThumbnail(bannerUrl) // 👈 Thumbnail ARRIBA (esquina superior derecha)
+        // EMBED 1: Solo el banner (ancho completo, arriba)
+        const bannerEmbed = new EmbedBuilder()
+            .setColor(0x9B59B6)
+            .setImage(bannerUrl);
+
+        // EMBED 2: El contenido (abajo)
+        const contentEmbed = new EmbedBuilder()
+            .setColor(0x9B59B6)
             .setTitle('POXY CLUB')
             .setURL('https://discord.gg/arsANX7aWt')
             .setDescription('¡Saludos a todos! Únete a la comunidad de gaming, anime y streams en Discord.\n\n**Beneficios:**')
@@ -309,7 +312,7 @@ class KickBotCommandHandlerService {
             .setFooter({ text: '🥇 Participante | 🧢 Coach' })
             .setTimestamp();
 
-        return embed;
+        return { embeds: [bannerEmbed, contentEmbed] }; // 👈 Devuelve objeto con array de embeds
     }
 
     /**

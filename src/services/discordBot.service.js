@@ -120,9 +120,18 @@ class DiscordBotService {
             if (message) {
                 if (typeof content === 'string') {
                     await message.reply(content);
-                } else if (content && typeof content === 'object' && content.data) {
-                    // Es un embed
-                    await message.reply({ embeds: [content] });
+                } else if (content && typeof content === 'object') {
+                    // Verificar si es un objeto con embeds (múltiples embeds)
+                    if (content.embeds) {
+                        await message.reply(content);
+                    }
+                    // Verificar si es un embed individual (compatibilidad hacia atrás)
+                    else if (content.data) {
+                        await message.reply({ embeds: [content] });
+                    }
+                    else {
+                        await message.reply(String(content));
+                    }
                 } else {
                     await message.reply(String(content));
                 }
