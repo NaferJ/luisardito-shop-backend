@@ -1,8 +1,38 @@
-const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize, KickUserTracking } = require('../models');
+const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize, KickUserTracking, DiscordUserLink } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const { Op } = require('sequelize');
+
+/**
+ * Función helper para enriquecer información de usuario con datos de Discord
+ * @param {Object} user - Instancia del modelo Usuario
+ * @returns {Object} Información enriquecida de Discord
+ */
+async function enrichUserWithDiscordInfo(user) {
+  let discordInfo = null;
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: user.id }
+  });
+
+  if (discordLink) {
+    discordInfo = {
+      linked: true,
+      username: discordLink.discord_username,
+      discriminator: discordLink.discord_discriminator,
+      avatar: discordLink.discord_avatar,
+      linked_at: discordLink.createdAt,
+      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
+        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+        : discordLink.discord_username
+    };
+  }
+
+  return {
+    discord_info: discordInfo,
+    display_name: discordInfo?.display_name || user.nickname
+  };
+}
 
 /**
  * Obtener configuración de migración y VIP
@@ -530,6 +560,9 @@ exports.getUsersWithDetails = async (req, res) => {
         const enrichedUsers = await Promise.all(usuarios.map(async user => {
             const userJson = user.toJSON();
 
+            // Información de Discord
+            const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
+
             // Calcular información de suscriptor
             let subscriberStatus = {
                 is_active: false,
@@ -553,6 +586,8 @@ exports.getUsersWithDetails = async (req, res) => {
 
             return {
                 ...userJson,
+                display_name,
+                discord_info,
                 vip_status: {
                     is_active: userJson.is_vip && (!userJson.vip_expires_at || new Date(userJson.vip_expires_at) > new Date()),
                     is_permanent: userJson.is_vip && !userJson.vip_expires_at,

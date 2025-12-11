@@ -1,9 +1,40 @@
 const Usuario = require("../models/usuario.model");
 const LeaderboardSnapshot = require("../models/leaderboardSnapshot.model");
 const KickUserTracking = require("../models/kickUserTracking.model");
+const DiscordUserLink = require("../models/discordUserLink.model");
 const { sequelize } = require("../models/database");
 const logger = require("../utils/logger");
 const { Op } = require("sequelize");
+
+/**
+ * Función helper para enriquecer información de usuario con datos de Discord
+ * @param {Object} user - Instancia del modelo Usuario
+ * @returns {Object} Información enriquecida de Discord
+ */
+async function enrichUserWithDiscordInfo(user) {
+  let discordInfo = null;
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: user.id }
+  });
+
+  if (discordLink) {
+    discordInfo = {
+      linked: true,
+      username: discordLink.discord_username,
+      discriminator: discordLink.discord_discriminator,
+      avatar: discordLink.discord_avatar,
+      linked_at: discordLink.createdAt,
+      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
+        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+        : discordLink.discord_username
+    };
+  }
+
+  return {
+    discord_info: discordInfo,
+    display_name: discordInfo?.display_name || user.nickname
+  };
+}
 
 class LeaderboardService {
   /**
@@ -59,9 +90,13 @@ class LeaderboardService {
               }
             }
 
+            // Enriquecer con información de Discord
+            const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+
             userPosition = {
               usuario_id: usuario.id,
               nickname: usuario.nickname,
+              display_name,
               puntos: usuario.puntos,
               position: position || currentRanking.length + 1,
               position_change: 0,
@@ -69,6 +104,7 @@ class LeaderboardService {
               is_vip: usuario.is_vip && usuario.isVipActive(),
               is_subscriber: isSubscriber,
               kick_data: usuario.kick_data,
+              discord_info,
             };
           }
         }
@@ -116,6 +152,7 @@ class LeaderboardService {
         "vip_expires_at",
         "kick_data",
         "user_id_ext",
+        "discord_username",
       ],
       order: [
         ["puntos", "DESC"],
@@ -150,14 +187,22 @@ class LeaderboardService {
           }
         }
 
+        // Enriquecer con información de Discord
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo({
+          id: usuario.id,
+          nickname: usuario.nickname
+        });
+
         return {
           usuario_id: usuario.id,
           nickname: usuario.nickname,
+          display_name,
           puntos: usuario.puntos,
           position: index + 1,
           is_vip: isVipActive,
           is_subscriber: isSubscriber,
           kick_data: usuario.kick_data,
+          discord_info,
         };
       }),
     );

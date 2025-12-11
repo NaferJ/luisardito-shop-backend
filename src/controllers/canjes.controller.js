@@ -1,7 +1,37 @@
-const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking } = require('../models');
+const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking, DiscordUserLink } = require('../models');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const promocionService = require('../services/promocion.service');
+
+/**
+ * Función helper para enriquecer información de usuario con datos de Discord
+ * @param {Object} user - Instancia del modelo Usuario
+ * @returns {Object} Información enriquecida de Discord
+ */
+async function enrichUserWithDiscordInfo(user) {
+  let discordInfo = null;
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: user.id }
+  });
+
+  if (discordLink) {
+    discordInfo = {
+      linked: true,
+      username: discordLink.discord_username,
+      discriminator: discordLink.discord_discriminator,
+      avatar: discordLink.discord_avatar,
+      linked_at: discordLink.createdAt,
+      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
+        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+        : discordLink.discord_username
+    };
+  }
+
+  return {
+    discord_info: discordInfo,
+    display_name: discordInfo?.display_name || user.nickname
+  };
+}
 
 exports.crear = async (req, res) => {
     const t = await Canje.sequelize.transaction();
@@ -129,6 +159,11 @@ exports.listar = async (req, res) => {
     const now = new Date();
     for (const canje of canjes) {
         if (canje.Usuario) {
+            // Información de Discord
+            const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
+            canje.Usuario.dataValues.display_name = display_name;
+            canje.Usuario.dataValues.discord_info = discord_info;
+
             // Información VIP
             canje.Usuario.dataValues.vip_status = {
                 is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
@@ -238,6 +273,11 @@ exports.listarPorUsuario = async (req, res) => {
     const now = new Date();
     for (const canje of canjes) {
         if (canje.Usuario) {
+            // Información de Discord
+            const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
+            canje.Usuario.dataValues.display_name = display_name;
+            canje.Usuario.dataValues.discord_info = discord_info;
+
             // Información VIP
             canje.Usuario.dataValues.vip_status = {
                 is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
