@@ -19,10 +19,12 @@ router.post('/store-tokens', authCtrl.storeTokens);
 router.get('/kick-bot', authCtrl.redirectKickBot);
 router.get('/kick-bot-callback', authCtrl.callbackKickBot);
 
+const authRequired = require("../middleware/authRequired.middleware");
+
 // OAuth de Discord
-router.get('/discord', authCtrl.redirectDiscord);
+router.get('/discord', authRequired, authCtrl.redirectDiscord);
 router.get('/discord/callback', authCtrl.callbackDiscord);
-router.post('/discord/link', authCtrl.linkDiscordManual);
+router.post('/discord/link', authRequired, authCtrl.linkDiscordManual);
 
 // Debugging de cookies
 router.get('/cookie-status', authCtrl.cookieStatus);
