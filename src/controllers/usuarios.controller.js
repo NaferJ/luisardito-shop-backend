@@ -4,12 +4,43 @@ const {
   HistorialPunto,
   sequelize,
   KickUserTracking,
+  DiscordUserLink,
 } = require("../models");
 const { uploadKickAvatarToCloudinary } = require("../utils/uploadAvatar");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
 const logger = require("../utils/logger");
 const axios = require("axios");
 const { KickBroadcasterToken } = require("../models");
+
+/**
+ * Función helper para enriquecer información de usuario con datos de Discord
+ * @param {Object} user - Instancia del modelo Usuario
+ * @returns {Object} Información enriquecida de Discord
+ */
+async function enrichUserWithDiscordInfo(user) {
+  let discordInfo = null;
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: user.id }
+  });
+
+  if (discordLink) {
+    discordInfo = {
+      linked: true,
+      username: discordLink.discord_username,
+      discriminator: discordLink.discord_discriminator,
+      avatar: discordLink.discord_avatar,
+      linked_at: discordLink.createdAt,
+      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
+        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+        : discordLink.discord_username
+    };
+  }
+
+  return {
+    discord_info: discordInfo,
+    display_name: discordInfo?.display_name || user.nickname
+  };
+}
 
 // Mostrar datos del usuario autenticado
 exports.me = async (req, res) => {
@@ -43,6 +74,9 @@ exports.me = async (req, res) => {
     expires_soon: false,
   };
 
+  // Obtener información de Discord vinculado
+  const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
+
   if (user.user_id_ext) {
     const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: user.user_id_ext },
@@ -65,11 +99,13 @@ exports.me = async (req, res) => {
   res.json({
     id,
     nickname,
+    display_name,
     email,
     puntos,
     rol_id,
     kick_data,
     discord_username,
+    discord_info,
     vip_status: {
       is_active: user.isVipActive(),
       is_permanent: is_vip && !vip_expires_at,
@@ -177,6 +213,9 @@ exports.listarUsuarios = async (req, res) => {
         const userData = user.toJSON();
         const userInstance = Usuario.build(userData);
 
+        // Obtener información de Discord vinculado
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(userInstance);
+
         // Calcular información de suscriptor
         let subscriberStatus = {
           is_active: false,
@@ -204,6 +243,8 @@ exports.listarUsuarios = async (req, res) => {
 
         return {
           ...userData,
+          display_name,
+          discord_info,
           vip_status: {
             is_active: userInstance.isVipActive(),
             is_permanent: userData.is_vip && !userData.vip_expires_at,

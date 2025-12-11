@@ -13,6 +13,36 @@ const { extractAvatarUrl } = require('../utils/kickApi');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
 const KickBotTokenService = require('../services/kickBotToken.service');
 const logger = require('../utils/logger');
+
+/**
+ * Función helper para enriquecer información de usuario con datos de Discord
+ * @param {Object} user - Instancia del modelo Usuario
+ * @returns {Object} Información enriquecida de Discord
+ */
+async function enrichUserWithDiscordInfo(user) {
+  let discordInfo = null;
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: user.id }
+  });
+
+  if (discordLink) {
+    discordInfo = {
+      linked: true,
+      username: discordLink.discord_username,
+      discriminator: discordLink.discord_discriminator,
+      avatar: discordLink.discord_avatar,
+      linked_at: discordLink.createdAt,
+      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
+        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+        : discordLink.discord_username
+    };
+  }
+
+  return {
+    discord_info: discordInfo,
+    display_name: discordInfo?.display_name || user.nickname
+  };
+}
 const {
     generateAccessToken,
     createRefreshToken,
@@ -107,6 +137,9 @@ exports.loginLocal = async (req, res) => {
         // Configurar cookies cross-domain
         setAuthCookies(res, accessToken, refreshToken.token);
 
+        // Enriquecer información de usuario con Discord
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
+
         res.json({
             accessToken,
             refreshToken: refreshToken.token,
@@ -114,9 +147,11 @@ exports.loginLocal = async (req, res) => {
             user: {
                 id: user.id,
                 nickname: user.nickname,
+                display_name,
                 email: user.email,
                 puntos: user.puntos,
-                rol_id: user.rol_id
+                rol_id: user.rol_id,
+                discord_info
             }
         });
     } catch (err) {
@@ -479,6 +514,9 @@ exports.callbackKick = async (req, res) => {
         // Configurar cookies cross-domain
         setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
 
+        // Enriquecer información de usuario con Discord
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
         const callbackData = {
             token: jwtAccessToken, // Retrocompatibilidad
@@ -488,11 +526,13 @@ exports.callbackKick = async (req, res) => {
             usuario: {
                 id: usuario.id,
                 nickname: usuario.nickname,
+                display_name,
                 email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 user_id_ext: usuario.user_id_ext,
                 kick_data: usuario.kick_data,
+                discord_info,
                 createdAt: usuario.createdAt,
                 updatedAt: usuario.updatedAt
             },
@@ -687,6 +727,9 @@ exports.refreshToken = async (req, res) => {
         // Configurar cookies con los nuevos tokens
         setAuthCookies(res, newAccessToken, newRefreshToken.token);
 
+        // Enriquecer información de usuario con Discord
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+
         return res.json({
             accessToken: newAccessToken,
             refreshToken: newRefreshToken.token,
@@ -694,9 +737,11 @@ exports.refreshToken = async (req, res) => {
             user: {
                 id: usuario.id,
                 nickname: usuario.nickname,
+                display_name,
                 email: usuario.email,
                 puntos: usuario.puntos,
-                rol_id: usuario.rol_id
+                rol_id: usuario.rol_id,
+                discord_info
             }
         });
 
@@ -847,16 +892,21 @@ exports.storeTokens = async (req, res) => {
         // Configurar cookies (aunque este endpoint se usa menos, por compatibilidad)
         setAuthCookies(res, token, 'no-refresh-token-provided');
 
+        // Enriquecer información de usuario con Discord
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+
         return res.json({
             token,
             usuario: {
                 id: usuario.id,
                 nickname: usuario.nickname,
+                display_name,
                 email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 user_id_ext: usuario.user_id_ext,
                 kick_data: usuario.kick_data,
+                discord_info,
                 createdAt: usuario.createdAt,
                 updatedAt: usuario.updatedAt
             },
