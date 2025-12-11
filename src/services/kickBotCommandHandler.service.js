@@ -60,7 +60,7 @@ class KickBotCommandHandlerService {
             // Ejecutar el comando según su tipo
             let response;
             if (command.command_type === 'dynamic') {
-                response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform);
+                response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform, discordUserId, messageContext);
             } else {
                 response = await this.executeSimpleCommand(command, content, username, channelName, usuario);
             }
@@ -101,7 +101,7 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando dinámico (con lógica especial)
      */
-    async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick') {
+    async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null) {
         const handler = command.dynamic_handler;
 
         if (!handler) {
@@ -112,7 +112,7 @@ class KickBotCommandHandlerService {
         // Ejecutar el handler correspondiente
         switch (handler) {
             case 'puntos_handler':
-                return await this.puntosHandler(command, content, username, channelName, usuario, platform);
+                return await this.puntosHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext);
 
             // Aquí puedes agregar más handlers según necesites
             // case 'custom_handler':
@@ -128,34 +128,61 @@ class KickBotCommandHandlerService {
      * Handler especial para el comando !puntos
      * Consulta los puntos de un usuario en la base de datos
      */
-    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick') {
+    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null) {
         try {
             const args = this.extractArgs(content);
 
             // Si hay argumentos, buscar al usuario especificado
             if (args.length > 0) {
-                const lookupName = args[0].replace(/^@/, '');
+                const lookupArg = args[0];
 
-                // Buscar usuario en la base de datos
-                const targetUser = await Usuario.findOne({
-                    where: {
-                        nickname: { [Op.like]: lookupName }
-                    }
-                });
+                let targetUser = null;
+
+                // Si estamos en Discord y es una mención, buscar por Discord ID
+                if (platform === 'discord' && messageContext && lookupArg.match(/^<@!?(\d+)>$/)) {
+                    const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
+                    logger.info(`[BOT-COMMAND] Buscando usuario por mención Discord: ${mentionedUserId}`);
+
+                    // Buscar en DiscordUserLink
+                    const discordLink = await DiscordUserLink.findOne({
+                        where: { discord_user_id: mentionedUserId },
+                        include: [{ model: Usuario, as: 'usuario' }]
+                    });
+
+                    targetUser = discordLink?.usuario;
+                    logger.info(`[BOT-COMMAND] Usuario encontrado por Discord ID:`, targetUser ? targetUser.nickname : 'no encontrado');
+                } else {
+                    // Buscar por nickname (removiendo @ si existe)
+                    const lookupName = lookupArg.replace(/^@/, '');
+                    logger.info(`[BOT-COMMAND] Buscando usuario por nickname: ${lookupName}`);
+
+                    targetUser = await Usuario.findOne({
+                        where: {
+                            [Op.or]: [
+                                { nickname: { [Op.iLike]: lookupName } }, // case insensitive
+                                { nickname: { [Op.like]: lookupName } }   // fallback
+                            ]
+                        }
+                    });
+
+                    logger.info(`[BOT-COMMAND] Usuario encontrado por nickname:`, targetUser ? targetUser.nickname : 'no encontrado');
+                }
 
                 const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
 
                 let response;
                 if (puntos !== null) {
                     // Usuario encontrado - usar template del comando
+                    const displayName = targetUser.nickname;
                     response = command.response_message
                         .replace(/{username}/g, username)
                         .replace(/{channel}/g, channelName)
-                        .replace(/{target_user}/g, lookupName)
+                        .replace(/{target_user}/g, displayName)
                         .replace(/{points}/g, puntos.toString());
                 } else {
                     // Usuario no encontrado - respuesta por defecto
-                    response = `${lookupName} no existe o no tiene puntos registrados.`;
+                    const displayName = lookupArg.replace(/^@/, '').replace(/^<@!?(\d+)>/, 'usuario mencionado');
+                    response = `${displayName} no existe o no tiene puntos registrados.`;
                 }
 
                 return response;
