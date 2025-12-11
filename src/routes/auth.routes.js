@@ -25,6 +25,7 @@ const authRequired = require("../middleware/authRequired.middleware");
 router.get('/discord', authRequired, authCtrl.redirectDiscord);
 router.get('/discord/callback', authCtrl.callbackDiscord);
 router.post('/discord/link', authRequired, authCtrl.linkDiscordManual);
+router.post('/discord/unlink', authRequired, authCtrl.unlinkDiscord);
 
 // Debugging de cookies
 router.get('/cookie-status', authCtrl.cookieStatus);

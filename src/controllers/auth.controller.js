@@ -1173,3 +1173,59 @@ exports.linkDiscordManual = async (req, res) => {
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
+
+/**
+ * Desvincular cuenta de Discord
+ */
+exports.unlinkDiscord = async (req, res) => {
+    try {
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Usuario no autenticado' });
+        }
+
+        logger.info('[Discord OAuth][unlinkDiscord] Desvinculando Discord para usuario:', userId);
+
+        // Buscar y eliminar la vinculación de Discord
+        const discordLink = await DiscordUserLink.findOne({
+            where: { tienda_user_id: userId }
+        });
+
+        if (!discordLink) {
+            logger.warn('[Discord OAuth][unlinkDiscord] No se encontró vinculación de Discord para usuario:', userId);
+            return res.status(404).json({ error: 'No hay cuenta de Discord vinculada' });
+        }
+
+        // Eliminar la vinculación
+        await discordLink.destroy();
+
+        // Limpiar discord_username del usuario si existe
+        const usuario = await Usuario.findByPk(userId);
+        if (usuario && usuario.discord_username) {
+            await usuario.update({ discord_username: null });
+        }
+
+        logger.info('[Discord OAuth][unlinkDiscord] Discord desvinculado exitosamente para usuario:', userId);
+
+        // Enriquecer información de usuario con Discord (ahora debería ser null)
+        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+
+        return res.json({
+            message: 'Cuenta de Discord desvinculada exitosamente',
+            user: {
+                id: usuario.id,
+                nickname: usuario.nickname,
+                display_name,
+                email: usuario.email,
+                puntos: usuario.puntos,
+                rol_id: usuario.rol_id,
+                discord_info
+            }
+        });
+
+    } catch (error) {
+        logger.error('[Discord OAuth][unlinkDiscord] Error:', error);
+        return res.status(500).json({ error: 'Error al desvincular cuenta de Discord' });
+    }
+};
