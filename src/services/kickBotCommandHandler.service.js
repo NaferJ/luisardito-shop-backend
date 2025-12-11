@@ -60,7 +60,7 @@ class KickBotCommandHandlerService {
             // Ejecutar el comando según su tipo
             let response;
             if (command.command_type === 'dynamic') {
-                response = await this.executeDynamicCommand(command, content, username, channelName, usuario);
+                response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform);
             } else {
                 response = await this.executeSimpleCommand(command, content, username, channelName, usuario);
             }
@@ -101,7 +101,7 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando dinámico (con lógica especial)
      */
-    async executeDynamicCommand(command, content, username, channelName, usuario = null) {
+    async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick') {
         const handler = command.dynamic_handler;
 
         if (!handler) {
@@ -112,7 +112,7 @@ class KickBotCommandHandlerService {
         // Ejecutar el handler correspondiente
         switch (handler) {
             case 'puntos_handler':
-                return await this.puntosHandler(command, content, username, channelName, usuario);
+                return await this.puntosHandler(command, content, username, channelName, usuario, platform);
 
             // Aquí puedes agregar más handlers según necesites
             // case 'custom_handler':
@@ -128,7 +128,7 @@ class KickBotCommandHandlerService {
      * Handler especial para el comando !puntos
      * Consulta los puntos de un usuario en la base de datos
      */
-    async puntosHandler(command, content, username, channelName, usuario = null) {
+    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick') {
         try {
             const args = this.extractArgs(content);
 
@@ -162,7 +162,11 @@ class KickBotCommandHandlerService {
             } else {
                 // No hay argumentos, mostrar puntos del usuario actual
                 if (!usuario) {
-                    return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                    if (platform === 'discord') {
+                        return `No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de puntos.`;
+                    } else {
+                        return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                    }
                 }
 
                 const puntos = Number(usuario.puntos || 0);
