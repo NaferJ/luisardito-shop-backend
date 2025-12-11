@@ -40,6 +40,9 @@ app.use(customCors);
 app.use(cookieParser()); // Para leer cookies
 app.use(express.json());
 
+// Servir archivos estáticos desde assets
+app.use('/assets', express.static('assets'));
+
 // Middleware específico para webhooks con logging optimizado
 app.use("/api/kick-webhook", (req, res, next) => {
   const hasKickHeaders = Object.keys(req.headers).some((key) =>

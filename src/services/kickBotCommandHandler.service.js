@@ -292,9 +292,14 @@ class KickBotCommandHandlerService {
         // Obtener información dinámica del servidor de Discord
         const serverInfo = await this.getDiscordServerInfo();
 
+        // Obtener la URL base del servidor
+        const config = require('../../config');
+        const baseUrl = process.env.FRONTEND_URL || `http://localhost:${config.port}`;
+        const bannerUrl = `${baseUrl}/assets/images/discordbanner.jpg`;
+
         const embed = new EmbedBuilder()
             .setColor(0x5865F2) // Color azul Discord
-            .setImage('https://i.imgur.com/banner-morado.png') // Banner morado degradado
+            .setImage(bannerUrl) // Banner morado degradado desde assets locales
             .setTitle('POXY CLUB') // Título sin emoji
             .setURL('https://discord.gg/arsANX7aWt') // Hace el título clickable
             .setDescription('Unite a la comunidad de gaming, anime y streams en Discord. Eventos, giveaways y mas.')
