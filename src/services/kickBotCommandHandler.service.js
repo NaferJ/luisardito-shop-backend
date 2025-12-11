@@ -297,7 +297,7 @@ class KickBotCommandHandlerService {
 
         const embed = new EmbedBuilder()
             .setColor(0x9B59B6) // Color morado/púrpura
-            .setImage(bannerUrl) // Banner decorativo al inicio visual
+            .setThumbnail(bannerUrl) // 👈 Thumbnail ARRIBA (esquina superior derecha)
             .setTitle('POXY CLUB')
             .setURL('https://discord.gg/arsANX7aWt')
             .setDescription('¡Saludos a todos! Únete a la comunidad de gaming, anime y streams en Discord.\n\n**Beneficios:**')
