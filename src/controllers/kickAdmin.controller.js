@@ -547,6 +547,7 @@ exports.getUsersWithDetails = async (req, res) => {
                 'id', 'nickname', 'email', 'puntos', 'user_id_ext', 'discord_username',
                 'is_vip', 'vip_granted_at', 'vip_expires_at', 'vip_granted_by_canje_id',
                 'botrix_migrated', 'botrix_migrated_at', 'botrix_points_migrated',
+                'kick_data',
                 'creado', 'actualizado',
                 [sequelize.fn('COUNT', sequelize.col('Canjes.id')), 'total_canjes'],
                 [sequelize.fn('COUNT', sequelize.literal('CASE WHEN Canjes.estado = "pendiente" THEN 1 END')), 'canjes_pendientes']
@@ -587,6 +588,7 @@ exports.getUsersWithDetails = async (req, res) => {
 
             return {
                 ...userJson,
+                kick_data: userJson.kick_data,
                 display_name,
                 discord_info,
                 vip_status: {
