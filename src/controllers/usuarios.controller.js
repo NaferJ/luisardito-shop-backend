@@ -243,8 +243,25 @@ exports.listarUsuarios = async (req, res) => {
         }
 
         return {
-          ...userData,
           kick_data: userData.kick_data,
+          id: userData.id,
+          nickname: userData.nickname,
+          email: userData.email,
+          puntos: userData.puntos,
+          rol_id: userData.rol_id,
+          user_id_ext: userData.user_id_ext,
+          discord_username: userData.discord_username,
+          is_vip: userData.is_vip,
+          vip_granted_at: userData.vip_granted_at,
+          vip_expires_at: userData.vip_expires_at,
+          vip_granted_by_canje_id: userData.vip_granted_by_canje_id,
+          botrix_migrated: userData.botrix_migrated,
+          botrix_migrated_at: userData.botrix_migrated_at,
+          botrix_points_migrated: userData.botrix_points_migrated,
+          creado: userData.creado,
+          actualizado: userData.actualizado,
+          total_canjes: userData.total_canjes,
+          canjes_pendientes: userData.canjes_pendientes,
           display_name,
           discord_info,
           vip_status: {
