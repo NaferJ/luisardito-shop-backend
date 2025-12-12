@@ -244,6 +244,7 @@ exports.listarUsuarios = async (req, res) => {
 
         return {
           ...userData,
+          kick_data: userData.kick_data,
           display_name,
           discord_info,
           vip_status: {
