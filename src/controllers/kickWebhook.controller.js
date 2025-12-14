@@ -515,8 +515,7 @@ async function handleRewardRedemption(payload, metadata) {
       
       // Enviar mensaje en chat notificando al usuario INMEDIATAMENTE
       try {
-        const KickBotService = require('../services/kickBot.service');
-        const bot = new KickBotService();
+        const bot = require('../services/kickBot.service');
         const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos! 🎁`;
         await bot.sendMessage(message);
         logger.info(`📢 [Reward Redemption] Mensaje enviado a ${kickUsername} en chat`);
