@@ -1,4 +1,4 @@
-const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking, DiscordUserLink } = require('../models');
+const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking, DiscordUserLink, Op } = require('../models');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const promocionService = require('../services/promocion.service');
@@ -150,8 +150,21 @@ exports.crear = async (req, res) => {
 
 exports.listar = async (req, res) => {
     // Ruta protegida por permiso('gestionar_canjes'): devolver todos los canjes
+    const search = req.query.search ? req.query.search.trim() : undefined;
+    const estado = req.query.estado ? req.query.estado.trim() : undefined;
+
+    // Construir where clause
+    const whereClause = {};
+    if (estado) {
+        whereClause.estado = estado;
+    }
+    if (search) {
+        // Buscar por nickname del usuario
+        whereClause['$Usuario.nickname$'] = { [Op.iLike]: `%${search}%` };
+    }
+
     const canjes = await Canje.findAll({
-        where: {},
+        where: whereClause,
         include: [Usuario, Producto],
         order: [['fecha', 'DESC']]
     });

@@ -5,6 +5,7 @@ const {
   sequelize,
   KickUserTracking,
   DiscordUserLink,
+  Op,
 } = require("../models");
 const { uploadKickAvatarToCloudinary } = require("../utils/uploadAvatar");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
@@ -170,8 +171,19 @@ exports.listarUsuarios = async (req, res) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
     const offset = req.query.offset ? parseInt(req.query.offset) : undefined;
+    const search = req.query.search ? req.query.search.trim() : undefined;
+
+    // Construir where clause para búsqueda
+    const whereClause = {};
+    if (search) {
+      whereClause[Op.or] = [
+        { nickname: { [Op.iLike]: `%${search}%` } },
+        { email: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
 
     const usuarios = await Usuario.findAll({
+      where: whereClause,
       attributes: [
         "id",
         "nickname",
