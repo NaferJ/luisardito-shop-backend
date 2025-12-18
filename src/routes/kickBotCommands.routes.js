@@ -11,6 +11,20 @@ const permiso = require("../middleware/permisos.middleware");
  * Todas las rutas requieren autenticación y permisos de administrador
  */
 
+/**
+ * 📋 GET /public - Obtener todos los comandos (público, solo lectura)
+ * Query params:
+ * - page: número de página (default: 1)
+ * - limit: límite por página (default: 20)
+ * - enabled: filtrar por habilitados/deshabilitados (true/false)
+ * - command_type: filtrar por tipo (simple/dynamic)
+ * - search: buscar por nombre o descripción
+ */
+router.get(
+  "/public",
+  kickBotCommandsController.getPublicCommands,
+);
+
 // Middleware para todas las rutas (autenticación requerida)
 router.use(authRequired);
 

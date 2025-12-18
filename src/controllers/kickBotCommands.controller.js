@@ -65,6 +65,68 @@ exports.getAllCommands = async (req, res) => {
 };
 
 /**
+ * 📋 Obtener todos los comandos públicos (solo lectura, sin filtros sensibles)
+ * GET /api/kick-admin/bot-commands/public
+ */
+exports.getPublicCommands = async (req, res) => {
+    try {
+        const {
+            page = 1,
+            limit = 20,
+            enabled,
+            command_type,
+            search
+        } = req.query;
+
+        const offset = (page - 1) * limit;
+        const where = {};
+
+        // Filtros
+        if (enabled !== undefined) {
+            where.enabled = enabled === 'true';
+        }
+
+        if (command_type) {
+            where.command_type = command_type;
+        }
+
+        if (search) {
+            where[Op.or] = [
+                { command: { [Op.like]: `%${search}%` } },
+                { description: { [Op.like]: `%${search}%` } }
+            ];
+        }
+
+        const { count, rows } = await KickBotCommand.findAndCountAll({
+            where,
+            limit: parseInt(limit),
+            offset: parseInt(offset),
+            order: [['created_at', 'DESC']]
+        });
+
+        logger.info(`📋 [BOT-COMMANDS] Lista pública de comandos solicitada: ${rows.length} comandos`);
+
+        res.json({
+            ok: true,
+            data: rows,
+            pagination: {
+                total: count,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(count / limit)
+            }
+        });
+    } catch (error) {
+        logger.error('[BOT-COMMANDS] Error obteniendo comandos públicos:', error);
+        res.status(500).json({
+            ok: false,
+            message: 'Error al obtener los comandos',
+            error: error.message
+        });
+    }
+};
+
+/**
  * 🔍 Obtener un comando específico por ID
  * GET /api/kick-admin/bot-commands/:id
  */
