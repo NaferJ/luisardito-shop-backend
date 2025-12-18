@@ -149,7 +149,6 @@ exports.loginLocal = async (req, res) => {
                 id: user.id,
                 nickname: user.nickname,
                 display_name,
-                email: user.email,
                 puntos: user.puntos,
                 rol_id: user.rol_id,
                 discord_info
@@ -528,7 +527,6 @@ exports.callbackKick = async (req, res) => {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 display_name,
-                email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 user_id_ext: usuario.user_id_ext,
@@ -678,8 +676,6 @@ exports.callbackKickBot = async (req, res) => {
     }
 };
 
-// ...existing endpoints... (refreshToken, logout, logoutAll)
-
 /**
  * Endpoint para refrescar el access token usando el refresh token
  */
@@ -739,7 +735,6 @@ exports.refreshToken = async (req, res) => {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 display_name,
-                email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 discord_info
@@ -902,7 +897,6 @@ exports.storeTokens = async (req, res) => {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 display_name,
-                email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 user_id_ext: usuario.user_id_ext,
@@ -1217,7 +1211,6 @@ exports.unlinkDiscord = async (req, res) => {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 display_name,
-                email: usuario.email,
                 puntos: usuario.puntos,
                 rol_id: usuario.rol_id,
                 discord_info

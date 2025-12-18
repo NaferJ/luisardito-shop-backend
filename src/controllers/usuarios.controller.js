@@ -53,9 +53,7 @@ exports.me = async (req, res) => {
 
   const {
     id,
-    nickname,
-    email,
-    puntos,
+    nickname, puntos,
     rol_id,
     kick_data,
     discord_username,
@@ -102,7 +100,6 @@ exports.me = async (req, res) => {
     id,
     nickname,
     display_name,
-    email,
     puntos,
     rol_id,
     kick_data,
@@ -187,7 +184,6 @@ exports.listarUsuarios = async (req, res) => {
       attributes: [
         "id",
         "nickname",
-        "email",
         "puntos",
         "rol_id",
         "user_id_ext",
@@ -359,7 +355,6 @@ exports.debugUsuario = async (req, res) => {
       usuario: {
         id: usuario.id,
         nickname: usuario.nickname,
-        email: usuario.email,
         rol_id: usuario.rol_id,
         user_id_ext: usuario.user_id_ext,
         creado: usuario.creado,
@@ -672,7 +667,6 @@ exports.syncKickInfo = async (req, res) => {
       user: {
         id: updatedUser.id,
         nickname: updatedUser.nickname,
-        email: updatedUser.email,
         puntos: updatedUser.puntos,
         rol_id: updatedUser.rol_id,
         kick_data: updatedUser.kick_data,
@@ -810,7 +804,6 @@ exports.debugPermisos = async (req, res) => {
       usuario: {
         id: userWithRole.id,
         nickname: userWithRole.nickname,
-        email: userWithRole.email,
         rol_id: userWithRole.rol_id,
         rol_nombre: userWithRole.Rol?.nombre,
         rol_descripcion: userWithRole.Rol?.descripcion,
@@ -900,163 +893,51 @@ exports.debugRolesPermisos = async (req, res) => {
         total_roles: roles.length,
         total_permisos: permisos.length,
         total_relaciones: rolPermisos.length,
+        total_usuarios_por_rol: usuariosPorRol.length,
       },
-      roles: roles.map((r) => ({
-        id: r.id,
-        nombre: r.nombre,
-        descripcion: r.descripcion,
-        permisos: r.Permisos?.map((p) => p.nombre) || [],
-        total_permisos: r.Permisos?.length || 0,
+      roles: roles.map((rol) => ({
+        id: rol.id,
+        nombre: rol.nombre,
+        descripcion: rol.descripcion,
+        permisos: rol.Permisos.map((p) => p.nombre),
+        total_permisos: rol.Permisos.length,
       })),
-      permisos: permisos.map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        descripcion: p.descripcion,
+      permisos: permisos.map((permiso) => ({
+        id: permiso.id,
+        nombre: permiso.nombre,
+        descripcion: permiso.descripcion,
+      })),
+      rol_permisos: rolPermisos.map((rp) => ({
+        rol_id: rp.rol_id,
+        permiso_id: rp.permiso_id,
       })),
       usuarios_por_rol: usuariosPorRol.map((u) => ({
         rol_id: u.rol_id,
-        total_usuarios: parseInt(u.dataValues.total_usuarios),
+        total_usuarios: parseInt(u.getDataValue("total_usuarios")),
       })),
-      permiso_historial_puntos: {
-        existe: !!permisoHistorial,
-        id: permisoHistorial?.id,
-        nombre: permisoHistorial?.nombre,
-        roles_que_lo_tienen: rolesConPermisoHistorial.map((rp) => ({
-          rol_id: rp.rol_id,
-          rol_nombre: rp.Rol?.nombre,
-        })),
-      },
-      verificacion_rol_1: {
-        rol_usuario_basico: roles.find((r) => r.id === 1),
-        tiene_permiso_historial:
-          roles
-            .find((r) => r.id === 1)
-            ?.Permisos?.some((p) => p.nombre === "ver_historial_puntos") ||
-          false,
-      },
+      permiso_historial_puntos: permisoHistorial
+        ? {
+            existe: true,
+            id: permisoHistorial.id,
+            nombre: permisoHistorial.nombre,
+            roles_que_lo_tienen: permisoHistorial.RolPermisos.map((rp) => ({
+              rol_id: rp.Rol.id,
+              rol_nombre: rp.Rol.nombre,
+            })),
+          }
+        : { existe: false },
+      roles_con_permiso_historial: rolesConPermisoHistorial.map((rp) => ({
+        rol_id: rp.Rol.id,
+        rol_nombre: rp.Rol.nombre,
+      })),
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("[Debug Roles/Permisos] Error:", error);
+    logger.error("Error en debug de roles y permisos (sin auth):", error);
     res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-    });
-  }
-};
-
-/**
- * 🔍 DEBUG: Verificar usuario específico por ID (sin auth)
- */
-exports.debugUsuarioEspecifico = async (req, res) => {
-  try {
-    const { Rol, Permiso } = require("../models");
-    const { usuarioId } = req.params;
-
-    // Obtener usuario específico con rol y permisos
-    const usuario = await Usuario.findByPk(usuarioId, {
-      include: [
-        {
-          model: Rol,
-          include: [
-            {
-              model: Permiso,
-              through: { attributes: [] },
-            },
-          ],
-        },
-      ],
-    });
-
-    if (!usuario) {
-      return res.status(404).json({
-        error: "Usuario no encontrado",
-        usuario_id: usuarioId,
-      });
-    }
-
-    const permisos = usuario.Rol?.Permisos?.map((p) => p.nombre) || [];
-
-    res.json({
-      usuario: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        email: usuario.email,
-        rol_id: usuario.rol_id,
-        user_id_ext: usuario.user_id_ext,
-        creado: usuario.creado,
-        actualizado: usuario.actualizado,
-      },
-      rol: {
-        id: usuario.Rol?.id,
-        nombre: usuario.Rol?.nombre,
-        descripcion: usuario.Rol?.descripcion,
-      },
-      permisos: permisos,
-      permisos_detalle:
-        usuario.Rol?.Permisos?.map((p) => ({
-          id: p.id,
-          nombre: p.nombre,
-          descripcion: p.descripcion,
-        })) || [],
-      verificaciones: {
-        puede_ver_historial_puntos: permisos.includes("ver_historial_puntos"),
-        puede_canjear_productos: permisos.includes("canjear_productos"),
-        puede_ver_canjes: permisos.includes("ver_canjes"),
-        es_admin: usuario.rol_id >= 3,
-        puede_ver_propio_historial: true, // Siempre pueden ver su propio historial
-        puede_ver_historial_otros: usuario.rol_id >= 3, // Solo admins pueden ver de otros
-      },
-      diagnostico: {
-        problema_identificado: !permisos.includes("ver_historial_puntos")
-          ? "Usuario NO tiene el permiso ver_historial_puntos"
-          : "Usuario SÍ tiene el permiso ver_historial_puntos",
-        logica_esperada:
-          usuario.rol_id <= 2
-            ? "Solo puede ver su propio historial (usuarios básicos)"
-            : "Puede ver cualquier historial (administrador)",
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("[Debug Usuario Específico] Error:", error);
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-    });
-  }
-};
-
-/**
- * 🔧 HOTFIX: Actualizar rol de usuario específico (temporal)
- */
-exports.hotfixActualizarRol = async (req, res) => {
-  try {
-    const { usuarioId, nuevoRol } = req.params;
-
-    const usuario = await Usuario.findByPk(usuarioId);
-    if (!usuario) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
-
-    const rolAnterior = usuario.rol_id;
-    await usuario.update({ rol_id: parseInt(nuevoRol) });
-
-    res.json({
-      success: true,
-      mensaje: `Rol actualizado para ${usuario.nickname}`,
-      usuario: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        rol_anterior: rolAnterior,
-        rol_nuevo: parseInt(nuevoRol),
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("[Hotfix Rol] Error:", error);
-    res.status(500).json({
+      success: false,
       error: error.message,
     });
   }
 };
+

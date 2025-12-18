@@ -544,7 +544,7 @@ exports.getUsersWithDetails = async (req, res) => {
             where: whereClause,
             order: [['actualizado', 'DESC']],
             attributes: [
-                'id', 'nickname', 'email', 'puntos', 'user_id_ext', 'discord_username',
+                'id', 'nickname', 'puntos', 'user_id_ext', 'discord_username',
                 'is_vip', 'vip_granted_at', 'vip_expires_at', 'vip_granted_by_canje_id',
                 'botrix_migrated', 'botrix_migrated_at', 'botrix_points_migrated',
                 'kick_data',

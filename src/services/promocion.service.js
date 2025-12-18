@@ -303,7 +303,7 @@ class PromocionService {
                     model: UsoPromocion,
                     as: 'usos',
                     include: [
-                        { model: Usuario, attributes: ['id', 'nickname', 'email'] },
+                        { model: Usuario, attributes: ['id', 'nickname'] },
                         { model: Producto, attributes: ['id', 'nombre', 'precio'] }
                     ]
                 },
@@ -339,7 +339,7 @@ class PromocionService {
                 [sequelize.fn('SUM', sequelize.col('descuento_aplicado')), 'ahorro_total']
             ],
             include: [
-                { model: Usuario, attributes: ['nickname', 'email'] }
+                { model: Usuario, attributes: ['nickname'] }
             ],
             group: ['usuario_id', 'Usuario.id'],
             order: [[sequelize.literal('usos'), 'DESC']],
