@@ -219,9 +219,9 @@ class KickBotCommandHandlerService {
                 // No hay argumentos, mostrar puntos del usuario actual
                 if (!usuario) {
                     if (platform === 'discord') {
-                        return `No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de puntos.`;
+                        return `@${username} No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de puntos.`;
                     } else {
-                        return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                        return `@${username} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
                     }
                 }
 
