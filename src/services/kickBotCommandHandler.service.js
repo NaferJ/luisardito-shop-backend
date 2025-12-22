@@ -33,9 +33,10 @@ class KickBotCommandHandlerService {
      * @param {object} messageContext - Contexto del mensaje (para Discord)
      * @param {string} platform - Plataforma: 'kick' o 'discord'
      * @param {string} discordUserId - ID del usuario en Discord (solo para Discord)
+     * @param {string} displayName - Nombre de visualización del usuario en Kick
      * @returns {Promise<boolean>} - True si se procesó un comando, false si no
      */
-    async processMessage(message, username, channelName, bot, messageContext = null, platform = 'kick', discordUserId = null) {
+    async processMessage(message, username, channelName, bot, messageContext = null, platform = 'kick', discordUserId = null, displayName = null) {
         try {
             const content = String(message || '').trim();
 
@@ -81,7 +82,7 @@ class KickBotCommandHandlerService {
             // Ejecutar el comando según su tipo
             let response;
             if (command.command_type === 'dynamic') {
-                response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform, discordUserId, messageContext);
+                response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
             } else {
                 response = await this.executeSimpleCommand(command, content, username, channelName, usuario);
             }
@@ -128,7 +129,7 @@ class KickBotCommandHandlerService {
     /**
      * Ejecuta un comando dinámico (con lógica especial)
      */
-    async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null) {
+    async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
         const handler = command.dynamic_handler;
 
         if (!handler) {
@@ -139,7 +140,7 @@ class KickBotCommandHandlerService {
         // Ejecutar el handler correspondiente
         switch (handler) {
             case 'puntos_handler':
-                return await this.puntosHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext);
+                return await this.puntosHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
 
             // Aquí puedes agregar más handlers según necesites
             // case 'custom_handler':
@@ -155,7 +156,7 @@ class KickBotCommandHandlerService {
      * Handler especial para el comando !puntos
      * Consulta los puntos de un usuario en la base de datos
      */
-    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null) {
+    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
         try {
             const args = this.extractArgs(content);
 
@@ -221,7 +222,11 @@ class KickBotCommandHandlerService {
                     if (platform === 'discord') {
                         return `@${username} No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de puntos.`;
                     } else {
-                        return `@${username} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                        if (displayName) {
+                            return `@${displayName} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                        } else {
+                            return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                        }
                     }
                 }
 

@@ -663,7 +663,9 @@ async function handleChatMessage(payload, metadata) {
           payload.channel?.username || "luisardito",
           bot,
           null, // No hay contexto de mensaje para webhooks
-          'kick' // Especificar plataforma
+          'kick', // Especificar plataforma
+          null, // No hay discordUserId
+          kickUsername // Pasar displayName para @ en respuestas
         );
 
         if (commandProcessed) {
@@ -1441,7 +1443,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       "🎥 [STREAM STATUS] ==========================================",
     );
   } catch (error) {
-    logger.error("[Kick Webhook][Livestream Status] Error:", error.message);
+    logger.error("[Kick Webhook][Livestream Status] Error:", error);
     logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
   }
 }
