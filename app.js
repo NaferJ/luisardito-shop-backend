@@ -12,6 +12,7 @@ const botMaintenanceService = require("./src/services/botMaintenance.service");
 const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
 const backupScheduler = require("./src/services/backup.task");
 const discordBotService = require("./src/services/discordBot.service");
+const streamStatusMonitor = require("./src/services/streamStatusMonitor.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -128,6 +129,9 @@ const start = async () => {
 
     // Iniciar bot de Discord
     await discordBotService.initialize();
+
+    // Iniciar monitor de estado del stream
+    streamStatusMonitor.startStreamMonitor();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto
