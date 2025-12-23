@@ -79,6 +79,12 @@ class KickBotCommandHandlerService {
                 logger.info(`🤖 [BOT-COMMAND] Usuario encontrado por Kick ID:`, usuario ? usuario.nickname : 'no encontrado');
             }
 
+            // Verificar cooldown
+            if (!(await this.checkCooldown(command, username))) {
+                logger.info(`⏳ [BOT-COMMAND] Comando !${command.command} en cooldown para ${username}`);
+                return false;
+            }
+
             // Ejecutar el comando según su tipo
             let response;
             if (command.command_type === 'dynamic') {
@@ -280,9 +286,19 @@ class KickBotCommandHandlerService {
             return true;
         }
 
-        // TODO: Implementar lógica de cooldown usando Redis
-        // Similar a como se maneja el cooldown en kickWebhook.controller.js
+        const { getRedisClient } = require("../config/redis.config");
+        const redis = getRedisClient();
 
+        const key = `bot_command_cooldown:${command.command}:${username}`;
+
+        // Verificar si el usuario está en cooldown para este comando
+        const exists = await redis.exists(key);
+        if (exists) {
+            return false; // Está en cooldown
+        }
+
+        // Establecer cooldown con TTL
+        await redis.setex(key, command.cooldown_seconds, Date.now().toString());
         return true;
     }
 
