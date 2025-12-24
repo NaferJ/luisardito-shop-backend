@@ -98,8 +98,15 @@ class BackupService {
     async dumpDatabase(outputPath) {
         logger.info('📦 Creando dump de MySQL...');
 
-        // Ejecutar mysqldump desde el contenedor MySQL usando docker exec
-        const command = `docker exec ${this.config.dbContainer} mysqldump ` +
+        // Determinar el host de MySQL (puede ser 'db' en Docker o 'localhost')
+        const dbHost = process.env.DB_HOST || 'db';
+        const dbPort = process.env.DB_PORT || '3306';
+
+        // Ejecutar mysqldump directamente conectándose a MySQL por red
+        // Esto funciona desde dentro del contenedor Docker
+        const command = `mysqldump ` +
+            `-h ${dbHost} ` +
+            `-P ${dbPort} ` +
             `-u ${this.config.dbUser} ` +
             `-p${this.config.dbPassword} ` +
             `--single-transaction ` +
@@ -109,9 +116,16 @@ class BackupService {
             `${this.config.dbName} > "${outputPath}"`;
 
         try {
-            await execAsync(command);
+            logger.info(`[Backup] Ejecutando: mysqldump -h ${dbHost} -P ${dbPort} -u ${this.config.dbUser} ${this.config.dbName}`);
+            const { stdout, stderr } = await execAsync(command);
+
+            if (stderr && !stderr.includes('Warning')) {
+                logger.warn('[Backup] Advertencias de mysqldump:', stderr);
+            }
+
             logger.info('✅ Dump de MySQL completado');
         } catch (error) {
+            logger.error('[Backup] Error detallado:', error);
             throw new Error(`Error al crear dump de MySQL: ${error.message}`);
         }
     }
