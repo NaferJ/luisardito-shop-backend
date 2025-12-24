@@ -13,6 +13,7 @@ const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task
 const backupScheduler = require("./src/services/backup.task");
 const discordBotService = require("./src/services/discordBot.service");
 const streamStatusMonitor = require("./src/services/streamStatusMonitor.task");
+const kickBotAutoSendService = require("./src/services/kickBotAutoSend.service");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -132,6 +133,9 @@ const start = async () => {
 
     // Iniciar monitor de estado del stream
     streamStatusMonitor.startStreamMonitor();
+
+    // Iniciar servicio de auto-envío de comandos
+    kickBotAutoSendService.start();
 
     app.listen(config.port, () => {
       // Detectar si estamos en Docker para mostrar el puerto correcto

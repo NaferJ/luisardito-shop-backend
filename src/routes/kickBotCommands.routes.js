@@ -83,7 +83,8 @@ router.get(
  *   enabled: boolean (default: true),
  *   requires_permission: boolean (default: false),
  *   permission_level: 'viewer' | 'vip' | 'moderator' | 'broadcaster' (default: 'viewer'),
- *   cooldown_seconds: number (default: 0)
+ *   cooldown_seconds: number (default: 0),
+ *   auto_send_interval_seconds: number (default: 0) - Intervalo en segundos para envío automático (0 = no enviar)
  * }
  */
 router.post(

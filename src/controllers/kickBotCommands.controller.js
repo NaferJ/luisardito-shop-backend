@@ -175,7 +175,8 @@ exports.createCommand = async (req, res) => {
             enabled = true,
             requires_permission = false,
             permission_level = 'viewer',
-            cooldown_seconds = 0
+            cooldown_seconds = 0,
+            auto_send_interval_seconds = 0
         } = req.body;
 
         // Validaciones
@@ -228,6 +229,7 @@ exports.createCommand = async (req, res) => {
             requires_permission,
             permission_level: requires_permission ? permission_level : 'viewer',
             cooldown_seconds: cooldown_seconds || 0,
+            auto_send_interval_seconds: auto_send_interval_seconds || 0,
             usage_count: 0,
             last_used_at: null
         });
@@ -266,7 +268,8 @@ exports.updateCommand = async (req, res) => {
             enabled,
             requires_permission,
             permission_level,
-            cooldown_seconds
+            cooldown_seconds,
+            auto_send_interval_seconds
         } = req.body;
 
         const existingCommand = await KickBotCommand.findByPk(id);
@@ -306,6 +309,7 @@ exports.updateCommand = async (req, res) => {
         if (requires_permission !== undefined) existingCommand.requires_permission = requires_permission;
         if (permission_level !== undefined) existingCommand.permission_level = permission_level;
         if (cooldown_seconds !== undefined) existingCommand.cooldown_seconds = cooldown_seconds;
+        if (auto_send_interval_seconds !== undefined) existingCommand.auto_send_interval_seconds = auto_send_interval_seconds;
 
         await existingCommand.save();
 
@@ -491,6 +495,7 @@ exports.duplicateCommand = async (req, res) => {
             requires_permission: originalCommand.requires_permission,
             permission_level: originalCommand.permission_level,
             cooldown_seconds: originalCommand.cooldown_seconds,
+            auto_send_interval_seconds: 0, // Por defecto no enviar automáticamente
             usage_count: 0,
             last_used_at: null
         });

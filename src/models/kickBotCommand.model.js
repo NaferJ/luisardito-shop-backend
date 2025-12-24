@@ -102,6 +102,12 @@ const KickBotCommand = sequelize.define(
       allowNull: true,
       comment: "Última vez que se usó el comando",
     },
+    auto_send_interval_seconds: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0,
+      comment: "Intervalo en segundos para envío automático (0 = no enviar automáticamente)",
+    },
   },
   {
     tableName: "kick_bot_commands",
