@@ -105,6 +105,7 @@ class BackupService {
         // Ejecutar mysqldump directamente conectándose a MySQL por red
         // Esto funciona desde dentro del contenedor Docker
         // --skip-ssl: Evita errores de certificados SSL auto-firmados
+        // --default-auth=mysql_native_password: Compatibilidad con MySQL 8.0 desde mariadb-client
         const command = `mysqldump ` +
             `-h ${dbHost} ` +
             `-P ${dbPort} ` +
@@ -115,6 +116,7 @@ class BackupService {
             `--triggers ` +
             `--events ` +
             `--skip-ssl ` +
+            `--default-auth=mysql_native_password ` +
             `${this.config.dbName} > "${outputPath}"`;
 
         try {
