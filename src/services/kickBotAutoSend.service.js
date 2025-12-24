@@ -2,17 +2,16 @@ const { KickBotCommand } = require('../models');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 const kickBotService = require('./kickBot.service'); // Importar la instancia singleton
-const discordBotService = require('./discordBot.service'); // Importar la instancia singleton
 
 /**
- * Servicio para envío automático de comandos del bot
+ * Servicio para envío automático de comandos del bot de Kick
  * Revisa periódicamente los comandos con auto_send_interval_seconds > 0
- * y los envía automáticamente al chat
+ * y los envía automáticamente al chat de Kick
+ * NOTA: Este sistema es exclusivo para Kick, NO envía a Discord
  */
 class KickBotAutoSendService {
     constructor() {
         this.kickBotService = kickBotService; // Usar la instancia singleton
-        this.discordBotService = discordBotService; // Usar la instancia singleton
         this.intervalId = null;
         this.isRunning = false;
         this.checkInterval = 10000; // Revisar cada 10 segundos
@@ -142,7 +141,7 @@ class KickBotAutoSendService {
             }
 
             if (response) {
-                // Enviar a Kick
+                // Enviar SOLO a Kick (el auto-send es exclusivo para Kick bot)
                 const kickResult = await this.kickBotService.sendMessage(response);
                 if (kickResult.ok) {
                     logger.info(`[AUTO-SEND] ✅ Comando enviado a Kick: !${command.command}`);
@@ -150,16 +149,6 @@ class KickBotAutoSendService {
                     logger.error(`[AUTO-SEND] ❌ Error enviando a Kick: ${kickResult.error}`);
                 }
 
-                // Enviar a Discord si está disponible
-                try {
-                    await this.discordBotService.sendMessageToChannel(
-                        process.env.DISCORD_CHANNEL_ID,
-                        response
-                    );
-                    logger.info(`[AUTO-SEND] ✅ Comando enviado a Discord: !${command.command}`);
-                } catch (discordError) {
-                    logger.warn(`[AUTO-SEND] ⚠️ No se pudo enviar a Discord: ${discordError.message}`);
-                }
 
                 // Incrementar contador de uso
                 await command.incrementUsage();
