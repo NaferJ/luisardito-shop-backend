@@ -532,4 +532,8 @@ class KickBotService {
     }
 }
 
-module.exports = new KickBotService();
+// Exportar tanto la clase como una instancia singleton
+const instance = new KickBotService();
+module.exports = instance;
+module.exports.KickBotService = KickBotService;
+module.exports.default = instance;
