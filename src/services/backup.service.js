@@ -98,33 +98,24 @@ class BackupService {
     async dumpDatabase(outputPath) {
         logger.info('📦 Creando dump de MySQL...');
 
-        // Determinar el host de MySQL (puede ser 'db' en Docker o 'localhost')
-        const dbHost = process.env.DB_HOST || 'db';
-        const dbPort = process.env.DB_PORT || '3306';
-
-        // Ejecutar mysqldump directamente conectándose a MySQL por red
-        // Esto funciona desde dentro del contenedor Docker
-        // --skip-ssl: Evita errores de certificados SSL auto-firmados
-        // --default-auth=mysql_native_password: Compatibilidad con MySQL 8.0 desde mariadb-client
-        const command = `mysqldump ` +
-            `-h ${dbHost} ` +
-            `-P ${dbPort} ` +
+        // Ejecutar mysqldump desde DENTRO del contenedor MySQL
+        // Esto evita problemas de compatibilidad entre mariadb-client y MySQL 8.0
+        // Usamos docker exec para ejecutar mysqldump en el contenedor MySQL
+        const command = `docker exec ${this.config.dbContainer} mysqldump ` +
             `-u ${this.config.dbUser} ` +
             `-p${this.config.dbPassword} ` +
             `--single-transaction ` +
             `--routines ` +
             `--triggers ` +
             `--events ` +
-            `--skip-ssl ` +
-            `--default-auth=mysql_native_password ` +
             `${this.config.dbName} > "${outputPath}"`;
 
         try {
-            logger.info(`[Backup] Ejecutando: mysqldump -h ${dbHost} -P ${dbPort} -u ${this.config.dbUser} ${this.config.dbName}`);
+            logger.info(`[Backup] Ejecutando mysqldump desde contenedor ${this.config.dbContainer}`);
             const { stdout, stderr } = await execAsync(command);
 
             // Filtrar warnings comunes que no son problemas
-            if (stderr && !stderr.includes('Warning') && !stderr.includes('Deprecated program name')) {
+            if (stderr && !stderr.includes('Warning') && !stderr.includes('Using a password')) {
                 logger.warn('[Backup] Advertencias de mysqldump:', stderr);
             }
 
