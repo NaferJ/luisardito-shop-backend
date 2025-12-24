@@ -231,27 +231,36 @@ class BackupService {
             await this.ensureGitLFS(repoPath);
 
         } catch {
-            // No existe, clonar
-            logger.info('📥 Clonando repositorio de backups...');
-            
+            // No existe, inicializar desde cero
+            logger.info('📥 Inicializando repositorio de backups...');
+
             const authUrl = this.config.githubRepoUrl.replace(
                 'https://',
                 `https://x-access-token:${this.config.githubToken}@`
             );
 
+            // Asegurar que el directorio existe y está vacío
             await fs.mkdir(repoPath, { recursive: true });
             
             try {
-                // Intentar clonar (puede estar vacío)
+                // Intentar clonar primero (si el repo tiene contenido)
                 await execAsync(`git clone "${authUrl}" "${repoPath}"`);
-            } catch {
-                // Repo vacío, inicializar
+                logger.info('✅ Repositorio clonado exitosamente');
+            } catch (cloneError) {
+                // Si falla el clone, inicializar repo nuevo
+                logger.info('📝 Repositorio vacío, inicializando nuevo repo...');
+
+                // Inicializar git en el directorio
                 await execAsync(`cd "${repoPath}" && git init`);
                 await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
+
+                // Crear rama main
                 await execAsync(`cd "${repoPath}" && git checkout -b main`);
+
+                logger.info('✅ Repositorio inicializado');
             }
 
-            // Configurar git user
+            // Configurar git user (ahora estamos seguros de que es un repo git)
             const email = this.config.githubUserEmail || 'backup@luisardito.com';
             await execAsync(`cd "${repoPath}" && git config user.email "${email}"`);
             await execAsync(`cd "${repoPath}" && git config user.name "Backup Bot"`);
@@ -259,7 +268,7 @@ class BackupService {
             // Configurar Git LFS
             await this.ensureGitLFS(repoPath);
 
-            logger.info('✅ Repositorio de backups configurado');
+            logger.info('✅ Repositorio de backups configurado completamente');
         }
     }
 
