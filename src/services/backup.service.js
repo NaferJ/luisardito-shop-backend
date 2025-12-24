@@ -255,7 +255,14 @@ class BackupService {
 
                 // Inicializar git en el directorio
                 await execAsync(`cd "${repoPath}" && git init`);
-                await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
+
+                // Intentar agregar remote, si falla usar set-url
+                try {
+                    await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
+                } catch (remoteError) {
+                    // El remote ya existe, actualizarlo
+                    await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
+                }
 
                 // Crear rama main
                 await execAsync(`cd "${repoPath}" && git checkout -b main`);
