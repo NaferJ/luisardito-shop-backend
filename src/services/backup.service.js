@@ -250,6 +250,9 @@ class BackupService {
                 // Si falla el clone, inicializar repo nuevo
                 logger.info('📝 Repositorio vacío, inicializando nuevo repo...');
 
+                // Configurar safe.directory para evitar errores de ownership
+                await execAsync(`git config --global --add safe.directory "${repoPath}"`);
+
                 // Inicializar git en el directorio
                 await execAsync(`cd "${repoPath}" && git init`);
                 await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
@@ -259,6 +262,9 @@ class BackupService {
 
                 logger.info('✅ Repositorio inicializado');
             }
+
+            // Configurar safe.directory también para repos existentes (por si acaso)
+            await execAsync(`git config --global --add safe.directory "${repoPath}"`).catch(() => {});
 
             // Configurar git user (ahora estamos seguros de que es un repo git)
             const email = this.config.githubUserEmail || 'backup@luisardito.com';
