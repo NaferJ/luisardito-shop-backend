@@ -1404,12 +1404,12 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
         "✅ [STREAM STATUS] Estado ONLINE guardado (según payload.is_live=true)",
       );
     } else {
-      // Stream OFFLINE: Solo marcar como sospechado, no confirmar aún
+      // Stream OFFLINE: Marcar directamente como offline (sin esperar monitor)
+      await redis.set("stream:is_live", "false");
       await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "⚠️  [STREAM STATUS] Estado OFFLINE sospechado (esperando confirmación del monitor)",
+        "🔴 [STREAM STATUS] Estado OFFLINE confirmado directamente por webhook",
       );
-      // NO setear stream:is_live = 'false' aquí - dejar que el monitor lo confirme
     }
 
     // Guardar timestamp de última actualización (siempre con TTL para limpieza)
@@ -2891,8 +2891,11 @@ exports.forceStreamState = async (req, res) => {
         "✅ [FORCE STREAM STATE] Estado forzado a ONLINE (persistente, sin TTL)",
       );
     } else {
-      await redis.set("stream:is_live", "false", "EX", 86400);
-      logger.warn("✅ [FORCE STREAM STATE] Estado forzado a OFFLINE (TTL 24h)");
+      await redis.set("stream:is_live", "false");
+      await redis.set("stream:last_webhook_status", "offline");
+      logger.info(
+        "🔴 [FORCE STREAM STATE] Estado OFFLINE confirmado directamente por webhook",
+      );
     }
 
     await redis.set(
