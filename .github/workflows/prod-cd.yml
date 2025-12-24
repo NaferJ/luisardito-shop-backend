@@ -104,7 +104,7 @@ jobs:
             echo "REDIS_DB=0" >> "$ENV_PATH"
 
             # Stream monitor configuration
-            echo "STREAM_MONITOR_ENABLED=false" >> "$ENV_PATH"
+            echo "STREAM_MONITOR_ENABLED=true" >> "$ENV_PATH"
 
             # Cookie configuration for cross-domain
             echo "COOKIE_DOMAIN=.luisardito.com" >> "$ENV_PATH"
