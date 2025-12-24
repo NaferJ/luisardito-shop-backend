@@ -4,8 +4,8 @@ FROM node:20-alpine AS base
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install docker-cli, git, and mysql-client for backups
-RUN apk add --no-cache docker-cli git mysql-client
+# Install docker-cli, git, and mariadb-client for backups (mysqldump)
+RUN apk add --no-cache docker-cli git mariadb-client
 
 # Install dependencies first (only production deps)
 COPY package.json package-lock.json* ./
