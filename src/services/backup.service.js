@@ -104,6 +104,7 @@ class BackupService {
 
         // Ejecutar mysqldump directamente conectándose a MySQL por red
         // Esto funciona desde dentro del contenedor Docker
+        // --skip-ssl: Evita errores de certificados SSL auto-firmados
         const command = `mysqldump ` +
             `-h ${dbHost} ` +
             `-P ${dbPort} ` +
@@ -113,13 +114,15 @@ class BackupService {
             `--routines ` +
             `--triggers ` +
             `--events ` +
+            `--skip-ssl ` +
             `${this.config.dbName} > "${outputPath}"`;
 
         try {
             logger.info(`[Backup] Ejecutando: mysqldump -h ${dbHost} -P ${dbPort} -u ${this.config.dbUser} ${this.config.dbName}`);
             const { stdout, stderr } = await execAsync(command);
 
-            if (stderr && !stderr.includes('Warning')) {
+            // Filtrar warnings comunes que no son problemas
+            if (stderr && !stderr.includes('Warning') && !stderr.includes('Deprecated program name')) {
                 logger.warn('[Backup] Advertencias de mysqldump:', stderr);
             }
 
