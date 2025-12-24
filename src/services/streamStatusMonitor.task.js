@@ -18,6 +18,7 @@ const logger = require('../utils/logger');
  */
 
 const CHECK_INTERVAL_MINUTES = 2; // Verificar cada 2 minutos
+const OFFLINE_CONFIRMATION_THRESHOLD = 2; // Número de polls fallidos seguidos para confirmar offline
 
 /**
  * Obtiene el username del broadcaster desde la configuración
@@ -136,34 +137,15 @@ async function syncStreamStatus() {
             };
         }
         
-        // 4. Comparar estados
-        const apiState = apiStatus.is_live ? 'true' : 'false';
-        const statesMatch = currentRedisState === apiState;
-        
-        if (statesMatch) {
-            logger.debug(`✅ [STREAM MONITOR] Estados sincronizados: ${apiState}`);
-            return {
-                action: 'none',
-                reason: 'states_match',
-                state: apiState
-            };
-        }
-        
-        // 5. Estados NO coinciden - sincronizar Redis con la realidad
-        logger.warn('🔄 [STREAM MONITOR] ==========================================');
-        logger.warn('🔄 [STREAM MONITOR] INCONSISTENCIA DETECTADA');
-        logger.warn(`🔄 [STREAM MONITOR] Redis dice: ${currentRedisState || 'not_set'}`);
-        logger.warn(`🔄 [STREAM MONITOR] API dice: ${apiState}`);
-        logger.warn('🔄 [STREAM MONITOR] CORRIGIENDO estado en Redis...');
-        logger.warn('🔄 [STREAM MONITOR] ==========================================');
-        
+        // 4. Lógica de debounce y sincronización
         const now = new Date();
         
         if (apiStatus.is_live) {
-            // Stream está ONLINE según API - actualizar Redis
+            // Stream está ONLINE según API - actualizar inmediatamente
             await redis.set('stream:is_live', 'true');
             await redis.set('stream:last_status_update', now.toISOString(), 'EX', 86400);
-            
+            await redis.set('stream:offline_poll_failures', 0); // Resetear contador de fallos
+
             // Guardar información del stream
             const streamInfo = {
                 title: apiStatus.stream_data.title || 'Sin título',
@@ -178,32 +160,62 @@ async function syncStreamStatus() {
             logger.info('✅ [STREAM MONITOR] Estado corregido a ONLINE');
             logger.info('🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS');
             
+            return {
+                action: 'corrected',
+                previous_state: currentRedisState || 'not_set',
+                new_state: 'true',
+                method: 'api_sync',
+                stream_data: apiStatus.stream_data
+            };
+
         } else {
-            // Stream está OFFLINE según API - actualizar Redis
-            await redis.set('stream:is_live', 'false', 'EX', 86400);
-            await redis.set('stream:last_status_update', now.toISOString(), 'EX', 86400);
-            await redis.del('stream:current_info');
-            
-            // Registrar corrección automática
-            await redis.set('stream:last_auto_correction', JSON.stringify({
-                corrected_at: now.toISOString(),
-                previous_redis_state: currentRedisState || 'not_set',
-                api_state: 'offline',
-                reason: 'api_sync'
-            }), 'EX', 86400);
-            
-            logger.info('✅ [STREAM MONITOR] Estado corregido a OFFLINE');
-            logger.info('🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS');
+            // Stream está OFFLINE según API - aplicar debounce
+            const currentFailures = parseInt(await redis.get('stream:offline_poll_failures') || '0');
+            const newFailures = currentFailures + 1;
+            await redis.set('stream:offline_poll_failures', newFailures);
+
+            const lastWebhookStatus = await redis.get('stream:last_webhook_status');
+            const shouldConfirmOffline = newFailures >= OFFLINE_CONFIRMATION_THRESHOLD || lastWebhookStatus === 'offline';
+
+            if (shouldConfirmOffline) {
+                // Confirmar offline
+                await redis.set('stream:is_live', 'false', 'EX', 86400);
+                await redis.set('stream:last_status_update', now.toISOString(), 'EX', 86400);
+                await redis.del('stream:current_info');
+                await redis.set('stream:offline_poll_failures', 0); // Resetear contador
+
+                // Registrar corrección automática
+                await redis.set('stream:last_auto_correction', JSON.stringify({
+                    corrected_at: now.toISOString(),
+                    previous_redis_state: currentRedisState || 'not_set',
+                    api_state: 'offline',
+                    reason: 'api_sync_with_debounce',
+                    failures_count: newFailures
+                }), 'EX', 86400);
+
+                logger.info('✅ [STREAM MONITOR] Estado corregido a OFFLINE (con debounce)');
+                logger.info('🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS');
+
+                return {
+                    action: 'corrected',
+                    previous_state: currentRedisState || 'not_set',
+                    new_state: 'false',
+                    method: 'api_sync_debounced',
+                    failures: newFailures,
+                    stream_data: null
+                };
+            } else {
+                // Offline sospechado, pero no confirmado aún
+                logger.warn(`⚠️  [STREAM MONITOR] Offline sospechado (${newFailures}/${OFFLINE_CONFIRMATION_THRESHOLD} fallos) - esperando confirmación`);
+                return {
+                    action: 'none',
+                    reason: 'offline_suspected_waiting_confirmation',
+                    current_failures: newFailures,
+                    threshold: OFFLINE_CONFIRMATION_THRESHOLD
+                };
+            }
         }
-        
-        return {
-            action: 'corrected',
-            previous_state: currentRedisState || 'not_set',
-            new_state: apiState,
-            method: 'api_sync',
-            stream_data: apiStatus.stream_data
-        };
-        
+
     } catch (error) {
         logger.error('❌ [STREAM MONITOR] Error sincronizando estado:', error.message);
         return {
@@ -217,6 +229,17 @@ async function syncStreamStatus() {
  * Inicia el monitor de estado del stream
  */
 function startStreamMonitor() {
+    // Verificar si el monitor está habilitado
+    const isEnabled = process.env.STREAM_MONITOR_ENABLED === 'true';
+
+    if (!isEnabled) {
+        logger.info('🔍 [STREAM MONITOR] ==========================================');
+        logger.info('🔍 [STREAM MONITOR] Monitor DESHABILITADO por configuración');
+        logger.info('🔍 [STREAM MONITOR] Para habilitar: STREAM_MONITOR_ENABLED=true');
+        logger.info('🔍 [STREAM MONITOR] ==========================================');
+        return;
+    }
+
     logger.info('🔍 [STREAM MONITOR] ==========================================');
     logger.info('🔍 [STREAM MONITOR] Iniciando monitor de estado del stream');
     logger.info('🔍 [STREAM MONITOR] Método: Polling a API oficial de Kick');

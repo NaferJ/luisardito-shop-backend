@@ -1393,20 +1393,23 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       );
     }
 
-    // 🎥 Actualizar estado en Redis basándose 100% en payload.is_live
-    // Este webhook es la FUENTE DE VERDAD para el estado del stream
+    // 🎥 Actualizar estado en Redis con lógica de debounce
+    // Webhooks son fuente rápida, pero offline requiere confirmación
     if (isLive) {
       // Stream ONLINE: SIN TTL (persiste indefinidamente)
       await redis.set("stream:is_live", "true");
+      await redis.set("stream:last_webhook_status", "online");
+      await redis.set("stream:offline_poll_failures", 0); // Resetear contador de fallos
       logger.info(
         "✅ [STREAM STATUS] Estado ONLINE guardado (según payload.is_live=true)",
       );
     } else {
-      // Stream OFFLINE: CON TTL de 24 horas para limpieza automática
-      await redis.set("stream:is_live", "false", "EX", 86400);
+      // Stream OFFLINE: Solo marcar como sospechado, no confirmar aún
+      await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "✅ [STREAM STATUS] Estado OFFLINE guardado (según payload.is_live=false)",
+        "⚠️  [STREAM STATUS] Estado OFFLINE sospechado (esperando confirmación del monitor)",
       );
+      // NO setear stream:is_live = 'false' aquí - dejar que el monitor lo confirme
     }
 
     // Guardar timestamp de última actualización (siempre con TTL para limpieza)
