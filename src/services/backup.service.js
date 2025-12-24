@@ -149,8 +149,26 @@ class BackupService {
         logger.info('☁️ Subiendo backup a GitHub...');
 
         try {
-            // Inicializar repo si no existe
+            // Verificar tamaño del archivo
+            const stats = await fs.stat(backupPath);
+            const sizeMB = stats.size / 1024 / 1024;
+
+            // Inicializar repo si no existe (esto también configura Git LFS)
             await this.initGitHubRepo();
+
+            // Verificar si Git LFS está disponible
+            const hasLFS = await this.checkGitLFS();
+
+            if (!hasLFS && sizeMB > 95) {
+                logger.warn(`⚠️ Backup muy grande (${sizeMB.toFixed(2)} MB) - GitHub tiene límite de 100 MB`);
+                logger.warn('💡 Sugerencia: Instala Git LFS para manejar archivos grandes');
+                logger.warn('💡 Los backups locales están funcionando correctamente');
+                return;
+            }
+
+            if (hasLFS && sizeMB > 95) {
+                logger.info(`📦 Usando Git LFS para archivo grande (${sizeMB.toFixed(2)} MB)`);
+            }
 
             // Copiar archivo al directorio de GitHub
             const year = new Date().getFullYear();
@@ -177,6 +195,22 @@ class BackupService {
     }
 
     /**
+     * Verifica si Git LFS está disponible y configurado
+     */
+    async checkGitLFS() {
+        try {
+            await execAsync('git lfs version');
+
+            // Verificar si está configurado en el repo
+            const gitattributesPath = path.join(this.config.githubPath, '.gitattributes');
+            const content = await fs.readFile(gitattributesPath, 'utf-8');
+            return content.includes('*.sql.gz');
+        } catch {
+            return false;
+        }
+    }
+
+    /**
      * Inicializa el repositorio de GitHub si no existe
      */
     async initGitHubRepo() {
@@ -193,6 +227,9 @@ class BackupService {
             );
             await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
             
+            // Asegurar que Git LFS está configurado
+            await this.ensureGitLFS(repoPath);
+
         } catch {
             // No existe, clonar
             logger.info('📥 Clonando repositorio de backups...');
@@ -219,7 +256,52 @@ class BackupService {
             await execAsync(`cd "${repoPath}" && git config user.email "${email}"`);
             await execAsync(`cd "${repoPath}" && git config user.name "Backup Bot"`);
             
+            // Configurar Git LFS
+            await this.ensureGitLFS(repoPath);
+
             logger.info('✅ Repositorio de backups configurado');
+        }
+    }
+
+    /**
+     * Asegura que Git LFS está configurado en el repositorio
+     */
+    async ensureGitLFS(repoPath) {
+        try {
+            // Verificar si git-lfs está instalado
+            await execAsync('git lfs version');
+
+            // Inicializar Git LFS en el repositorio
+            await execAsync(`cd "${repoPath}" && git lfs install`);
+
+            // Verificar si .gitattributes existe y tiene la configuración correcta
+            const gitattributesPath = path.join(repoPath, '.gitattributes');
+            try {
+                const content = await fs.readFile(gitattributesPath, 'utf-8');
+                if (!content.includes('*.sql.gz')) {
+                    // Agregar tracking de archivos .sql.gz
+                    await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
+                    logger.info('✅ Git LFS configurado para rastrear archivos *.sql.gz');
+                }
+            } catch {
+                // .gitattributes no existe, crear tracking
+                await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
+
+                // Hacer commit del .gitattributes si es nuevo
+                try {
+                    await execAsync(`cd "${repoPath}" && git add .gitattributes`);
+                    await execAsync(`cd "${repoPath}" && git commit -m "chore: configurar Git LFS para backups"`);
+                    await execAsync(`cd "${repoPath}" && git push origin main`);
+                    logger.info('✅ Git LFS configurado y .gitattributes commiteado');
+                } catch (commitError) {
+                    // Si falla el commit, probablemente porque no hay cambios o el repo está vacío
+                    logger.info('ℹ️ Git LFS configurado localmente');
+                }
+            }
+
+        } catch (error) {
+            logger.warn('⚠️ Git LFS no está disponible:', error.message);
+            logger.warn('💡 Instala Git LFS con: apk add git-lfs (en Alpine) o apt-get install git-lfs (en Debian/Ubuntu)');
         }
     }
 
