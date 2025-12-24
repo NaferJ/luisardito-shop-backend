@@ -43,10 +43,14 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ""
       REDIS_DB: 0
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: luisardito_shop
     command: >
       sh -c "npm install && npx sequelize db:migrate && npm run start"
     volumes:
       - ./tokens:/app/tokens
+      - ./backups:/app/backups
 
 volumes:
   db_data:
