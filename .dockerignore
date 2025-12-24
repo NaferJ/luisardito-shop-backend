@@ -9,4 +9,7 @@ coverage
 .dockerignore
 Dockerfile
 docker-compose*.yml
-
+backups
+tokens
+*.md
+.github
