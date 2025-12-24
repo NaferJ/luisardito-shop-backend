@@ -210,4 +210,8 @@ class DiscordBotService {
     }
 }
 
-module.exports = new DiscordBotService();
+// Exportar tanto la clase como una instancia singleton
+const instance = new DiscordBotService();
+module.exports = instance;
+module.exports.DiscordBotService = DiscordBotService;
+module.exports.default = instance;

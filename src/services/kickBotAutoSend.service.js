@@ -2,7 +2,7 @@ const { KickBotCommand } = require('../models');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 const kickBotService = require('./kickBot.service'); // Importar la instancia singleton
-const DiscordBotService = require('./discordBot.service');
+const discordBotService = require('./discordBot.service'); // Importar la instancia singleton
 
 /**
  * Servicio para envío automático de comandos del bot
@@ -12,7 +12,7 @@ const DiscordBotService = require('./discordBot.service');
 class KickBotAutoSendService {
     constructor() {
         this.kickBotService = kickBotService; // Usar la instancia singleton
-        this.discordBotService = new DiscordBotService();
+        this.discordBotService = discordBotService; // Usar la instancia singleton
         this.intervalId = null;
         this.isRunning = false;
         this.checkInterval = 10000; // Revisar cada 10 segundos
