@@ -435,7 +435,7 @@ async function handleCommandInfo(name) {
 
     // Mostrar la respuesta COMPLETA sin truncar
     const message = `Informacion del comando "!${name}" | ` +
-      `Respuesta: "${command.response_message}" | ` +
+      `Respuesta: ${command.response_message} | ` +
       `Aliases: ${aliases} | ` +
       `Cooldown: ${command.cooldown_seconds}s | ` +
       `Estado: ${estado} | ` +
