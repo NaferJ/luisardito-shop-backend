@@ -647,6 +647,42 @@ async function handleChatMessage(payload, metadata) {
     }
 
     // ==========================================
+    // 🛡️ COMANDOS DE MODERADORES (Gestión de comandos desde el chat)
+    // Se procesan ANTES de los comandos regulares y puntos
+    // ==========================================
+    try {
+      const content = String(payload.content || "").trim();
+      const modCommands = ['!addcmd', '!editcmd', '!delcmd', '!cmdinfo'];
+
+      if (modCommands.some(cmd => content.startsWith(cmd))) {
+        const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
+        const modResult = await ModeratorCommandsService.processModeratorCommand(payload);
+
+        if (modResult.processed) {
+          logger.info(`🛡️ [MOD-CMD] Comando de moderador procesado: ${content.split(/\s+/)[0]}`);
+
+          // Enviar respuesta al chat si hay mensaje
+          if (modResult.message) {
+            try {
+              const bot = require("../services/kickBot.service");
+              await bot.sendMessage(modResult.message);
+              logger.info(`📢 [MOD-CMD] Respuesta enviada al chat: ${modResult.message}`);
+            } catch (botError) {
+              logger.error(`❌ [MOD-CMD] Error enviando respuesta al chat:`, botError.message);
+            }
+          }
+
+          return; // Terminar procesamiento aquí
+        }
+      }
+    } catch (modErr) {
+      logger.error(
+        "[MOD-CMD] ❌ Error manejando comandos de moderador:",
+        modErr.message,
+      );
+    }
+
+    // ==========================================
     // 🤖 Comandos del BOT (Sistema Dinámico desde DB)
     // Se responden SIEMPRE, independientemente del estado del stream
     // ==========================================
