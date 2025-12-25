@@ -157,7 +157,7 @@ async function processModeratorCommand(payload) {
       return {
         success: false,
         processed: true,
-        message: `Error: ${parsed.error}`
+        message: parsed.error
       };
     }
 
@@ -188,7 +188,7 @@ async function processModeratorCommand(payload) {
     return {
       success: false,
       processed: true,
-      message: 'Error interno procesando el comando'
+      message: 'No se pudo procesar el comando'
     };
   }
 }
@@ -203,7 +203,7 @@ async function handleAddCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `Error: Debes especificar una respuesta para el comando. Ejemplo: !addcmd ${name} Hola {username}`
+        message: `Debes especificar una respuesta para el comando. Ejemplo: !addcmd ${name} Hola {username}`
       };
     }
 
@@ -216,7 +216,7 @@ async function handleAddCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `Error: El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`
+        message: `El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`
       };
     }
 
@@ -233,7 +233,7 @@ async function handleAddCommand(name, flags, sender) {
         return {
           success: false,
           processed: true,
-          message: `Error: Los siguientes aliases ya existen como comandos: ${conflictingNames}`
+          message: `Los siguientes aliases ya existen como comandos: ${conflictingNames}`
         };
       }
     }
@@ -273,7 +273,7 @@ async function handleAddCommand(name, flags, sender) {
     return {
       success: false,
       processed: true,
-      message: 'Error creando el comando'
+      message: 'No se pudo crear el comando'
     };
   }
 }
@@ -292,7 +292,7 @@ async function handleEditCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `Error: El comando "!${name}" no existe. Usa !addcmd para crearlo.`
+        message: `El comando "!${name}" no existe. Usa !addcmd para crearlo.`
       };
     }
 
@@ -301,7 +301,7 @@ async function handleEditCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `Error: Debes especificar al menos un campo para actualizar. Ejemplo: !editcmd ${name} --response Nueva respuesta`
+        message: `Debes especificar al menos un campo para actualizar. Ejemplo: !editcmd ${name} --response Nueva respuesta`
       };
     }
 
@@ -346,7 +346,7 @@ async function handleEditCommand(name, flags, sender) {
     return {
       success: false,
       processed: true,
-      message: 'Error editando el comando'
+      message: 'No se pudo editar el comando'
     };
   }
 }
@@ -370,7 +370,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `Error: Solo @${broadcaster.username} puede eliminar comandos`
+        message: `Solo @${broadcaster.username} puede eliminar comandos`
       };
     }
 
@@ -383,7 +383,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `Error: El comando "!${name}" no existe`
+        message: `El comando "!${name}" no existe`
       };
     }
 
@@ -403,7 +403,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
     return {
       success: false,
       processed: true,
-      message: 'Error eliminando el comando'
+      message: 'No se pudo eliminar el comando'
     };
   }
 }
@@ -422,7 +422,7 @@ async function handleCommandInfo(name) {
       return {
         success: false,
         processed: true,
-        message: `Error: El comando "!${name}" no existe`
+        message: `El comando "!${name}" no existe`
       };
     }
 
@@ -453,7 +453,7 @@ async function handleCommandInfo(name) {
     return {
       success: false,
       processed: true,
-      message: 'Error obteniendo informacion del comando'
+      message: 'No se pudo obtener la informacion del comando'
     };
   }
 }
