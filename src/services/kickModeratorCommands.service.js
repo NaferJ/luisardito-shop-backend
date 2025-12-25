@@ -4,7 +4,7 @@ const { Op } = require('sequelize');
 
 /**
  * ==========================================
- * 🛡️ SISTEMA DE COMANDOS PARA MODERADORES
+ * SISTEMA DE COMANDOS PARA MODERADORES
  * ==========================================
  *
  * Permite a los moderadores gestionar comandos del bot directamente desde el chat de Kick
@@ -157,13 +157,13 @@ async function processModeratorCommand(payload) {
       return {
         success: false,
         processed: true,
-        message: `❌ Error: ${parsed.error}`
+        message: `Error: ${parsed.error}`
       };
     }
 
     const { command, name, flags } = parsed;
 
-    logger.info(`🛡️ [MOD-CMD] ${sender.username} ejecutó: ${command} ${name}`);
+    logger.info(`[MOD-CMD] ${sender.username} ejecutó: ${command} ${name}`);
 
     // Ejecutar comando según el tipo
     switch (command) {
@@ -188,7 +188,7 @@ async function processModeratorCommand(payload) {
     return {
       success: false,
       processed: true,
-      message: '❌ Error interno procesando el comando'
+      message: 'Error interno procesando el comando'
     };
   }
 }
@@ -203,7 +203,7 @@ async function handleAddCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `❌ Debes especificar una respuesta para el comando. Ejemplo: !addcmd ${name} Hola {username}`
+        message: `Error: Debes especificar una respuesta para el comando. Ejemplo: !addcmd ${name} Hola {username}`
       };
     }
 
@@ -216,7 +216,7 @@ async function handleAddCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `❌ El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`
+        message: `Error: El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`
       };
     }
 
@@ -233,7 +233,7 @@ async function handleAddCommand(name, flags, sender) {
         return {
           success: false,
           processed: true,
-          message: `❌ Los siguientes aliases ya existen como comandos: ${conflictingNames}`
+          message: `Error: Los siguientes aliases ya existen como comandos: ${conflictingNames}`
         };
       }
     }
@@ -253,10 +253,10 @@ async function handleAddCommand(name, flags, sender) {
       usage_count: 0
     });
 
-    logger.info(`✅ [MOD-CMD] Comando !${name} creado por ${sender.username}`);
+    logger.info(`[MOD-CMD] Comando !${name} creado por ${sender.username}`);
 
     // Construir mensaje de confirmación
-    let confirmMsg = `✅ Comando "!${name}" creado exitosamente`;
+    let confirmMsg = `Comando "!${name}" creado exitosamente`;
     if (flags.aliases && flags.aliases.length > 0) {
       confirmMsg += ` (Aliases: ${flags.aliases.join(', ')})`;
     }
@@ -273,7 +273,7 @@ async function handleAddCommand(name, flags, sender) {
     return {
       success: false,
       processed: true,
-      message: '❌ Error creando el comando'
+      message: 'Error creando el comando'
     };
   }
 }
@@ -292,7 +292,7 @@ async function handleEditCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `❌ El comando "!${name}" no existe. Usa !addcmd para crearlo.`
+        message: `Error: El comando "!${name}" no existe. Usa !addcmd para crearlo.`
       };
     }
 
@@ -301,7 +301,7 @@ async function handleEditCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `❌ Debes especificar al menos un campo para actualizar. Ejemplo: !editcmd ${name} --response Nueva respuesta`
+        message: `Error: Debes especificar al menos un campo para actualizar. Ejemplo: !editcmd ${name} --response Nueva respuesta`
       };
     }
 
@@ -332,12 +332,12 @@ async function handleEditCommand(name, flags, sender) {
     // Actualizar
     await command.update(updates);
 
-    logger.info(`✅ [MOD-CMD] Comando !${name} editado por ${sender.username}: ${changes.join(', ')}`);
+    logger.info(`[MOD-CMD] Comando !${name} editado por ${sender.username}: ${changes.join(', ')}`);
 
     return {
       success: true,
       processed: true,
-      message: `✅ Comando "!${name}" actualizado: ${changes.join(', ')}`,
+      message: `Comando "!${name}" actualizado: ${changes.join(', ')}`,
       data: command
     };
 
@@ -346,7 +346,7 @@ async function handleEditCommand(name, flags, sender) {
     return {
       success: false,
       processed: true,
-      message: '❌ Error editando el comando'
+      message: 'Error editando el comando'
     };
   }
 }
@@ -361,7 +361,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `🔒 El comando "!${name}" está protegido y no puede ser eliminado`
+        message: `El comando "!${name}" está protegido y no puede ser eliminado`
       };
     }
 
@@ -370,7 +370,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `❌ Solo @${broadcaster.username} puede eliminar comandos`
+        message: `Error: Solo @${broadcaster.username} puede eliminar comandos`
       };
     }
 
@@ -383,19 +383,19 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `❌ El comando "!${name}" no existe`
+        message: `Error: El comando "!${name}" no existe`
       };
     }
 
     // Eliminar
     await command.destroy();
 
-    logger.info(`✅ [MOD-CMD] Comando !${name} eliminado por ${sender.username}`);
+    logger.info(`[MOD-CMD] Comando !${name} eliminado por ${sender.username}`);
 
     return {
       success: true,
       processed: true,
-      message: `✅ Comando "!${name}" eliminado exitosamente`
+      message: `Comando "!${name}" eliminado exitosamente`
     };
 
   } catch (error) {
@@ -403,7 +403,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
     return {
       success: false,
       processed: true,
-      message: '❌ Error eliminando el comando'
+      message: 'Error eliminando el comando'
     };
   }
 }
@@ -422,7 +422,7 @@ async function handleCommandInfo(name) {
       return {
         success: false,
         processed: true,
-        message: `❌ El comando "!${name}" no existe`
+        message: `Error: El comando "!${name}" no existe`
       };
     }
 
@@ -431,10 +431,11 @@ async function handleCommandInfo(name) {
       ? command.aliases.join(', ')
       : 'ninguno';
 
-    const estado = command.enabled ? 'Activo ✅' : 'Desactivado ❌';
+    const estado = command.enabled ? 'Activo' : 'Desactivado';
 
-    const message = `📋 Información del comando "!${name}" | ` +
-      `Respuesta: "${command.response_message.substring(0, 50)}${command.response_message.length > 50 ? '...' : ''}" | ` +
+    // Mostrar la respuesta COMPLETA sin truncar
+    const message = `Informacion del comando "!${name}" | ` +
+      `Respuesta: "${command.response_message}" | ` +
       `Aliases: ${aliases} | ` +
       `Cooldown: ${command.cooldown_seconds}s | ` +
       `Estado: ${estado} | ` +
@@ -452,7 +453,7 @@ async function handleCommandInfo(name) {
     return {
       success: false,
       processed: true,
-      message: '❌ Error obteniendo información del comando'
+      message: 'Error obteniendo informacion del comando'
     };
   }
 }
