@@ -632,18 +632,24 @@ async function handleChatMessage(payload, metadata) {
     logger.info("[Chat Message]", kickUsername, ":", payload.content);
 
     // PRIORIDAD 1: Verificar si es migración de Botrix
-    logger.info("🔍 [BOTRIX DEBUG] Verificando mensaje para migración...");
-    const botrixResult =
-      await BotrixMigrationService.processChatMessage(payload);
-    logger.info("🔍 [BOTRIX DEBUG] Resultado procesamiento:", botrixResult);
+    // Solo procesamos si la migración está habilitada
+    const { BotrixMigrationConfig } = require("../models");
+    const botrixConfig = await BotrixMigrationConfig.getConfig();
 
-    if (botrixResult.processed) {
-      logger.info(
-        `📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`,
-      );
-      return;
-    } else {
-      logger.info(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+    if (botrixConfig.migration_enabled) {
+      logger.info("🔍 [BOTRIX DEBUG] Verificando mensaje para migración...");
+      const botrixResult =
+        await BotrixMigrationService.processChatMessage(payload);
+      logger.info("🔍 [BOTRIX DEBUG] Resultado procesamiento:", botrixResult);
+
+      if (botrixResult.processed) {
+        logger.info(
+          `📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`,
+        );
+        return;
+      } else {
+        logger.info(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+      }
     }
 
     // ==========================================
