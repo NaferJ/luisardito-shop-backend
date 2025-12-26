@@ -8,7 +8,6 @@ const { generatePkce } = require('../utils/pkce.util');
 const { getKickUserData } = require('../utils/kickApi');
 const { Op } = require('sequelize');
 const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
-const { uploadKickAvatarToCloudinary } = require('../utils/uploadAvatar');
 const { extractAvatarUrl } = require('../utils/kickApi');
 const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
 const KickBotTokenService = require('../services/kickBotToken.service');
@@ -54,30 +53,24 @@ const {
 } = require('../services/tokenService');
 
 /**
- * Procesa el avatar de Kick y lo sube a Cloudinary
+ * Extrae el avatar de Kick
  * @param {Object} kickUser - Datos del usuario de Kick
- * @param {number} userId - ID del usuario en nuestra BD
- * @returns {Promise<string|null>} - URL de Cloudinary o null si falla
+ * @returns {string|null} - URL del avatar de Kick o null si no existe
  */
-async function processKickAvatar(kickUser, userId) {
+async function processKickAvatar(kickUser) {
     try {
         const kickAvatarUrl = extractAvatarUrl(kickUser);
 
         if (!kickAvatarUrl) {
-            logger.info(`[Auth] No se encontró avatar para usuario ${userId}`);
+            logger.info(`[Auth] No se encontró avatar en datos de Kick`);
             return null;
         }
 
-        logger.info(`[Auth] Procesando avatar de Kick para usuario ${userId}:`, kickAvatarUrl);
-
-        const cloudinaryUrl = await uploadKickAvatarToCloudinary(kickAvatarUrl, userId);
-
-        logger.info(`[Auth] ✅ Avatar procesado exitosamente:`, cloudinaryUrl);
-        return cloudinaryUrl;
+        logger.info(`[Auth] ✅ Avatar de Kick obtenido:`, kickAvatarUrl);
+        return kickAvatarUrl;
 
     } catch (error) {
-        logger.warn(`[Auth] Error procesando avatar para usuario ${userId}, continuando sin él:`, error.message);
-        // No fallar el proceso de autenticación por problemas con el avatar
+        logger.warn(`[Auth] Error extrayendo avatar, continuando sin él:`, error.message);
         return null;
     }
 }
@@ -331,15 +324,15 @@ exports.callbackKick = async (req, res) => {
                 });
 
                 // Vincular el user_id_ext al usuario existente
-                // Procesar avatar con Cloudinary
-                const cloudinaryAvatarUrl = await processKickAvatar(kickUser, colision.id);
+                // Obtener avatar de Kick
+                const kickAvatarUrl = await processKickAvatar(kickUser);
 
                 await colision.update({
                     user_id_ext: String(kickUser.user_id),
                     nickname: kickUser.name, // Actualizar con el nombre exacto de Kick
                     email: kickUser.email || colision.email, // Actualizar email si viene de Kick
                     kick_data: {
-                        avatar_url: cloudinaryAvatarUrl || kickUser.profile_picture, // Cloudinary URL o fallback
+                        avatar_url: kickAvatarUrl || kickUser.profile_picture,
                         username: kickUser.name
                     }
                 });
@@ -366,13 +359,13 @@ exports.callbackKick = async (req, res) => {
 
                 usuario = await Usuario.create(newUserData);
 
-                // Procesar avatar con Cloudinary después de crear el usuario
-                const cloudinaryAvatarUrl = await processKickAvatar(kickUser, usuario.id);
+                // Obtener avatar de Kick después de crear el usuario
+                const kickAvatarUrl = await processKickAvatar(kickUser);
 
-                if (cloudinaryAvatarUrl) {
+                if (kickAvatarUrl) {
                     await usuario.update({
                         kick_data: {
-                            avatar_url: cloudinaryAvatarUrl,
+                            avatar_url: kickAvatarUrl,
                             username: kickUser.name
                         }
                     });
@@ -405,14 +398,14 @@ exports.callbackKick = async (req, res) => {
                 }
             });
 
-            // Procesar avatar con Cloudinary
-            const cloudinaryAvatarUrl = await processKickAvatar(kickUser, usuario.id);
+            // Obtener avatar de Kick
+            const kickAvatarUrl = await processKickAvatar(kickUser);
 
             await usuario.update({
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 kick_data: {
-                    avatar_url: cloudinaryAvatarUrl || kickUser.profile_picture, // Cloudinary URL o fallback
+                    avatar_url: kickAvatarUrl || kickUser.profile_picture,
                     username: kickUser.name
                 }
             });
@@ -850,13 +843,13 @@ exports.storeTokens = async (req, res) => {
 
             usuario = await Usuario.create(newUserData);
 
-            // Procesar avatar con Cloudinary después de crear el usuario
-            const cloudinaryAvatarUrl = await processKickAvatar(kickUser, usuario.id);
+            // Obtener avatar de Kick después de crear el usuario
+            const kickAvatarUrl = await processKickAvatar(kickUser);
 
-            if (cloudinaryAvatarUrl) {
+            if (kickAvatarUrl) {
                 await usuario.update({
                     kick_data: {
-                        avatar_url: cloudinaryAvatarUrl,
+                        avatar_url: kickAvatarUrl,
                         username: kickUser.name
                     }
                 });
@@ -864,14 +857,14 @@ exports.storeTokens = async (req, res) => {
 
             isNewUser = true;
         } else {
-            // Procesar avatar con Cloudinary
-            const cloudinaryAvatarUrl = await processKickAvatar(kickUser, usuario.id);
+            // Obtener avatar de Kick
+            const kickAvatarUrl = await processKickAvatar(kickUser);
 
             await usuario.update({
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 kick_data: {
-                    avatar_url: cloudinaryAvatarUrl || kickUser.profile_picture, // Cloudinary URL o fallback
+                    avatar_url: kickAvatarUrl || kickUser.profile_picture,
                     username: kickUser.name
                 }
             });

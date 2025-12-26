@@ -14,7 +14,7 @@ const VipService = require("../services/vip.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
-const { syncUsernameIfNeeded, syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
+const { syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
 
 /**
  * 🔍 DIAGNÓSTICO: monitorear Redis
@@ -754,11 +754,9 @@ async function handleChatMessage(payload, metadata) {
       return;
     }
 
-    // 🔄 Sincronizar username si cambió (con throttling de 24h)
-    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, false);
-
     // 🔄 Sincronizar perfil completo (username y avatar) si cambió (con throttling de 24h)
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, payload.sender?.profile_picture);
+    // El webhook SIEMPRE trae sender.profile_picture según la documentación de Kick
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, sender.profile_picture);
 
     // Obtener configuración de puntos
     const configs = await KickPointsConfig.findAll({
@@ -975,8 +973,8 @@ async function handleChannelFollowed(payload, metadata) {
       return;
     }
 
-    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, follower.profile_picture);
 
     // Verificar si ya siguió antes (solo primera vez)
     let userTracking = await KickUserTracking.findOne({
@@ -1086,8 +1084,8 @@ async function handleNewSubscription(payload, metadata) {
       return;
     }
 
-    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
 
     // Obtener configuración de puntos por nueva suscripción
     const config = await KickPointsConfig.findOne({
@@ -1177,8 +1175,8 @@ async function handleSubscriptionRenewal(payload, metadata) {
       return;
     }
 
-    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
 
     // Obtener configuración de puntos por renovación
     const config = await KickPointsConfig.findOne({
@@ -1274,9 +1272,9 @@ async function handleSubscriptionGifts(payload, metadata) {
           "🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos",
         );
         
-        // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-        await syncUsernameIfNeeded(gifterUsuario, gifter.username, gifterKickUserId, true);
-        
+        // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+        await syncUserProfileIfNeeded(gifterUsuario, gifter.username, gifterKickUserId, true, gifter.profile_picture);
+
         const totalPoints = pointsForGifter * giftees.length;
         await gifterUsuario.increment("puntos", { by: totalPoints });
 
@@ -1319,9 +1317,9 @@ async function handleSubscriptionGifts(payload, metadata) {
         });
 
         if (gifteeUsuario) {
-          // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-          await syncUsernameIfNeeded(gifteeUsuario, gifteeUsername, gifteeKickUserId, true);
-          
+          // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+          await syncUserProfileIfNeeded(gifteeUsuario, gifteeUsername, gifteeKickUserId, true, giftee.profile_picture);
+
           await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
 
           await HistorialPunto.create({
@@ -1588,8 +1586,8 @@ async function handleKicksGifted(payload, metadata) {
       return;
     }
 
-    // 🔄 Sincronizar username si cambió (SIN throttling, evento poco frecuente)
-    await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, true);
+    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, sender.profile_picture);
 
     // Obtener el multiplicador desde la configuración
     const config = await KickPointsConfig.findOne({

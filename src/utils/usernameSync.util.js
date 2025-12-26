@@ -2,7 +2,6 @@ const { Usuario } = require('../models');
 const { Op } = require('sequelize');
 const { getRedisClient } = require('../config/redis.config');
 const logger = require('./logger');
-const { getKickUserData, extractAvatarUrl } = require('./kickApi');
 
 /**
  * Sincroniza el username del usuario si ha cambiado en Kick
@@ -155,25 +154,15 @@ async function syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, forceS
             needsUpdate = true;
         }
 
-        // Verificar si el avatar cambió (usar webhook data si disponible, sino API)
-        let newAvatarUrl = null;
-        if (kickProfilePicture) {
-            // Usar la foto del webhook directamente
-            newAvatarUrl = kickProfilePicture;
-        } else if (forceSync || usernameChanged) {
-            // Solo llamar a la API si no tenemos datos del webhook
-            try {
-                kickUserData = await getKickUserData(kickUserId);
-                newAvatarUrl = extractAvatarUrl(kickUserData);
-            } catch (apiError) {
-                logger.warn(`[Profile Sync] ⚠️ No se pudo obtener datos de Kick para avatar:`, apiError.message);
-                // Continuar sin actualizar avatar si falla la API
-            }
-        }
+        // Verificar si el avatar cambió
+        // El webhook de Kick SIEMPRE incluye profile_picture según la documentación
+        let newAvatarUrl = kickProfilePicture || null;
 
         const currentAvatarUrl = usuario.kick_data?.avatar_url;
         if (newAvatarUrl && currentAvatarUrl !== newAvatarUrl) {
             logger.info(`[Profile Sync] Cambio de avatar detectado para ${kickUsername}`);
+            logger.info(`[Profile Sync] Anterior: ${currentAvatarUrl || 'sin avatar'}`);
+            logger.info(`[Profile Sync] Nuevo: ${newAvatarUrl}`);
             avatarChanged = true;
             needsUpdate = true;
         }

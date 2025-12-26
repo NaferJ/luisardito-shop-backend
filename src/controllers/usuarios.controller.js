@@ -7,7 +7,6 @@ const {
   DiscordUserLink,
   Op,
 } = require("../models");
-const { uploadKickAvatarToCloudinary } = require("../utils/uploadAvatar");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
 const logger = require("../utils/logger");
 const axios = require("axios");
@@ -613,31 +612,10 @@ exports.syncKickInfo = async (req, res) => {
       });
     }
 
-    // Procesar avatar
-    let cloudinaryAvatarUrl = user.kick_data?.avatar_url || null; // Mantener el actual si falla
+    // Obtener avatar de Kick
     const kickAvatarUrl = extractAvatarUrl(kickUserData);
 
-    if (kickAvatarUrl) {
-      try {
-        logger.info(
-          `[Sync Kick Info] Procesando avatar para usuario ${userId}`,
-        );
-        cloudinaryAvatarUrl = await uploadKickAvatarToCloudinary(
-          kickAvatarUrl,
-          userId,
-        );
-        logger.info(
-          `[Sync Kick Info] ✅ Avatar actualizado en Cloudinary:`,
-          cloudinaryAvatarUrl,
-        );
-      } catch (avatarError) {
-        logger.warn(
-          "[Sync Kick Info] Error actualizando avatar, manteniendo el anterior:",
-          avatarError.message,
-        );
-        // No fallar la sincronización por problemas con el avatar
-      }
-    } else {
+    if (!kickAvatarUrl) {
       logger.info(
         "[Sync Kick Info] No se encontró avatar en los datos de Kick",
       );
@@ -647,7 +625,7 @@ exports.syncKickInfo = async (req, res) => {
     const updatedKickData = {
       ...user.kick_data,
       username: kickUserData.name || kickUserData.username,
-      avatar_url: cloudinaryAvatarUrl,
+      avatar_url: kickAvatarUrl || user.kick_data?.avatar_url || null,
       user_id: kickUserData.user_id || kickUserData.id,
       last_sync: new Date().toISOString(),
     };
