@@ -14,7 +14,7 @@ const VipService = require("../services/vip.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
-const { syncUsernameIfNeeded } = require("../utils/usernameSync.util");
+const { syncUsernameIfNeeded, syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
 
 /**
  * 🔍 DIAGNÓSTICO: monitorear Redis
@@ -756,6 +756,9 @@ async function handleChatMessage(payload, metadata) {
 
     // 🔄 Sincronizar username si cambió (con throttling de 24h)
     await syncUsernameIfNeeded(usuario, kickUsername, kickUserId, false);
+
+    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (con throttling de 24h)
+    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, payload.sender?.profile_picture);
 
     // Obtener configuración de puntos
     const configs = await KickPointsConfig.findAll({
@@ -2208,7 +2211,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
           });
 
           debugResults.push({
-            event: sub.name,
+            event: sub.name || "DESCONOCIDO",
             success: false,
             error: {
               message: dbError.message,
