@@ -70,6 +70,8 @@ async function checkStreamStatusViaAPI() {
         
         const livestreamData = response.data;
         
+        logger.debug(`[STREAM MONITOR] Respuesta API completa: ${JSON.stringify(livestreamData)}`);
+
         // Si hay datos de livestream, el stream está online
         if (livestreamData && livestreamData.id) {
             logger.info(`✅ [STREAM MONITOR] API confirma: Stream ONLINE`);
@@ -95,6 +97,10 @@ async function checkStreamStatusViaAPI() {
         }
         
     } catch (error) {
+        if (error.response) {
+            logger.debug(`[STREAM MONITOR] Error response data: ${JSON.stringify(error.response.data)}`);
+        }
+
         // 404 o error de red significa que el stream está offline
         if (error.response?.status === 404) {
             logger.info(`🔴 [STREAM MONITOR] API confirma: Stream OFFLINE (404)`);
