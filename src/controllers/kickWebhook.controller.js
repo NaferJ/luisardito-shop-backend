@@ -437,6 +437,15 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 
   // LOG PARA DEBUG - VER TODOS LOS EVENTOS
   logger.warn(`⚠️ ENTRANDO A SWITCH CON EVENTTYPE: "${eventType}"`);
+  logger.warn(`⚠️ LONGITUD: ${eventType?.length} | TIPO: ${typeof eventType}`);
+  logger.warn(`⚠️ BYTES: ${Buffer.from(eventType || '').toString('hex')}`);
+
+  // Ver exactamente qué valor tiene
+  if (eventType === "livestream.status.updated") {
+    logger.warn(`✅ MATCH EXACTO: livestream.status.updated`);
+  } else if (eventType?.includes?.("livestream")) {
+    logger.warn(`⚠️ CONTIENE livestream PERO NO COINCIDE: "${eventType}"`);
+  }
 
   switch (eventType) {
     case "chat.message.sent":
