@@ -332,6 +332,9 @@ exports.handleWebhook = async (req, res) => {
   const eventType = req.headers["kick-event-type"];
   const messageId = req.headers["kick-event-message-id"];
 
+  // LOG TODOS LOS EVENTOS - SIN FILTRAR
+  logger.info(`🎯🎯🎯 [WEBHOOK RECIBIDO] Tipo: ${eventType} | ID: ${messageId}`);
+
   if (eventType) {
     logger.info("🎯 [Kick Webhook] Evento:", eventType, "ID:", messageId);
   }
@@ -432,48 +435,62 @@ exports.handleWebhook = async (req, res) => {
 async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
   logger.info(`[Kick Webhook] Procesando evento ${eventType}`);
 
+  // LOG PARA DEBUG - VER TODOS LOS EVENTOS
+  logger.warn(`⚠️ ENTRANDO A SWITCH CON EVENTTYPE: "${eventType}"`);
+
   switch (eventType) {
     case "chat.message.sent":
+      logger.info("📨 CASE MATCH: chat.message.sent");
       await handleChatMessage(payload, metadata);
       break;
 
     case "channel.followed":
+      logger.info("👥 CASE MATCH: channel.followed");
       await handleChannelFollowed(payload, metadata);
       break;
 
     case "channel.subscription.new":
+      logger.info("🔔 CASE MATCH: channel.subscription.new");
       await handleNewSubscription(payload, metadata);
       break;
 
     case "channel.subscription.renewal":
+      logger.info("🔄 CASE MATCH: channel.subscription.renewal");
       await handleSubscriptionRenewal(payload, metadata);
       break;
 
     case "channel.subscription.gifts":
+      logger.info("🎁 CASE MATCH: channel.subscription.gifts");
       await handleSubscriptionGifts(payload, metadata);
       break;
 
     case "livestream.status.updated":
+      logger.info("🎥🎥🎥 CASE MATCH: livestream.status.updated 🎥🎥🎥");
       await handleLivestreamStatusUpdated(payload, metadata);
       break;
 
     case "livestream.metadata.updated":
+      logger.info("📝 CASE MATCH: livestream.metadata.updated");
       await handleLivestreamMetadataUpdated(payload, metadata);
       break;
 
     case "moderation.banned":
+      logger.info("🚫 CASE MATCH: moderation.banned");
       await handleModerationBanned(payload, metadata);
       break;
 
     case "kicks.gifted":
+      logger.info("💰 CASE MATCH: kicks.gifted");
       await handleKicksGifted(payload, metadata);
       break;
 
     case "channel.reward.redemption.updated":
+      logger.info("🏆 CASE MATCH: channel.reward.redemption.updated");
       await handleRewardRedemption(payload, metadata);
       break;
 
     default:
+      logger.warn(`❌ EVENTO NO MANEJADO: "${eventType}"`);
       logger.info(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
   }
 }
@@ -1380,12 +1397,17 @@ async function handleSubscriptionGifts(payload, metadata) {
  */
 async function handleLivestreamStatusUpdated(payload, metadata) {
   try {
+    console.log("🎥🎥🎥 WEBHOOK LIVESTREAM.STATUS.UPDATED RECIBIDO 🎥🎥🎥");
+
     const isLive = payload.is_live;
     const redis = getRedisClient();
 
     // 📊 Log detallado del payload completo para debugging
     logger.info(
       "🎥 [STREAM STATUS] ==========================================",
+    );
+    logger.info(
+      "🎥 [STREAM STATUS] ✅ WEBHOOK LIVESTREAM.STATUS.UPDATED RECIBIDO",
     );
     logger.info(
       "🎥 [STREAM STATUS] Payload completo:",
