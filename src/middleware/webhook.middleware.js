@@ -9,8 +9,6 @@ const logWebhookRequest = (req, res, next) => {
     );
 
     if (hasKickHeaders || req.body?.test) {
-        console.log('🎯 [WEBHOOK]', new Date().toISOString(), req.method, req.originalUrl);
-
         const kickHeaders = {};
         Object.keys(req.headers).forEach(key => {
             if (key.toLowerCase().startsWith('kick-event')) {
@@ -19,11 +17,11 @@ const logWebhookRequest = (req, res, next) => {
         });
 
         if (Object.keys(kickHeaders).length > 0) {
-            console.log('🎯 [KICK HEADERS]', kickHeaders);
+            // console.log('🎯 [KICK HEADERS]', kickHeaders);
         }
 
         if (req.body && Object.keys(req.body).length > 0) {
-            console.log('🎯 [PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
+            // console.log('🎯 [PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
         }
     }
 

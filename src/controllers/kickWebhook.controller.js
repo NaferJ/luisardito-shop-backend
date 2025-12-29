@@ -333,11 +333,6 @@ exports.handleWebhook = async (req, res) => {
   const messageId = req.headers["kick-event-message-id"];
 
   // LOG TODOS LOS EVENTOS - SIN FILTRAR
-  logger.info(`🎯🎯🎯 [WEBHOOK RECIBIDO] Tipo: ${eventType} | ID: ${messageId}`);
-
-  if (eventType) {
-    logger.info("🎯 [Kick Webhook] Evento:", eventType, "ID:", messageId);
-  }
 
   try {
     // Si es una petición de test simple, responder inmediatamente
@@ -436,9 +431,6 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
   logger.info(`[Kick Webhook] Procesando evento ${eventType}`);
 
   // LOG PARA DEBUG - VER TODOS LOS EVENTOS
-  logger.warn(`⚠️ ENTRANDO A SWITCH CON EVENTTYPE: "${eventType}"`);
-  logger.warn(`⚠️ LONGITUD: ${eventType?.length} | TIPO: ${typeof eventType}`);
-  logger.warn(`⚠️ BYTES: ${Buffer.from(eventType || '').toString('hex')}`);
 
   // Ver exactamente qué valor tiene
   if (eventType === "livestream.status.updated") {
@@ -449,7 +441,6 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 
   switch (eventType) {
     case "chat.message.sent":
-      logger.info("📨 CASE MATCH: chat.message.sent");
       await handleChatMessage(payload, metadata);
       break;
 
@@ -646,16 +637,12 @@ async function handleRewardRedemption(payload, metadata) {
 /**
  * Maneja mensajes de chat
  */
-/**
- * Maneja mensajes de chat
- */
 async function handleChatMessage(payload, metadata) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
     const kickUsername = sender.username;
 
-    logger.info("[Chat Message]", kickUsername, ":", payload.content);
 
     // PRIORIDAD 1: Verificar si es migración de Botrix
     // Solo procesamos si la migración está habilitada
