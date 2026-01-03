@@ -11,6 +11,7 @@ const {
 } = require("../models");
 const BotrixMigrationService = require("../services/botrixMigration.service");
 const VipService = require("../services/vip.service");
+const NotificacionService = require("../services/notificacion.service");
 const { Op, Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
@@ -611,6 +612,17 @@ async function handleRewardRedemption(payload, metadata) {
         }
       }, { transaction });
 
+      // 📬 Crear notificación de puntos ganados
+      await NotificacionService.crearNotificacionPuntosGanados(
+        usuario.id,
+        {
+          cantidad: puntosAOtorgar,
+          concepto: `Canje de recompensa: ${localReward.title}`,
+          tipo_evento: 'channel.reward.redemption.updated'
+        },
+        transaction
+      );
+
       // Incrementar contador de canjeos
       await localReward.increment('total_redemptions', {
         by: 1,
@@ -1048,6 +1060,16 @@ async function handleChannelFollowed(payload, metadata) {
       },
     });
 
+    // 📬 Crear notificación de puntos ganados por follow
+    await NotificacionService.crearNotificacionPuntosGanados(
+      usuario.id,
+      {
+        cantidad: pointsToAward,
+        concepto: `Primer follow al canal`,
+        tipo_evento: 'channel.followed'
+      }
+    );
+
     // Actualizar o crear tracking
     if (!userTracking) {
       userTracking = await KickUserTracking.create({
@@ -1142,6 +1164,17 @@ async function handleNewSubscription(payload, metadata) {
           is_vip: false, // usuario.isVipActive()
         },
       });
+
+      // 📬 Crear notificación de puntos ganados por suscripción
+      await NotificacionService.crearNotificacionPuntosGanados(
+        usuario.id,
+        {
+          cantidad: pointsToAward,
+          concepto: `Nueva suscripción (${duration} ${duration === 1 ? "mes" : "meses"})`,
+          tipo_evento: 'channel.subscription.new',
+          duracion_meses: duration
+        }
+      );
     }
 
     // Actualizar tracking de usuario
@@ -1310,6 +1343,17 @@ async function handleSubscriptionGifts(payload, metadata) {
           },
         });
 
+        // 📬 Crear notificación de puntos ganados por regalo de suscripciones
+        await NotificacionService.crearNotificacionPuntosGanados(
+          gifterUsuario.id,
+          {
+            cantidad: totalPoints,
+            concepto: `Regalaste ${giftees.length} suscripción${giftees.length !== 1 ? "es" : ""}`,
+            tipo_evento: 'channel.subscription.gifts',
+            gifts_count: giftees.length
+          }
+        );
+
         // Actualizar tracking del que regala
         await KickUserTracking.upsert({
           kick_user_id: gifterKickUserId,
@@ -1354,6 +1398,17 @@ async function handleSubscriptionGifts(payload, metadata) {
               expires_at: expiresAt,
             },
           });
+
+          // 📬 Crear notificación de suscripción regalada
+          await NotificacionService.crearNotificacionSubRegalada(
+            gifteeUsuario.id,
+            {
+              regalador_username: gifter.is_anonymous ? "Un usuario anónimo" : gifter.username,
+              monto_subscription: 1,
+              puntos_otorgados: pointsForGiftee,
+              expires_at: expiresAt
+            }
+          );
 
           // Actualizar tracking del que recibe
           await KickUserTracking.upsert({
@@ -1659,6 +1714,20 @@ async function handleKicksGifted(payload, metadata) {
           },
         },
         { transaction },
+      );
+
+      // 📬 Crear notificación de puntos ganados por regalo de kicks
+      await NotificacionService.crearNotificacionPuntosGanados(
+        usuario.id,
+        {
+          cantidad: pointsToAward,
+          concepto: `Regalo de ${kickAmount} kicks (${giftName})`,
+          tipo_evento: 'kicks.gifted',
+          kick_amount: kickAmount,
+          gift_name: giftName,
+          gift_tier: giftTier
+        },
+        transaction
       );
 
       // Actualizar tracking del usuario (opcional, para estadísticas)

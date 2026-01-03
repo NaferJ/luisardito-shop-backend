@@ -29,6 +29,7 @@ const kickBotCommandsRoutes = require("./src/routes/kickBotCommands.routes");
 const leaderboardRoutes = require("./src/routes/leaderboard.routes");
 const promocionesRoutes = require("./src/routes/promociones.routes");
 const broadcasterInfoRoutes = require("./src/routes/broadcasterInfo.routes");
+const notificacionesRoutes = require("./src/routes/notificaciones.routes");
 
 const app = express();
 
@@ -75,6 +76,7 @@ app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/promociones", promocionesRoutes);
 app.use("/api/broadcaster", broadcasterInfoRoutes); // ✅ Ruta pública para info del broadcaster
+app.use("/api/notificaciones", notificacionesRoutes); // ✅ Ruta de notificaciones
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {

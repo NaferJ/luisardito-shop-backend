@@ -2,6 +2,7 @@ const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking, DiscordUserL
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const promocionService = require('../services/promocion.service');
+const NotificacionService = require('../services/notificacion.service');
 
 /**
  * Función helper para enriquecer información de usuario con datos de Discord
@@ -114,6 +115,22 @@ exports.crear = async (req, res) => {
             concepto: conceptoCanje,
             motivo: conceptoCanje
         }, { transaction: t });
+
+        // 7) 📬 Crear notificación de canje creado
+        await NotificacionService.crearNotificacionCanjeCreado(
+            usuario.id,
+            {
+                canje_id: canje.id,
+                nombre_producto: producto.nombre,
+                precio: precioFinal,
+                promocion_aplicada: promocionAplicada ? {
+                    id: promocionAplicada.id,
+                    titulo: promocionAplicada.titulo,
+                    descuento: infoDescuento.descuento
+                } : null
+            },
+            t
+        );
 
         await t.commit();
 
@@ -362,6 +379,28 @@ exports.actualizarEstado = async (req, res) => {
         // Actualizar estado del canje
         await canje.update({ estado }, { transaction: t });
 
+        // 📬 Crear notificaciones según el nuevo estado
+        if (estado === 'entregado') {
+            await NotificacionService.crearNotificacionCanjeEntregado(
+                canje.usuario_id,
+                {
+                    canje_id: canje.id,
+                    nombre_producto: canje.Producto.nombre
+                },
+                t
+            );
+        } else if (estado === 'cancelado') {
+            await NotificacionService.crearNotificacionCanjeCancelado(
+                canje.usuario_id,
+                {
+                    canje_id: canje.id,
+                    nombre_producto: canje.Producto.nombre,
+                    motivo: 'Cancelado por administrador'
+                },
+                t
+            );
+        }
+
         // 🌟 FUNCIONALIDAD VIP: Si se marca como entregado y el producto contiene "VIP"
         if (estado === 'entregado' && canje.Producto && canje.Producto.nombre.toLowerCase().includes('vip')) {
             console.log(`🌟 [VIP GRANT] Detectado producto VIP entregado: ${canje.Producto.nombre}`);
@@ -471,6 +510,18 @@ exports.devolverCanje = async (req, res) => {
         // 4. Reponer stock del producto (si corresponde)
         const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
         await producto.update({ stock: stockActual + 1 }, { transaction: t });
+
+        // 5) 📬 Crear notificación de canje devuelto
+        await NotificacionService.crearNotificacionCanjeDevuelto(
+            usuario.id,
+            {
+                canje_id: canje.id,
+                nombre_producto: producto.nombre,
+                puntos_devueltos: puntosADevolver,
+                motivo: motivo
+            },
+            t
+        );
 
         await t.commit();
 

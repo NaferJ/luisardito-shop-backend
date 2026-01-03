@@ -25,6 +25,7 @@ const PromocionProducto = require("./promocionProducto.model");
 const UsoPromocion = require("./usoPromocion.model");
 const KickReward = require("./kickReward.model");
 const DiscordUserLink = require("./discordUserLink.model");
+const Notificacion = require("./notificacion.model");
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
@@ -129,4 +130,5 @@ module.exports = {
   UsoPromocion,
   KickReward,
   DiscordUserLink,
+  Notificacion,
 };
