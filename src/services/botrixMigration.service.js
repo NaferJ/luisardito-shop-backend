@@ -190,9 +190,9 @@ class BotrixMigrationService {
                 return { processed: false, reason: 'Watchtime migration disabled' };
             }
 
-            // Regex para detectar: "@usuario ha pasado X dias Y horas Z min viendo este canal"
-            // Flexible para manejar variaciones en singular/plural
-            const watchtimeRegex = /@(\w+)\s+ha\s+pasado\s+(?:(\d+)\s+d[íi]as?)?\s*(?:(\d+)\s+horas?)?\s*(?:(\d+)\s+min)?\s+viendo\s+este\s+canal/i;
+            // Regex para detectar: "@usuario ha pasado X dias Y horas Z min viendo [este canal|el stream]"
+            // Flexible para manejar variaciones en singular/plural y diferentes formatos
+            const watchtimeRegex = /@(\w+)\s+ha\s+pasado\s+(?:(\d+)\s+d[íi]as?)?\s*(?:(\d+)\s+horas?)?\s*(?:(\d+)\s+min)?\s+viendo\s+(?:este\s+canal|el\s+stream)/i;
             const match = content.match(watchtimeRegex);
 
             if (!match) {
