@@ -43,12 +43,20 @@ function formatWatchtime(minutes) {
         }
     } else if (months > 0) {
         parts.push(`${months}m`)
-        if (weeks > 0) parts.push(`${weeks}s`)
-        else if (days > 0) parts.push(`${days}d`)
+        if (days > 0) {
+            parts.push(`${days}d`)
+            if (hours > 0) parts.push(`${hours}h`)
+        } else if (hours > 0) {
+            parts.push(`${hours}h`)
+        }
     } else if (weeks > 0) {
         parts.push(`${weeks}s`)
-        if (days > 0) parts.push(`${days}d`)
-        else if (hours > 0) parts.push(`${hours}h`)
+        if (days > 0) {
+            parts.push(`${days}d`)
+            if (hours > 0) parts.push(`${hours}h`)
+        } else if (hours > 0) {
+            parts.push(`${hours}h`)
+        }
     } else if (days > 0) {
         parts.push(`${days}d`)
         if (hours > 0) parts.push(`${hours}h`)
