@@ -34,9 +34,15 @@ function formatWatchtime(minutes) {
             parts.push(`${months}m`)
             if (days > 0) {
                 parts.push(`${days}d`)
-                if (hours > 0) parts.push(`${hours}h`)
+                if (hours > 0) {
+                    parts.push(`${hours}h`)
+                } else if (mins > 0) {
+                    parts.push(`${mins}min`)
+                }
             } else if (hours > 0) {
                 parts.push(`${hours}h`)
+            } else if (mins > 0) {
+                parts.push(`${mins}min`)
             }
         } else if (weeks > 0) {
             parts.push(`${weeks}s`)
@@ -45,24 +51,39 @@ function formatWatchtime(minutes) {
         parts.push(`${months}m`)
         if (days > 0) {
             parts.push(`${days}d`)
-            if (hours > 0) parts.push(`${hours}h`)
+            if (hours > 0) {
+                parts.push(`${hours}h`)
+            } else if (mins > 0) {
+                parts.push(`${mins}min`)
+            }
         } else if (hours > 0) {
             parts.push(`${hours}h`)
+        } else if (mins > 0) {
+            parts.push(`${mins}min`)
         }
     } else if (weeks > 0) {
         parts.push(`${weeks}s`)
         if (days > 0) {
             parts.push(`${days}d`)
-            if (hours > 0) parts.push(`${hours}h`)
+            if (hours > 0) {
+                parts.push(`${hours}h`)
+            } else if (mins > 0) {
+                parts.push(`${mins}min`)
+            }
         } else if (hours > 0) {
             parts.push(`${hours}h`)
+        } else if (mins > 0) {
+            parts.push(`${mins}min`)
         }
     } else if (days > 0) {
         parts.push(`${days}d`)
-        if (hours > 0) parts.push(`${hours}h`)
+        if (hours > 0) {
+            parts.push(`${hours}h`)
+        } else if (mins > 0) {
+            parts.push(`${mins}min`)
+        }
     } else if (hours > 0) {
         parts.push(`${hours}h`)
-        if (mins > 0) parts.push(`${mins}min`)
     } else {
         parts.push(`${mins}min`)
     }
