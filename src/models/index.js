@@ -26,6 +26,7 @@ const UsoPromocion = require("./usoPromocion.model");
 const KickReward = require("./kickReward.model");
 const DiscordUserLink = require("./discordUserLink.model");
 const Notificacion = require("./notificacion.model");
+const UserWatchtime = require("./userWatchtime.model");
 
 // DEFINIR ASOCIACIONES
 // Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
@@ -104,6 +105,10 @@ UsoPromocion.belongsTo(Producto, { foreignKey: "producto_id" });
 Usuario.hasMany(DiscordUserLink, { foreignKey: "tienda_user_id", as: "discordLinks" });
 DiscordUserLink.belongsTo(Usuario, { foreignKey: "tienda_user_id", as: "usuario" });
 
+// Asociaciones de UserWatchtime
+Usuario.hasOne(UserWatchtime, { foreignKey: "usuario_id", as: "watchtime" });
+UserWatchtime.belongsTo(Usuario, { foreignKey: "usuario_id" });
+
 // Exportar sequelize y todos los modelos
 module.exports = {
   sequelize,
@@ -131,4 +136,5 @@ module.exports = {
   KickReward,
   DiscordUserLink,
   Notificacion,
+  UserWatchtime,
 };

@@ -31,6 +31,11 @@ const Usuario = sequelize.define('Usuario', {
         type: DataTypes.INTEGER,
         defaultValue: 0
     },
+    max_puntos: {
+        type: DataTypes.INTEGER,
+        defaultValue: 0,
+        comment: 'Máximo de puntos que ha alcanzado el usuario en su historial'
+    },
     kick_data: {
         type: DataTypes.JSON,
         allowNull: true
@@ -51,6 +56,22 @@ const Usuario = sequelize.define('Usuario', {
     botrix_points_migrated: {
         type: DataTypes.INTEGER,
         allowNull: true
+    },
+    botrix_watchtime_migrated: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        comment: 'Indica si el usuario ya migró su watchtime desde Botrix'
+    },
+    botrix_watchtime_migrated_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        comment: 'Fecha en que se realizó la migración de watchtime'
+    },
+    botrix_watchtime_minutes_migrated: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        comment: 'Minutos totales de watchtime migrados desde Botrix'
     },
     is_vip: {
         type: DataTypes.BOOLEAN,
@@ -94,6 +115,10 @@ Usuario.prototype.isVipActive = function() {
 
 Usuario.prototype.canMigrateBotrix = function() {
     return !this.botrix_migrated;
+};
+
+Usuario.prototype.canMigrateWatchtime = function() {
+    return !this.botrix_watchtime_migrated;
 };
 
 Usuario.prototype.getUserType = function() {

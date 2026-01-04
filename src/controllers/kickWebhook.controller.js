@@ -662,18 +662,35 @@ async function handleChatMessage(payload, metadata) {
     const botrixConfig = await BotrixMigrationConfig.getConfig();
 
     if (botrixConfig.migration_enabled) {
-      logger.info("🔍 [BOTRIX DEBUG] Verificando mensaje para migración...");
+      logger.info("🔍 [BOTRIX DEBUG] Verificando mensaje para migración de puntos...");
       const botrixResult =
         await BotrixMigrationService.processChatMessage(payload);
       logger.info("🔍 [BOTRIX DEBUG] Resultado procesamiento:", botrixResult);
 
       if (botrixResult.processed) {
         logger.info(
-          `📄 [BOTRIX] Migración procesada: ${JSON.stringify(botrixResult.details)}`,
+          `📄 [BOTRIX] Migración de puntos procesada: ${JSON.stringify(botrixResult.details)}`,
         );
         return;
       } else {
-        logger.info(`🔍 [BOTRIX] No procesado: ${botrixResult.reason}`);
+        logger.info(`🔍 [BOTRIX] Puntos no procesados: ${botrixResult.reason}`);
+      }
+    }
+
+    // Procesar migración de watchtime
+    if (botrixConfig.watchtime_migration_enabled) {
+      logger.info("🔍 [BOTRIX WATCHTIME DEBUG] Verificando mensaje para migración de watchtime...");
+      const watchtimeResult =
+        await BotrixMigrationService.processWatchtimeMessage(payload);
+      logger.info("🔍 [BOTRIX WATCHTIME DEBUG] Resultado procesamiento:", watchtimeResult);
+
+      if (watchtimeResult.processed) {
+        logger.info(
+          `📄 [BOTRIX WATCHTIME] Migración de watchtime procesada: ${JSON.stringify(watchtimeResult.details)}`,
+        );
+        return;
+      } else {
+        logger.info(`🔍 [BOTRIX WATCHTIME] Watchtime no procesado: ${watchtimeResult.reason}`);
       }
     }
 
@@ -919,8 +936,22 @@ async function handleChatMessage(payload, metadata) {
     });
 
     try {
+      const { UserWatchtime } = require("../models");
+
       // Otorgar puntos
       await usuario.increment("puntos", { by: pointsToAward }, { transaction });
+
+      // Actualizar max_puntos si es necesario
+      const usuarioActualizado = await usuario.reload({ transaction });
+      if (usuarioActualizado.puntos > usuarioActualizado.max_puntos) {
+        await usuarioActualizado.update(
+          { max_puntos: usuarioActualizado.puntos },
+          { transaction }
+        );
+        logger.info(
+          `🏆 [MAX POINTS] Nuevo máximo de puntos: ${usuarioActualizado.puntos} para ${kickUsername}`,
+        );
+      }
 
       // Registrar en historial
       await HistorialPunto.create(
@@ -942,13 +973,54 @@ async function handleChatMessage(payload, metadata) {
         { transaction },
       );
 
+      // 🕐 AGREGAR WATCHTIME si pasó el cooldown
+      const now = new Date();
+      let watchtime = await UserWatchtime.findOne({
+        where: { usuario_id: usuario.id },
+        transaction,
+      });
+
+      if (!watchtime) {
+        // Crear nuevo registro de watchtime
+        watchtime = await UserWatchtime.create(
+          {
+            usuario_id: usuario.id,
+            kick_user_id: kickUserId,
+            total_watchtime_minutes: 5, // +5 minutos por primer mensaje
+            message_count: 1,
+            first_message_date: now,
+            last_message_at: now,
+          },
+          { transaction }
+        );
+        logger.info(
+          `🕐 [WATCHTIME] Nuevo registro creado para ${kickUsername} - 5 minutos`,
+        );
+      } else {
+        // Incrementar watchtime existente
+        await watchtime.increment(
+          {
+            total_watchtime_minutes: 5,
+            message_count: 1,
+          },
+          { transaction }
+        );
+        await watchtime.update(
+          { last_message_at: now },
+          { transaction }
+        );
+        logger.info(
+          `🕐 [WATCHTIME] ${kickUsername} - Total: ${watchtime.total_watchtime_minutes + 5} minutos`,
+        );
+      }
+
       await transaction.commit();
 
       logger.info(
         `[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`,
       );
       logger.info(
-        `[Chat Message] 💰 Total puntos usuario: ${(await usuario.reload()).puntos}`,
+        `[Chat Message] 💰 Total puntos usuario: ${usuarioActualizado.puntos}`,
       );
     } catch (transactionError) {
       await transaction.rollback();

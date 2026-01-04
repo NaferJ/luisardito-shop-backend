@@ -38,6 +38,15 @@ router.put('/vip-config',
     kickAdminController.updateVipConfig
 );
 
+/**
+ * PUT /api/kick-admin/watchtime-migration
+ * Activar/desactivar migración de watchtime de Botrix
+ */
+router.put('/watchtime-migration',
+    checkPermission('gestionar_usuarios'),
+    kickAdminController.updateWatchtimeMigrationConfig
+);
+
 // ============================================================================
 // RUTAS DE GESTIÓN VIP
 // ============================================================================

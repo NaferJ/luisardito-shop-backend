@@ -42,7 +42,7 @@ exports.getConfig = async (req, res) => {
     try {
         const config = await BotrixMigrationConfig.getConfig();
 
-        // Obtener estadísticas reales de migración
+        // Obtener estadísticas reales de migración de puntos
         const migrationStats = await Usuario.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'migrated_users'],
@@ -51,6 +51,19 @@ exports.getConfig = async (req, res) => {
             where: {
                 botrix_migrated: true,
                 botrix_points_migrated: { [Op.gt]: 0 }
+            },
+            raw: true
+        });
+
+        // Obtener estadísticas reales de migración de watchtime
+        const watchtimeMigrationStats = await Usuario.findAll({
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.col('id')), 'migrated_users'],
+                [sequelize.fn('SUM', sequelize.col('botrix_watchtime_minutes_migrated')), 'total_minutes_migrated']
+            ],
+            where: {
+                botrix_watchtime_migrated: true,
+                botrix_watchtime_minutes_migrated: { [Op.gt]: 0 }
             },
             raw: true
         });
@@ -77,6 +90,7 @@ exports.getConfig = async (req, res) => {
 
         console.log('📊 [KICK ADMIN DEBUG] Estadísticas calculadas:', {
             migration: migrationStats[0],
+            watchtimeMigration: watchtimeMigrationStats[0],
             vip: { activeVips, expiredVips }
         });
 
@@ -87,6 +101,13 @@ exports.getConfig = async (req, res) => {
                 stats: {
                     migrated_users: parseInt(migrationStats[0]?.migrated_users || 0),
                     total_points_migrated: parseInt(migrationStats[0]?.total_points_migrated || 0)
+                }
+            },
+            watchtime_migration: {
+                enabled: config.watchtime_migration_enabled,
+                stats: {
+                    migrated_users: parseInt(watchtimeMigrationStats[0]?.migrated_users || 0),
+                    total_minutes_migrated: parseInt(watchtimeMigrationStats[0]?.total_minutes_migrated || 0)
                 }
             },
             vip: {
@@ -270,6 +291,65 @@ exports.updateVipConfig = async (req, res) => {
         });
     } catch (error) {
         console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración VIP:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Actualizar configuración de migración de watchtime
+ */
+exports.updateWatchtimeMigrationConfig = async (req, res) => {
+    try {
+        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en watchtime migration config:', {
+            body: req.body,
+            bodyKeys: Object.keys(req.body),
+            watchtime_migration_enabled_value: req.body.watchtime_migration_enabled,
+            watchtime_migration_enabled_type: typeof req.body.watchtime_migration_enabled
+        });
+
+        const { watchtime_migration_enabled } = req.body;
+
+        // Validación más flexible para manejar strings "true"/"false"
+        let booleanValue;
+
+        if (typeof watchtime_migration_enabled === 'boolean') {
+            booleanValue = watchtime_migration_enabled;
+        } else if (typeof watchtime_migration_enabled === 'string') {
+            if (watchtime_migration_enabled.toLowerCase() === 'true') {
+                booleanValue = true;
+            } else if (watchtime_migration_enabled.toLowerCase() === 'false') {
+                booleanValue = false;
+            } else {
+                console.log('❌ [KICK ADMIN DEBUG] Valor string inválido:', watchtime_migration_enabled);
+                return res.status(400).json({
+                    success: false,
+                    error: 'watchtime_migration_enabled debe ser un booleano o "true"/"false"'
+                });
+            }
+        } else {
+            console.log('❌ [KICK ADMIN DEBUG] Tipo inválido:', typeof watchtime_migration_enabled, 'valor:', watchtime_migration_enabled);
+            return res.status(400).json({
+                success: false,
+                error: 'watchtime_migration_enabled debe ser un booleano'
+            });
+        }
+
+        console.log('✅ [KICK ADMIN DEBUG] Valor procesado:', booleanValue);
+
+        await BotrixMigrationConfig.setConfig('watchtime_migration_enabled', booleanValue);
+
+        res.json({
+            success: true,
+            message: `Migración de watchtime ${booleanValue ? 'activada' : 'desactivada'}`,
+            config: {
+                watchtime_migration_enabled: booleanValue
+            }
+        });
+    } catch (error) {
+        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración de migración de watchtime:', error);
         res.status(500).json({
             success: false,
             error: error.message

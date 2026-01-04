@@ -68,7 +68,19 @@ class LeaderboardService {
         );
         if (!userPosition) {
           // El usuario está fuera del ranking actual, buscarlo manualmente
-          const usuario = await Usuario.findByPk(userId);
+          const { UserWatchtime } = require("../models");
+
+          const usuario = await Usuario.findByPk(userId, {
+            include: [
+              {
+                model: UserWatchtime,
+                as: "watchtime",
+                attributes: ["total_watchtime_minutes", "message_count"],
+                required: false,
+              }
+            ]
+          });
+
           if (usuario) {
             const position =
               currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
@@ -99,6 +111,9 @@ class LeaderboardService {
               nickname: usuario.nickname,
               display_name,
               puntos: usuario.puntos,
+              max_puntos: usuario.max_puntos || 0,
+              watchtime_minutes: usuario.watchtime?.total_watchtime_minutes || 0,
+              message_count: usuario.watchtime?.message_count || 0,
               position: position || currentRanking.length + 1,
               position_change: 0,
               change_indicator: "neutral",
@@ -117,6 +132,9 @@ class LeaderboardService {
         offset + limit,
       );
 
+      // 6. Obtener información del próximo reset
+      const resetInfo = await this._getNextResetDate();
+
       return {
         success: true,
         data: paginatedData,
@@ -125,6 +143,9 @@ class LeaderboardService {
           limit,
           offset,
           last_update: lastSnapshot?.snapshot_date || null,
+          next_reset_date: resetInfo.next_reset_date,
+          days_until_reset: resetInfo.days_until_reset,
+          hours_until_reset: resetInfo.hours_until_reset,
         },
         user_position: userPosition,
       };
@@ -139,6 +160,8 @@ class LeaderboardService {
    * @private
    */
   async _getCurrentRanking() {
+    const { UserWatchtime } = require("../models");
+
     const usuarios = await Usuario.findAll({
       where: {
         puntos: {
@@ -149,11 +172,20 @@ class LeaderboardService {
         "id",
         "nickname",
         "puntos",
+        "max_puntos",
         "is_vip",
         "vip_expires_at",
         "kick_data",
         "user_id_ext",
         "discord_username",
+      ],
+      include: [
+        {
+          model: UserWatchtime,
+          as: "watchtime",
+          attributes: ["total_watchtime_minutes", "message_count"],
+          required: false,
+        }
       ],
       order: [
         ["puntos", "DESC"],
@@ -199,6 +231,9 @@ class LeaderboardService {
           nickname: usuario.nickname,
           display_name,
           puntos: usuario.puntos,
+          max_puntos: usuario.max_puntos || 0,
+          watchtime_minutes: usuario["watchtime.total_watchtime_minutes"] || 0,
+          message_count: usuario["watchtime.message_count"] || 0,
           position: index + 1,
           is_vip: isVipActive,
           is_subscriber: isSubscriber,
@@ -238,6 +273,53 @@ class LeaderboardService {
       };
       return acc;
     }, {});
+  }
+
+  /**
+   * Calcula la fecha del próximo reset del leaderboard
+   * El reset ocurre cada LEADERBOARD_SNAPSHOT_INTERVAL_HOURS (336 horas = 14 días)
+   * @private
+   */
+  async _getNextResetDate() {
+    try {
+      const RESET_INTERVAL_HOURS = parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336);
+
+      const lastSnapshotDate = await LeaderboardSnapshot.max("snapshot_date");
+
+      if (!lastSnapshotDate) {
+        // Si no hay snapshots, el próximo reset es en 336 horas desde ahora
+        const nextReset = new Date();
+        nextReset.setHours(nextReset.getHours() + RESET_INTERVAL_HOURS);
+        return {
+          next_reset_date: nextReset,
+          days_until_reset: Math.ceil(RESET_INTERVAL_HOURS / 24),
+          hours_until_reset: RESET_INTERVAL_HOURS
+        };
+      }
+
+      // Calcular próximo reset
+      const nextReset = new Date(lastSnapshotDate);
+      nextReset.setHours(nextReset.getHours() + RESET_INTERVAL_HOURS);
+
+      // Calcular tiempo restante
+      const now = new Date();
+      const timeDiff = nextReset - now;
+      const hoursUntilReset = Math.ceil(timeDiff / (1000 * 60 * 60));
+      const daysUntilReset = Math.ceil(hoursUntilReset / 24);
+
+      return {
+        next_reset_date: nextReset,
+        days_until_reset: Math.max(0, daysUntilReset),
+        hours_until_reset: Math.max(0, hoursUntilReset)
+      };
+    } catch (error) {
+      logger.error("Error calculando próximo reset:", error);
+      return {
+        next_reset_date: null,
+        days_until_reset: null,
+        hours_until_reset: null
+      };
+    }
   }
 
   /**

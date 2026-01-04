@@ -31,6 +31,12 @@ const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
         type: DataTypes.INTEGER,
         allowNull: false,
         defaultValue: 300
+    },
+    watchtime_migration_enabled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+        comment: 'Habilita/deshabilita la migración de watchtime desde Botrix'
     }
 }, {
     tableName: 'botrix_migration_config',
@@ -51,7 +57,8 @@ BotrixMigrationConfig.getConfig = async function() {
                 vip_points_enabled: false,
                 vip_chat_points: 5,
                 vip_follow_points: 100,
-                vip_sub_points: 300
+                vip_sub_points: 300,
+                watchtime_migration_enabled: true
             });
             return defaultConfig.toJSON();
         }
@@ -65,7 +72,8 @@ BotrixMigrationConfig.getConfig = async function() {
             vip_points_enabled: false,
             vip_chat_points: 5,
             vip_follow_points: 100,
-            vip_sub_points: 300
+            vip_sub_points: 300,
+            watchtime_migration_enabled: true
         };
     }
 };
@@ -81,7 +89,8 @@ BotrixMigrationConfig.setConfig = async function(key, value) {
                 vip_points_enabled: false,
                 vip_chat_points: 5,
                 vip_follow_points: 100,
-                vip_sub_points: 300
+                vip_sub_points: 300,
+                watchtime_migration_enabled: true
             };
             updateData[key] = value;
             config = await this.create(updateData);
