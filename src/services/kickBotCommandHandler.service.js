@@ -1,7 +1,8 @@
-const { KickBotCommand, Usuario, DiscordUserLink } = require('../models');
+const { KickBotCommand, Usuario, DiscordUserLink, UserWatchtime } = require('../models');
 const { Op } = require('sequelize');
 const sequelize = require('sequelize');
 const logger = require('../utils/logger');
+const formatWatchtime = require('../utils/formatWatchtime');
 
 // Importar EmbedBuilder solo si discord.js está disponible
 let EmbedBuilder;
@@ -148,6 +149,9 @@ class KickBotCommandHandlerService {
             case 'puntos_handler':
                 return await this.puntosHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
 
+            case 'watchtime_handler':
+                return await this.watchtimeHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
+
             // Aquí puedes agregar más handlers según necesites
             // case 'custom_handler':
             //     return await this.customHandler(command, content, username, channelName);
@@ -254,8 +258,112 @@ class KickBotCommandHandlerService {
     }
 
     /**
+     * Handler especial para el comando !watchtime
+     * Consulta el watchtime de un usuario en la base de datos
+     */
+    async watchtimeHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
+        try {
+            const args = this.extractArgs(content);
+
+            // Si hay argumentos, buscar al usuario especificado
+            if (args.length > 0) {
+                const lookupArg = args[0];
+
+                let targetUser = null;
+
+                // Lógica específica para Discord: detectar menciones
+                if (platform === 'discord' && messageContext && lookupArg.match(/^<@!?(\d+)>$/)) {
+                    const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
+                    logger.info(`[BOT-COMMAND] Buscando usuario por mención Discord: ${mentionedUserId}`);
+
+                    // Buscar en DiscordUserLink
+                    const discordLink = await DiscordUserLink.findOne({
+                        where: { discord_user_id: mentionedUserId },
+                        include: [{ model: Usuario, as: 'usuario' }]
+                    });
+
+                    targetUser = discordLink?.usuario;
+                    logger.info(`[BOT-COMMAND] Usuario encontrado por Discord ID:`, targetUser ? targetUser.nickname : 'no encontrado');
+                } else {
+                    // Lógica para Kick y Discord (búsqueda por nickname)
+                    const lookupName = lookupArg.replace(/^@/, '');
+                    logger.info(`[BOT-COMMAND] Buscando usuario por nickname: ${lookupName}`);
+
+                    // Para MySQL, usar LOWER() para case insensitive
+                    targetUser = await Usuario.findOne({
+                        where: sequelize.where(
+                            sequelize.fn('LOWER', sequelize.col('nickname')),
+                            sequelize.fn('LOWER', lookupName)
+                        ),
+                        include: [{ model: UserWatchtime, required: false }]
+                    });
+
+                    logger.info(`[BOT-COMMAND] Usuario encontrado por nickname:`, targetUser ? targetUser.nickname : 'no encontrado');
+                }
+
+                let response;
+                if (targetUser) {
+                    // Obtener watchtime del usuario
+                    const userWatchtime = targetUser.UserWatchtime;
+                    const watchtimeMinutes = userWatchtime ? userWatchtime.total_watchtime_minutes : 0;
+                    const formattedWatchtime = formatWatchtime(watchtimeMinutes);
+
+                    // Usuario encontrado - usar template del comando
+                    const displayNameTarget = targetUser.nickname;
+                    response = command.response_message
+                        .replace(/{username}/g, username)
+                        .replace(/{channel}/g, channelName)
+                        .replace(/{target_user}/g, displayNameTarget)
+                        .replace(/{watchtime}/g, formattedWatchtime);
+                } else {
+                    // Usuario no encontrado - respuesta por defecto
+                    let displayNameLookup = lookupArg.replace(/^@/, '');
+                    if (lookupArg.match(/^<@!?(\d+)>/)) {
+                        displayNameLookup = 'usuario mencionado';
+                    }
+                    response = `${displayNameLookup} no existe o no tiene watchtime registrado.`;
+                }
+
+                return response;
+            } else {
+                // No hay argumentos, mostrar watchtime del usuario actual
+                if (!usuario) {
+                    if (platform === 'discord') {
+                        return `@${username} No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de watchtime.`;
+                    } else {
+                        if (displayName) {
+                            return `@${displayName} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de watchtime.`;
+                        } else {
+                            return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de watchtime.`;
+                        }
+                    }
+                }
+
+                // Obtener watchtime del usuario
+                const userWatchtime = await UserWatchtime.findOne({
+                    where: { usuario_id: usuario.id }
+                });
+                const watchtimeMinutes = userWatchtime ? userWatchtime.total_watchtime_minutes : 0;
+                const formattedWatchtime = formatWatchtime(watchtimeMinutes);
+
+                // Usar template del comando
+                const response = command.response_message
+                    .replace(/{username}/g, username)
+                    .replace(/{channel}/g, channelName)
+                    .replace(/{target_user}/g, usuario.nickname)
+                    .replace(/{watchtime}/g, formattedWatchtime);
+
+                return response;
+            }
+        } catch (error) {
+            logger.error('[BOT-COMMAND] Error en watchtimeHandler:', error);
+            return `Ocurrió un error al verificar el watchtime.`;
+        }
+    }
+
+    /**
      * Extrae los argumentos de un comando
-     * Ejemplo: "!comando arg1 arg2" -> ["arg1", "arg2"]
+     * Ejemplo: comando arg1 arg2 retorna array con argumentos
      */
     extractArgs(content) {
         const parts = content.trim().split(/\s+/);
