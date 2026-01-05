@@ -22,8 +22,8 @@
     "dev:local": "NODE_ENV=development nodemon app.js",
     "dev:setup": "docker-compose up db -d && npm run migrate && npm run seed",
     "dev:reset": "docker-compose down -v && docker-compose up db -d && sleep 10 && npm run migrate && npm run seed",
-    "sync:migrations": "powershell -ExecutionPolicy Bypass -File sync-migrations.ps1",
-    "reauth-bot": "node reauth-bot.js"
+    "sync:migrations": "powershell -ExecutionPolicy Bypass -File scripts/sync-migrations.ps1",
+    "reauth-bot": "node scripts/reauth-bot.js"
   },
   "keywords": [],
   "author": "",

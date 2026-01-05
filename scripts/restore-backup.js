@@ -4,8 +4,8 @@
  * Script de restauración de emergencia de backups
  * 
  * Uso:
- *   node restore-backup.js                    # Restaurar el backup más reciente
- *   node restore-backup.js backup-2025-12-02.sql.gz  # Restaurar un backup específico
+ *   node scripts/restore-backup.js                    # Restaurar el backup más reciente
+ *   node scripts/restore-backup.js backup-2025-12-02.sql.gz  # Restaurar un backup específico
  */
 
 const backupService = require('./src/services/backup.service');
