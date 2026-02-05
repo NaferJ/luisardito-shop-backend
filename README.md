@@ -104,3 +104,5 @@ GitHub: https://github.com/NaferJ
 Proyecto en Producción: https://shop.luisardito.com  
 
 Para el repositorio del frontend, ver luisardito-shop-frontend
+
+[NaferJ/luisardito-shop-frontend](https://github.com/NaferJ/luisardito-shop-frontend)
