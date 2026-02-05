@@ -73,6 +73,11 @@ jobs:
             echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> "$ENV_PATH"
             echo "DB_SSL=${{ secrets.PROD_DB_SSL }}" >> "$ENV_PATH"
             echo "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.PROD_DB_SSL_REJECT_UNAUTHORIZED }}" >> "$ENV_PATH"
+            
+            # Docker Database & Cache credentials
+            echo "MYSQL_ROOT_PASSWORD=${{ secrets.PROD_MYSQL_ROOT_PASSWORD }}" >> "$ENV_PATH"
+            echo "MYSQL_PASSWORD=${{ secrets.PROD_DB_PASS }}" >> "$ENV_PATH"
+            
             echo "JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_ID=${{ secrets.PROD_KICK_CLIENT_ID }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_SECRET=${{ secrets.PROD_KICK_CLIENT_SECRET }}" >> "$ENV_PATH"
@@ -100,7 +105,7 @@ jobs:
             # Redis configuration
             echo "REDIS_HOST=redis" >> "$ENV_PATH"
             echo "REDIS_PORT=6379" >> "$ENV_PATH"
-            echo "REDIS_PASSWORD=" >> "$ENV_PATH"
+            echo "REDIS_PASSWORD=${{ secrets.PROD_REDIS_PASSWORD }}" >> "$ENV_PATH"
             echo "REDIS_DB=0" >> "$ENV_PATH"
 
             # Stream monitor configuration
