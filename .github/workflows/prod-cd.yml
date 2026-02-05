@@ -168,6 +168,9 @@ jobs:
               git checkout main
             fi
 
+            # Copy .env to project directory for docker-compose to resolve it
+            cp $HOME/.env.backend.production .env
+
             # Remove possible conflicting containers by name to avoid name conflicts
             for c in luisardito-mysql luisardito-backend luisardito-frontend; do
               if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then

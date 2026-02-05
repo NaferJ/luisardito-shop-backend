@@ -1,7 +1,7 @@
 services:
   db:
     env_file:
-      - ${HOME}/.env.backend.production
+      - .env
     # Publish MySQL only on loopback for SSH tunneling from DataGrip
     ports:
       - "127.0.0.1:3307:3306"
@@ -9,11 +9,11 @@ services:
 
   redis:
     env_file:
-      - ${HOME}/.env.backend.production
+      - .env
 
   api:
     env_file:
-      - ${HOME}/.env.backend.production
+      - .env
     command: >
       sh -c "npx sequelize db:migrate --debug && npm run start"
     ports:
