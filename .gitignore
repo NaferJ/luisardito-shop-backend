@@ -49,3 +49,6 @@ tokens/
 backups/
 *.sql
 *.sql.gz
+
+# Local backup bundle (notar que este archivo es grande y sensible)
+backup-antes-de-limpiar.bundle
