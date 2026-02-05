@@ -96,8 +96,11 @@ Este software y su código fuente son propiedad exclusiva de NaferJ. Queda estri
 
 ## Autor
 
-NaferJ  
+<img src="https://github.com/NaferJ.png" width="120" style="border-radius: 10px;" />
+
+**NaferJ**
+
 GitHub: https://github.com/NaferJ  
-Proyecto en Producción: https://shop.luisardito.com
+Proyecto en Producción: https://shop.luisardito.com  
 
 Para el repositorio del frontend, ver luisardito-shop-frontend
