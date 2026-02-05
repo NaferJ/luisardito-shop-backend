@@ -1,9 +1,15 @@
 services:
   db:
+    env_file:
+      - ${HOME}/.env.backend.production
     # Publish MySQL only on loopback for SSH tunneling from DataGrip
     ports:
       - "127.0.0.1:3307:3306"
     restart: unless-stopped
+
+  redis:
+    env_file:
+      - ${HOME}/.env.backend.production
 
   api:
     env_file:
