@@ -1,6 +1,7 @@
 const axios = require('axios');
 const config = require('../../config');
 const { KickEventSubscription } = require('../models');
+const logger = require('../utils/logger');
 
 /**
  * Obtiene todas las suscripciones a eventos de Kick
@@ -35,12 +36,12 @@ exports.getSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Subscription] Error obteniendo suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error obteniendo suscripciones:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
                 error: 'Error al obtener suscripciones de Kick',
-                details: error.response.data
+                message: error.response.data?.message || 'Error desconocido'
             });
         }
 
@@ -99,7 +100,7 @@ exports.createSubscriptions = async (req, res) => {
                     });
                     createdSubscriptions.push(localSub);
                 } catch (dbError) {
-                    console.error('[Kick Subscription] Error guardando suscripción localmente:', dbError.message);
+                    logger.error('[Kick Subscription] Error guardando suscripción localmente:', dbError.message);
                 }
             }
         }
@@ -111,12 +112,12 @@ exports.createSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Subscription] Error creando suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error creando suscripciones:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
                 error: 'Error al crear suscripciones en Kick',
-                details: error.response.data
+                message: error.response.data?.message || 'Error desconocido'
             });
         }
 
@@ -165,12 +166,12 @@ exports.deleteSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Subscription] Error eliminando suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error eliminando suscripciones:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
                 error: 'Error al eliminar suscripciones de Kick',
-                details: error.response.data
+                message: error.response.data?.message || 'Error desconocido'
             });
         }
 
@@ -200,7 +201,7 @@ exports.getLocalSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Subscription] Error obteniendo suscripciones locales:', error.message);
+        logger.error('[Kick Subscription] Error obteniendo suscripciones locales:', error.message);
         return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
