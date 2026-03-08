@@ -211,19 +211,21 @@ class BackupService {
             const repoPath = this.config.githubPath;
             const relativePath = path.join(String(year), month, filename);
 
+            // Configurar merge como estrategia por defecto
+            await execAsync(`cd "${repoPath}" && git config pull.rebase false`);
+
             await execAsync(`cd "${repoPath}" && git add "${relativePath}"`);
             await execAsync(`cd "${repoPath}" && git commit -m "Backup automático: ${filename}"`);
 
-            // Sincronizar con remoto antes de push
+            // Intentar sincronizar con remoto
             try {
-                await execAsync(`cd "${repoPath}" && git pull --rebase origin main`);
-            } catch (pullError) {
-                // Si falla el pull, intentar sin rebase
-                logger.warn('[Backup] Pull con rebase falló, intentando merge...');
-                await execAsync(`cd "${repoPath}" && git pull origin main`);
+                await execAsync(`cd "${repoPath}" && git pull origin main --no-edit`);
+                await execAsync(`cd "${repoPath}" && git push origin main`);
+            } catch (syncError) {
+                // Si hay conflictos, forzar push (los backups no necesitan preservar historial)
+                logger.warn('[Backup] Conflicto detectado, forzando push...');
+                await execAsync(`cd "${repoPath}" && git push --force origin main`);
             }
-
-            await execAsync(`cd "${repoPath}" && git push origin main`);
 
             logger.info('✅ Backup subido a GitHub exitosamente');
         } catch (error) {
