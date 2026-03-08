@@ -18,7 +18,7 @@ class BackupService {
             dbContainer: 'luisardito-mysql',
             dbName: process.env.DB_NAME || 'luisardito_shop',
             dbUser: 'root',
-            dbPassword: 'root'
+            dbPassword: process.env.MYSQL_ROOT_PASSWORD || 'root'
         };
 
         // Validar configuración
