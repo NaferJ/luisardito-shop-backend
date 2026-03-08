@@ -292,8 +292,12 @@ class BackupService {
                     await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
                 }
 
-                // Crear rama main
-                await execAsync(`cd "${repoPath}" && git checkout -b main`);
+                // Crear o cambiar a rama main
+                try {
+                    await execAsync(`cd "${repoPath}" && git checkout -b main`);
+                } catch {
+                    await execAsync(`cd "${repoPath}" && git checkout main`);
+                }
 
                 logger.info('✅ Repositorio inicializado');
             }
