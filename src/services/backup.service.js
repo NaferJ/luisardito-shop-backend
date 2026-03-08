@@ -108,20 +108,31 @@ class BackupService {
             `--routines ` +
             `--triggers ` +
             `--events ` +
-            `${this.config.dbName} > "${outputPath}"`;
+            `${this.config.dbName}`;
 
         try {
             logger.info(`[Backup] Ejecutando mysqldump desde contenedor ${this.config.dbContainer}`);
-            const { stdout, stderr } = await execAsync(command);
+            const { stdout, stderr } = await execAsync(command, { maxBuffer: 100 * 1024 * 1024 }); // 100MB buffer
+
+            // Escribir el stdout al archivo
+            await fs.writeFile(outputPath, stdout);
 
             // Filtrar warnings comunes que no son problemas
             if (stderr && !stderr.includes('Warning') && !stderr.includes('Using a password')) {
                 logger.warn('[Backup] Advertencias de mysqldump:', stderr);
             }
 
-            logger.info('✅ Dump de MySQL completado');
+            // Verificar que el archivo no esté vacío
+            const stats = await fs.stat(outputPath);
+            if (stats.size === 0) {
+                throw new Error('El archivo de backup está vacío. Stderr: ' + stderr);
+            }
+
+            logger.info(`✅ Dump de MySQL completado (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         } catch (error) {
             logger.error('[Backup] Error detallado:', error);
+            logger.error('[Backup] stderr:', error.stderr);
+            logger.error('[Backup] stdout:', error.stdout);
             throw new Error(`Error al crear dump de MySQL: ${error.message}`);
         }
     }
@@ -132,12 +143,19 @@ class BackupService {
     async compressBackup(inputPath, outputPath) {
         logger.info('🗜️ Comprimiendo backup...');
 
-        const command = `gzip -c "${inputPath}" > "${outputPath}"`;
+        const zlib = require('zlib');
+        const { createReadStream, createWriteStream } = require('fs');
+        const { pipeline } = require('stream').promises;
 
         try {
-            await execAsync(command);
+            await pipeline(
+                createReadStream(inputPath),
+                zlib.createGzip(),
+                createWriteStream(outputPath)
+            );
             logger.info('✅ Backup comprimido');
         } catch (error) {
+            logger.error('[Backup] Error al comprimir:', error);
             throw new Error(`Error al comprimir backup: ${error.message}`);
         }
     }
