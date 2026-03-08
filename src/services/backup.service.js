@@ -213,6 +213,16 @@ class BackupService {
 
             await execAsync(`cd "${repoPath}" && git add "${relativePath}"`);
             await execAsync(`cd "${repoPath}" && git commit -m "Backup automático: ${filename}"`);
+
+            // Sincronizar con remoto antes de push
+            try {
+                await execAsync(`cd "${repoPath}" && git pull --rebase origin main`);
+            } catch (pullError) {
+                // Si falla el pull, intentar sin rebase
+                logger.warn('[Backup] Pull con rebase falló, intentando merge...');
+                await execAsync(`cd "${repoPath}" && git pull origin main`);
+            }
+
             await execAsync(`cd "${repoPath}" && git push origin main`);
 
             logger.info('✅ Backup subido a GitHub exitosamente');
