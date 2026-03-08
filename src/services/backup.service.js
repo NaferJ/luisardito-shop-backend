@@ -96,43 +96,53 @@ class BackupService {
      * Crea el dump de la base de datos
      */
     async dumpDatabase(outputPath) {
-        logger.info('📦 Creando dump de MySQL...');
+        logger.info('Creando dump de MySQL...');
 
-        // Ejecutar mysqldump desde DENTRO del contenedor MySQL
-        // Esto evita problemas de compatibilidad entre mariadb-client y MySQL 8.0
-        // Usamos docker exec para ejecutar mysqldump en el contenedor MySQL
-        const command = `docker exec ${this.config.dbContainer} mysqldump ` +
+        // Crear el dump directamente en un archivo temporal en el contenedor MySQL
+        const tempFile = '/tmp/backup-temp.sql';
+
+        // Paso 1: Crear el dump dentro del contenedor MySQL
+        const dumpCommand = `docker exec ${this.config.dbContainer} sh -c "mysqldump ` +
             `-u ${this.config.dbUser} ` +
             `-p${this.config.dbPassword} ` +
             `--single-transaction ` +
             `--routines ` +
             `--triggers ` +
             `--events ` +
-            `${this.config.dbName}`;
+            `${this.config.dbName} > ${tempFile}"`;
+
+        // Paso 2: Copiar el archivo del contenedor al host
+        const copyCommand = `docker cp ${this.config.dbContainer}:${tempFile} "${outputPath}"`;
+
+        // Paso 3: Limpiar el archivo temporal
+        const cleanCommand = `docker exec ${this.config.dbContainer} rm -f ${tempFile}`;
 
         try {
-            logger.info(`[Backup] Ejecutando mysqldump desde contenedor ${this.config.dbContainer}`);
-            const { stdout, stderr } = await execAsync(command, { maxBuffer: 100 * 1024 * 1024 }); // 100MB buffer
+            logger.info(`[Backup] Ejecutando mysqldump en contenedor ${this.config.dbContainer}`);
 
-            // Escribir el stdout al archivo
-            await fs.writeFile(outputPath, stdout);
+            // Crear dump dentro del contenedor
+            const { stderr: dumpStderr } = await execAsync(dumpCommand);
 
-            // Filtrar warnings comunes que no son problemas
-            if (stderr && !stderr.includes('Warning') && !stderr.includes('Using a password')) {
-                logger.warn('[Backup] Advertencias de mysqldump:', stderr);
+            if (dumpStderr && !dumpStderr.includes('Warning') && !dumpStderr.includes('Using a password')) {
+                logger.warn('[Backup] Advertencias de mysqldump:', dumpStderr);
             }
+
+            // Copiar archivo al host
+            await execAsync(copyCommand);
+
+            // Limpiar archivo temporal
+            await execAsync(cleanCommand);
 
             // Verificar que el archivo no esté vacío
             const stats = await fs.stat(outputPath);
             if (stats.size === 0) {
-                throw new Error('El archivo de backup está vacío. Stderr: ' + stderr);
+                throw new Error('El archivo de backup esta vacio');
             }
 
-            logger.info(`✅ Dump de MySQL completado (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+            logger.info(`Dump de MySQL completado (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         } catch (error) {
-            logger.error('[Backup] Error detallado:', error);
-            logger.error('[Backup] stderr:', error.stderr);
-            logger.error('[Backup] stdout:', error.stdout);
+            logger.error('[Backup] Error detallado:', error.message);
+            if (error.stderr) logger.error('[Backup] stderr:', error.stderr);
             throw new Error(`Error al crear dump de MySQL: ${error.message}`);
         }
     }
