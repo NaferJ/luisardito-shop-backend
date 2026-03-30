@@ -1,5 +1,6 @@
 const { exec } = require('child_process');
 const { promisify } = require('util');
+const crypto = require('crypto');
 const fs = require('fs').promises;
 const path = require('path');
 const execAsync = promisify(exec);
@@ -100,7 +101,7 @@ class BackupService {
 
         // Crear el dump directamente en un archivo temporal en el contenedor MySQL
         // Nombre único para evitar colisiones y ataques de symlink
-        const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const tempId = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
         const tempFile = `/tmp/backup-${tempId}.sql`;
 
         // Paso 1: Crear el dump dentro del contenedor MySQL

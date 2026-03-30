@@ -8,6 +8,9 @@
 const { execFile } = require('child_process');
 const path = require('path');
 
+// Resolver ruta absoluta de npx desde el mismo directorio que node (S4036)
+const npxBin = path.join(path.dirname(process.execPath), 'npx');
+
 const seeders = [
     '20251028190000-seed-kick-points-config.js',
     '20251028190001-seed-botrix-migration-config.js'
@@ -25,7 +28,7 @@ async function runSeeder(seederFile) {
     return new Promise((resolve, reject) => {
         console.log(`📦 Ejecutando: ${seederFile}`);
 
-        execFile('npx', ['sequelize-cli', 'db:seed', '--seed', seederFile], (error, stdout, stderr) => {
+        execFile(npxBin, ['sequelize-cli', 'db:seed', '--seed', seederFile], (error, stdout, stderr) => {
             if (error) {
                 console.error(`❌ Error en ${seederFile}:`, error.message);
                 reject(error);

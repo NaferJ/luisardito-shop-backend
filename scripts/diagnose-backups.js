@@ -78,10 +78,12 @@ async function diagnoseBackups() {
     if (fs.existsSync(gitPath)) {
         try {
             const { execFileSync } = require('child_process');
-            const lastCommit = execFileSync('git', ['log', '-1', '--oneline'], { cwd: githubPath, encoding: 'utf8' }).trim();
+            // Ruta absoluta de git para evitar inyección vía PATH (S4036)
+            const gitBin = process.platform === 'win32' ? 'git' : '/usr/bin/git';
+            const lastCommit = execFileSync(gitBin, ['log', '-1', '--oneline'], { cwd: githubPath, encoding: 'utf8' }).trim();
             console.log('   ✅ Último commit:', lastCommit);
 
-            const status = execFileSync('git', ['status', '--porcelain'], { cwd: githubPath, encoding: 'utf8' }).trim();
+            const status = execFileSync(gitBin, ['status', '--porcelain'], { cwd: githubPath, encoding: 'utf8' }).trim();
             console.log('   Estado del repo:', status || 'Limpio');
         } catch (error) {
             console.log('   ❌ Error verificando repo:', error.message);
