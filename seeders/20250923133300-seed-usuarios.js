@@ -3,7 +3,7 @@
 const bcrypt = require('bcrypt');
 
 // Contraseña por defecto para seeds de desarrollo (NO es producción)
-const DEFAULT_SEED_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || 'Change_Me_123!';
+const DEFAULT_SEED_PASSWORD = process.env.SEED_DEFAULT_PASSWORD;
 
 module.exports = {
   async up(queryInterface, Sequelize) {
