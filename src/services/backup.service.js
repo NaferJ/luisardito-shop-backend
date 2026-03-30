@@ -99,7 +99,9 @@ class BackupService {
         logger.info('Creando dump de MySQL...');
 
         // Crear el dump directamente en un archivo temporal en el contenedor MySQL
-        const tempFile = '/tmp/backup-temp.sql';
+        // Nombre único para evitar colisiones y ataques de symlink
+        const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const tempFile = `/tmp/backup-${tempId}.sql`;
 
         // Paso 1: Crear el dump dentro del contenedor MySQL
         const dumpCommand = `docker exec ${this.config.dbContainer} sh -c "mysqldump ` +

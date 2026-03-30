@@ -8,11 +8,22 @@ ENV NODE_ENV=production
 RUN apk add --no-cache docker-cli git git-lfs mariadb-client
 
 # Install dependencies first (only production deps)
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm install --production
 
-# Copy source
-COPY . .
+# Copy source (se excluyen archivos sensibles via .dockerignore)
+COPY src/ ./src/
+COPY app.js config.js sequelize.config.js .sequelizerc ./
+COPY migrations/ ./migrations/
+COPY seeders/ ./seeders/
+COPY assets/ ./assets/
+COPY scripts/ ./scripts/
+
+# Dar permisos al usuario node sobre /app
+RUN chown -R node:node /app
+
+# No ejecutar como root
+USER node
 
 # Expose app port
 EXPOSE 3000

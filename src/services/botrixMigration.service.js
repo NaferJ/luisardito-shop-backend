@@ -191,8 +191,8 @@ class BotrixMigrationService {
             }
 
             // Regex para detectar: "@usuario ha pasado [X dias] [Y h/horas] [Z min] viendo [este canal|el stream]"
-            // Muy flexible: acepta d/dias, h/horas, min en cualquier combinación
-            const watchtimeRegex = /@(\w+)\s+ha\s+pasado\s+([\d\s\w]+?)\s+viendo\s+(?:este\s+canal|el\s+stream)/i;
+            // Patrón seguro: captura la parte de tiempo como secuencia de "número + unidad"
+            const watchtimeRegex = /@(\w+)\s+ha\s+pasado\s+((?:\d+\s+(?:d[íi]as?|horas?|h|min)\s*)+)viendo\s+(?:este\s+canal|el\s+stream)/i;
             const match = content.match(watchtimeRegex);
 
             if (!match) {
@@ -201,10 +201,10 @@ class BotrixMigrationService {
 
             const [, targetUsername, timeStr] = match;
 
-            // Extraer componentes de tiempo usando regex más flexibles
-            const daysMatch = timeStr.match(/(\d+)\s+d[íi]as?/i);
-            const hoursMatch = timeStr.match(/(\d+)\s+h(?:oras?)?/i);
-            const minutesMatch = timeStr.match(/(\d+)\s+min/i);
+            // Extraer componentes de tiempo con regex atómicas (sin backtracking)
+            const daysMatch = timeStr.match(/(\d+)\s+d[íi]as?/);
+            const hoursMatch = timeStr.match(/(\d+)\s+h(?:oras?)?(?:\s|$)/);
+            const minutesMatch = timeStr.match(/(\d+)\s+min/);
 
             const days = daysMatch ? parseInt(daysMatch[1], 10) : 0;
             const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;

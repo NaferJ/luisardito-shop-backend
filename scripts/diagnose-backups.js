@@ -77,11 +77,11 @@ async function diagnoseBackups() {
     console.log('📊 6. Estado del repositorio GitHub:');
     if (fs.existsSync(gitPath)) {
         try {
-            const { execSync } = require('child_process');
-            const lastCommit = execSync(`cd "${githubPath}" && git log -1 --oneline`, { encoding: 'utf8' }).trim();
+            const { execFileSync } = require('child_process');
+            const lastCommit = execFileSync('git', ['log', '-1', '--oneline'], { cwd: githubPath, encoding: 'utf8' }).trim();
             console.log('   ✅ Último commit:', lastCommit);
 
-            const status = execSync(`cd "${githubPath}" && git status --porcelain`, { encoding: 'utf8' }).trim();
+            const status = execFileSync('git', ['status', '--porcelain'], { cwd: githubPath, encoding: 'utf8' }).trim();
             console.log('   Estado del repo:', status || 'Limpio');
         } catch (error) {
             console.log('   ❌ Error verificando repo:', error.message);

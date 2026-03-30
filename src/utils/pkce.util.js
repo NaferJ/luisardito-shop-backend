@@ -6,7 +6,7 @@ function base64url(input) {
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
-    .replace(/=+$/, '');
+    .replaceAll('=', '');
 }
 
 function generatePkce() {

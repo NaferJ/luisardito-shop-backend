@@ -26,14 +26,19 @@ jobs:
       - name: Validate PROD SSH inputs
         shell: bash
         run: |
-          [ "${{ secrets.PROD_SSH_HOST }}" != "" ] || { echo "PROD_SSH_HOST missing"; exit 1; }
-          [ "${{ secrets.PROD_SSH_USER }}" != "" ] || { echo "PROD_SSH_USER missing"; exit 1; }
-          [ "${{ secrets.PROD_SSH_PORT }}" != "" ] || { echo "PROD_SSH_PORT missing"; exit 1; }
-          [ "${{ secrets.PROD_SSH_KEY }}" != "" ] || { echo "PROD_SSH_KEY missing"; exit 1; }
+          [ "$PROD_SSH_HOST" != "" ] || { echo "PROD_SSH_HOST missing"; exit 1; }
+          [ "$PROD_SSH_USER" != "" ] || { echo "PROD_SSH_USER missing"; exit 1; }
+          [ "$PROD_SSH_PORT" != "" ] || { echo "PROD_SSH_PORT missing"; exit 1; }
+          [ "$PROD_SSH_KEY" != "" ] || { echo "PROD_SSH_KEY missing"; exit 1; }
           echo "All required PROD SSH secrets are present."
+        env:
+          PROD_SSH_HOST: ${{ secrets.PROD_SSH_HOST }}
+          PROD_SSH_USER: ${{ secrets.PROD_SSH_USER }}
+          PROD_SSH_PORT: ${{ secrets.PROD_SSH_PORT }}
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
 
       - name: Test PROD SSH connection
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
@@ -48,11 +53,13 @@ jobs:
       - name: Validate PROD repo read token
         shell: bash
         run: |
-          [ "${{ secrets.PROD_GITHUB_TOKEN }}" != "" ] || { echo "PROD_GITHUB_TOKEN missing (create a PAT with repo read access)"; exit 1; }
+          [ "$PROD_GITHUB_TOKEN" != "" ] || { echo "PROD_GITHUB_TOKEN missing (create a PAT with repo read access)"; exit 1; }
           echo "PROD_GITHUB_TOKEN present."
+        env:
+          PROD_GITHUB_TOKEN: ${{ secrets.PROD_GITHUB_TOKEN }}
 
       - name: Ensure production .env file exists
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
@@ -137,6 +144,8 @@ jobs:
             echo "DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}" >> "$ENV_PATH"
             echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> "$ENV_PATH"
             echo "DISCORD_REDIRECT_URI=https://api.luisardito.com/api/auth/discord/callback" >> "$ENV_PATH"
+            
+            echo "SEED_DEFAULT_PASSWORD=${{ secrets.SEED_DEFAULT_PASSWORD }}" >> "$ENV_PATH"
 
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
@@ -144,7 +153,7 @@ jobs:
             ls -l "$ENV_PATH"
 
       - name: Deploy with Docker Compose (production)
-        uses: appleboy/ssh-action@v1.2.0
+        uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}

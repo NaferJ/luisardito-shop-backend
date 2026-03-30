@@ -1,14 +1,21 @@
 "use strict";
 
+const bcrypt = require('bcrypt');
+
+// Contraseña por defecto para seeds de desarrollo (NO es producción)
+const DEFAULT_SEED_PASSWORD = process.env.SEED_DEFAULT_PASSWORD || 'Change_Me_123!';
+
 module.exports = {
   async up(queryInterface, Sequelize) {
+    const hash = await bcrypt.hash(DEFAULT_SEED_PASSWORD, 10);
+
     const usuarios = [
       {
         id: 2,
         user_id_ext: null,
         nickname: 'usuario_demo',
         email: 'demo@demo.com',
-        password_hash: '$2b$10$p3rNoogvX.LbeFgvy7pet.RapFXWj5d3H5PexGMmp1GdukrbOWVVS',
+        password_hash: hash,
         puntos: 1000,
         kick_data: null,
         creado: new Date('2025-08-19 21:01:28'),
@@ -20,7 +27,7 @@ module.exports = {
         user_id_ext: null,
         nickname: 'NaferJ',
         email: 'naferj@demo.com',
-        password_hash: '$2b$10$RZHjAXz6erIlR/FIKSLVIeLvqmvIbtpVkQTiuuVrl1jkxVCrmmhsq',
+        password_hash: hash,
         puntos: 2200000,
         kick_data: null,
         creado: new Date('2025-08-19 21:17:11'),
@@ -32,7 +39,7 @@ module.exports = {
         user_id_ext: null,
         nickname: 'NaferJBot',
         email: 'naferjbot@gmail.com',
-        password_hash: '$2b$10$vMlyzDi02VVinWfiHMBIzuDNd6K7S2G4nI8ihitvHqBVu/ZrRW3mG',
+        password_hash: hash,
         puntos: 10000,
         kick_data: null,
         creado: new Date('2025-09-15 16:18:43'),

@@ -5,7 +5,7 @@
  * Ejecuta solo los seeders específicos de configuración que acabamos de crear
  */
 
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const path = require('path');
 
 const seeders = [
@@ -13,15 +13,19 @@ const seeders = [
     '20251028190001-seed-botrix-migration-config.js'
 ];
 
+// Patrón seguro: solo permite nombres de archivo de seeders válidos
+const SAFE_SEEDER_PATTERN = /^\d{14}-[\w-]+\.js$/;
+
 console.log('🚀 Ejecutando seeders de configuración de Kick...\n');
 
 async function runSeeder(seederFile) {
+    if (!SAFE_SEEDER_PATTERN.test(seederFile)) {
+        throw new Error(`Nombre de seeder no válido: ${seederFile}`);
+    }
     return new Promise((resolve, reject) => {
-        const command = `npx sequelize-cli db:seed --seed ${seederFile}`;
-
         console.log(`📦 Ejecutando: ${seederFile}`);
 
-        exec(command, (error, stdout, stderr) => {
+        execFile('npx', ['sequelize-cli', 'db:seed', '--seed', seederFile], (error, stdout, stderr) => {
             if (error) {
                 console.error(`❌ Error en ${seederFile}:`, error.message);
                 reject(error);

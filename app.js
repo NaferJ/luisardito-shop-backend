@@ -34,6 +34,9 @@ const notificacionesRoutes = require("./src/routes/notificaciones.routes");
 
 const app = express();
 
+// Desactivar header X-Powered-By para no revelar información del framework
+app.disable('x-powered-by');
+
 app.get("/", (req, res) => {
   res.send("🚀 Luisardito Shop Backend en funcionamiento");
 });
