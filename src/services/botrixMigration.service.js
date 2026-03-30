@@ -201,14 +201,17 @@ class BotrixMigrationService {
 
             const [, targetUsername, timeStr] = match;
 
-            // Extraer componentes de tiempo con regex atómicas (sin backtracking)
-            const daysMatch = timeStr.match(/(\d+)\s+d[íi]as?/);
-            const hoursMatch = timeStr.match(/(\d+)\s+h(?:oras?)?(?:\s|$)/);
-            const minutesMatch = timeStr.match(/(\d+)\s+min/);
-
-            const days = daysMatch ? parseInt(daysMatch[1], 10) : 0;
-            const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
-            const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+            // Extraer componentes de tiempo sin regex (evita backtracking - S5852)
+            let days = 0, hours = 0, minutes = 0;
+            const parts = timeStr.trim().split(' ').filter(Boolean);
+            for (let i = 0; i < parts.length - 1; i++) {
+                const num = parseInt(parts[i], 10);
+                if (isNaN(num)) continue;
+                const unit = parts[i + 1].toLowerCase();
+                if (unit.startsWith('min')) minutes = num;
+                else if (unit.startsWith('h')) hours = num;
+                else if (unit.startsWith('d')) days = num;
+            }
 
             // Convertir todo a minutos: días × 24 × 60 + horas × 60 + minutos
             const totalWatchtimeMinutes = (days * 24 * 60) + (hours * 60) + minutes;

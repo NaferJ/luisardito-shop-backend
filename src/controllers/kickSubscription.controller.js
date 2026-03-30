@@ -53,6 +53,9 @@ exports.getSubscriptions = async (req, res) => {
  * Crea nuevas suscripciones a eventos de Kick
  */
 exports.createSubscriptions = async (req, res) => {
+    // Métodos de suscripción permitidos por la API de Kick
+    const ALLOWED_METHODS = ['webhook', 'websocket'];
+
     try {
         const { authorization } = req.headers;
         const { broadcaster_user_id, events, method = 'webhook' } = req.body;
@@ -67,12 +70,15 @@ exports.createSubscriptions = async (req, res) => {
             });
         }
 
+        // Validar que method sea un valor permitido (prevenir SSRF / inyección)
+        const sanitizedMethod = ALLOWED_METHODS.includes(method) ? method : 'webhook';
+
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
         const payload = {
             broadcaster_user_id,
             events,
-            method
+            method: sanitizedMethod
         };
 
         const response = await axios.post(apiUrl, payload, {
@@ -95,7 +101,7 @@ exports.createSubscriptions = async (req, res) => {
                         broadcaster_user_id,
                         event_type: sub.name,
                         event_version: sub.version,
-                        method,
+                        method: sanitizedMethod,
                         status: 'active'
                     });
                     createdSubscriptions.push(localSub);
