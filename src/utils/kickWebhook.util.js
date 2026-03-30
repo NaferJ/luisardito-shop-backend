@@ -1,16 +1,11 @@
-const crypto = require('crypto');
+const crypto = require('node:crypto');
 const logger = require('./logger');
 
-// Clave pública de Kick para verificar firmas
-const KICK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq/+l1WnlRrGSolDMA+A8
-6rAhMbQGmQ2SapVcGM3zq8ANXjnhDWocMqfWcTd95btDydITa10kDvHzw9WQOqp2
-MZI7ZyrfzJuz5nhTPCiJwTwnEtWft7nV14BYRDHvlfqPUaZ+1KR4OCaO/wWIk/rQ
-L/TjY0M70gse8rlBkbo2a8rKhu69RQTRsoaf4DVhDPEeSeI5jVrRDGAMGL3cGuyY
-6CLKGdjVEM78g3JfYOvDU/RvfqD7L89TZ3iN94jrmWdGz34JNlEI5hqK8dd7C5EF
-BEbZ5jgB8s8ReQV8H+MkuffjdAj3ajDDX3DOJMIut1lBrUVD1AaSrGCKHooWoL2e
-twIDAQAB
------END PUBLIC KEY-----`;
+// Clave pública de Kick para verificar firmas (cargada desde variable de entorno)
+// En .env se almacena en una sola línea con \n literales como separador
+const KICK_PUBLIC_KEY = process.env.KICK_WEBHOOK_PUBLIC_KEY
+    ? process.env.KICK_WEBHOOK_PUBLIC_KEY.replace(/\\n/g, '\n')
+    : null;
 
 /**
  * Verifica la firma de un webhook de Kick
@@ -22,23 +17,22 @@ twIDAQAB
  */
 function verifyWebhookSignature(messageId, timestamp, body, signatureBase64) {
     try {
+        if (!KICK_PUBLIC_KEY) {
+            logger.error('[Kick Webhook] KICK_WEBHOOK_PUBLIC_KEY no configurada');
+            return false;
+        }
+
         // Crear la cadena de firma concatenando: messageId.timestamp.body
         const signatureString = `${messageId}.${timestamp}.${body}`;
 
         // Decodificar la firma de Base64
         const signature = Buffer.from(signatureBase64, 'base64');
 
-        // Crear el hash SHA256 de la cadena de firma
-        const hash = crypto.createHash('sha256').update(signatureString).digest();
-
-        // Crear el objeto de verificación con la clave pública
+        // Verificar la firma RSA-SHA256 con PKCS1v15
         const verifier = crypto.createVerify('RSA-SHA256');
         verifier.update(signatureString);
 
-        // Verificar la firma usando PKCS1v15
-        const isValid = verifier.verify(KICK_PUBLIC_KEY, signature);
-
-        return isValid;
+        return verifier.verify(KICK_PUBLIC_KEY, signature);
     } catch (error) {
         logger.error('[Kick Webhook] Error verificando firma:', error.message);
         return false;

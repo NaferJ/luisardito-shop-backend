@@ -147,6 +147,9 @@ jobs:
             
             echo "SEED_DEFAULT_PASSWORD=${{ secrets.SEED_DEFAULT_PASSWORD }}" >> "$ENV_PATH"
 
+            # Kick Webhook signature verification
+            echo "KICK_WEBHOOK_PUBLIC_KEY=${{ secrets.KICK_WEBHOOK_PUBLIC_KEY }}" >> "$ENV_PATH"
+
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"
