@@ -13,6 +13,7 @@ const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task
 const backupScheduler = require("./src/services/backup.task");
 const discordBotService = require("./src/services/discordBot.service");
 const kickBotAutoSendService = require("./src/services/kickBotAutoSend.service");
+const dbCleanupTask = require("./src/services/dbCleanup.task");
 
 // Rutas (aún por crear)
 const authRoutes = require("./src/routes/auth.routes");
@@ -128,6 +129,9 @@ const start = async () => {
 
     // Iniciar backups automáticos
     backupScheduler.start();
+
+    // Iniciar limpieza automática de base de datos (diaria a las 4:30 AM)
+    dbCleanupTask.start();
 
     // Iniciar bot de Discord
     await discordBotService.initialize();

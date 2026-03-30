@@ -109,6 +109,7 @@ class BackupService {
             `--routines ` +
             `--triggers ` +
             `--events ` +
+            `--ignore-table=${this.config.dbName}.kick_webhook_events ` +
             `${this.config.dbName} > ${tempFile}"`;
 
         // Paso 2: Copiar el archivo del contenedor al host
