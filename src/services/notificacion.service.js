@@ -278,7 +278,7 @@ class NotificacionService {
             descripcion,
             'puntos_ganados',
             datosPuntos,
-            '/historial-puntos',
+            '/historial',
             transaction
         );
     }

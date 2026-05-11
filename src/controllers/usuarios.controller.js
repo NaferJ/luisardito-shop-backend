@@ -720,8 +720,8 @@ exports.actualizarPuntos = async (req, res) => {
         puntos: cambio, // La cantidad del cambio (positivo o negativo)
         cambio, // Campo legacy para compatibilidad
         tipo: cambio > 0 ? "ganado" : cambio < 0 ? "gastado" : "ajuste",
-        concepto: `Ajuste de puntos [${operation === 'add' ? 'SUMA/RESTA' : 'ESTABLECER'}]: ${motivo} (Admin: ${adminNickname})`,
-        motivo: `${motivo} (Admin: ${adminNickname})`, // Campo legacy para compatibilidad
+        concepto: `Ajuste de puntos: ${motivo}`,
+        motivo: motivo, // Campo legacy para compatibilidad
       },
       { transaction: t },
     );
