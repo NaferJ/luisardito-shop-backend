@@ -1,6 +1,6 @@
 "use strict";
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 // Contraseña por defecto para seeds de desarrollo (NO es producción)
 const DEFAULT_SEED_PASSWORD = process.env.SEED_DEFAULT_PASSWORD;

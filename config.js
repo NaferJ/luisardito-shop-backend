@@ -1,4 +1,8 @@
 require('dotenv').config();
+const fs = require('fs');
+if (fs.existsSync('.env.development')) {
+    require('dotenv').config({ path: '.env.development', override: true });
+}
 
 const toBool = (val, def = false) => {
     if (val === undefined) return def;

@@ -7,6 +7,7 @@ const {
   Usuario,
   HistorialPunto,
   KickReward,
+  UserWatchtime,
   sequelize,
 } = require("../models");
 const BotrixMigrationService = require("../services/botrixMigration.service");
@@ -806,6 +807,61 @@ async function handleChatMessage(payload, metadata) {
     // El webhook SIEMPRE trae sender.profile_picture según la documentación de Kick
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, sender.profile_picture);
 
+    // ============================================================================
+    // 🕐 WATCHTIME: Se procesa en CADA mensaje (stream en vivo + usuario registrado)
+    // Cooldown propio de 1 minuto para evitar spam de +1min por flood
+    // ============================================================================
+    try {
+      const wtNow = new Date();
+      const redis = getRedisClient();
+      const WATCHTIME_COOLDOWN_MS = 60 * 1000; // 1 minuto
+      const watchtimeKey = `watchtime_cooldown:${kickUserId}`;
+
+      const wasSet = await redis.set(
+        watchtimeKey,
+        wtNow.toISOString(),
+        "PX",
+        WATCHTIME_COOLDOWN_MS,
+        "NX"
+      );
+
+      if (!wasSet) {
+        logger.info(
+          `⏰ [WATCHTIME] ${kickUsername} en cooldown (1 min)`
+        );
+      } else {
+        const [, created] = await UserWatchtime.findOrCreate({
+          where: { usuario_id: usuario.id },
+          defaults: {
+            usuario_id: usuario.id,
+            kick_user_id: kickUserId,
+            total_watchtime_minutes: 1,
+            message_count: 1,
+            first_message_date: wtNow,
+            last_message_at: wtNow,
+          },
+        });
+
+        if (!created) {
+          await UserWatchtime.increment(
+            { total_watchtime_minutes: 1, message_count: 1 },
+            { where: { usuario_id: usuario.id } }
+          );
+          await UserWatchtime.update(
+            { last_message_at: wtNow },
+            { where: { usuario_id: usuario.id } }
+          );
+        }
+
+        logger.info(
+          `🕐 [WATCHTIME] ${kickUsername} +1 minuto`
+        );
+      }
+    } catch (watchtimeError) {
+      logger.error(`❌ [WATCHTIME] Error:`, watchtimeError.message);
+      // No bloquear el resto del procesamiento
+    }
+
     // Obtener configuración de puntos
     const configs = await KickPointsConfig.findAll({
       where: { enabled: true },
@@ -936,8 +992,6 @@ async function handleChatMessage(payload, metadata) {
     });
 
     try {
-      const { UserWatchtime } = require("../models");
-
       // Otorgar puntos
       await usuario.increment("puntos", { by: pointsToAward }, { transaction });
 
@@ -972,47 +1026,6 @@ async function handleChatMessage(payload, metadata) {
         },
         { transaction },
       );
-
-      // 🕐 AGREGAR WATCHTIME si pasó el cooldown
-      const now = new Date();
-      let watchtime = await UserWatchtime.findOne({
-        where: { usuario_id: usuario.id },
-        transaction,
-      });
-
-      if (!watchtime) {
-        // Crear nuevo registro de watchtime
-        watchtime = await UserWatchtime.create(
-          {
-            usuario_id: usuario.id,
-            kick_user_id: kickUserId,
-            total_watchtime_minutes: 5, // +5 minutos por primer mensaje
-            message_count: 1,
-            first_message_date: now,
-            last_message_at: now,
-          },
-          { transaction }
-        );
-        logger.info(
-          `🕐 [WATCHTIME] Nuevo registro creado para ${kickUsername} - 5 minutos`,
-        );
-      } else {
-        // Incrementar watchtime existente
-        await watchtime.increment(
-          {
-            total_watchtime_minutes: 5,
-            message_count: 1,
-          },
-          { transaction }
-        );
-        await watchtime.update(
-          { last_message_at: now },
-          { transaction }
-        );
-        logger.info(
-          `🕐 [WATCHTIME] ${kickUsername} - Total: ${watchtime.total_watchtime_minutes + 5} minutos`,
-        );
-      }
 
       await transaction.commit();
 
