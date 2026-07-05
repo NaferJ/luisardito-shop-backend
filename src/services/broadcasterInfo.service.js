@@ -3,42 +3,42 @@ const config = require('../../config');
 const logger = require('../utils/logger');
 
 /**
- * Servicio para obtener información completa del broadcaster principal
- * Incluye estado del stream, metadata, estadísticas y más
+ * Service to get complete information about the main broadcaster
+ * Includes stream status, metadata, statistics and more
  */
 class BroadcasterInfoService {
     /**
-     * Obtiene toda la información pública del broadcaster
-     * @returns {Promise<Object>} Información completa del broadcaster
+     * Gets all public broadcaster info
+     * @returns {Promise<Object>} Complete broadcaster info
      */
     async getBroadcasterInfo() {
         try {
             const redis = getRedisClient();
             
-            // Información básica del broadcaster (desde configuración)
+            // Basic broadcaster info (from configuration)
             const broadcasterId = config.kick.broadcasterId;
-            const broadcasterUsername = 'Luisardito'; // Hardcoded por ahora
+            const broadcasterUsername = 'Luisardito'; // Hardcoded for now
             
-            // Obtener estado del stream desde Redis
+            // Get stream status from Redis
             const isLive = await redis.get('stream:is_live');
             const isOnline = isLive === 'true';
             
-            // Obtener información detallada del stream
+            // Get detailed stream info
             let streamInfo = null;
             const streamInfoRaw = await redis.get('stream:current_info');
             if (streamInfoRaw) {
                 try {
                     streamInfo = JSON.parse(streamInfoRaw);
                 } catch (err) {
-                    logger.error('[BroadcasterInfo] Error parseando stream info:', err.message);
+                    logger.error('[BroadcasterInfo] Error parsing stream info:', err.message);
                 }
             }
             
-            // Obtener timestamps relevantes
+            // Get relevant timestamps
             const lastStatusUpdate = await redis.get('stream:last_status_update');
             const lastMetadataUpdate = await redis.get('stream:last_metadata_update');
             
-            // Calcular tiempo en vivo (si está online)
+            // Calculate uptime (if online)
             let uptimeMinutes = null;
             let startedAt = null;
             if (isOnline && streamInfo?.started_at) {
@@ -48,7 +48,7 @@ class BroadcasterInfoService {
                 uptimeMinutes = Math.floor((now - startTime) / 1000 / 60);
             }
             
-            // Calcular tiempo desde último stream (si está offline)
+            // Calculate time since last stream (if offline)
             let lastLiveAgo = null;
             if (!isOnline && lastStatusUpdate) {
                 const lastUpdate = new Date(lastStatusUpdate);
@@ -56,26 +56,26 @@ class BroadcasterInfoService {
                 const minutesAgo = Math.floor((now - lastUpdate) / 1000 / 60);
                 
                 if (minutesAgo < 60) {
-                    lastLiveAgo = `Hace ${minutesAgo} minuto${minutesAgo !== 1 ? 's' : ''}`;
+                    lastLiveAgo = `${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago`;
                 } else if (minutesAgo < 1440) {
                     const hoursAgo = Math.floor(minutesAgo / 60);
-                    lastLiveAgo = `Hace ${hoursAgo} hora${hoursAgo !== 1 ? 's' : ''}`;
+                    lastLiveAgo = `${hoursAgo} hour${hoursAgo !== 1 ? 's' : ''} ago`;
                 } else {
                     const daysAgo = Math.floor(minutesAgo / 1440);
-                    lastLiveAgo = `Hace ${daysAgo} día${daysAgo !== 1 ? 's' : ''}`;
+                    lastLiveAgo = `${daysAgo} day${daysAgo !== 1 ? 's' : ''} ago`;
                 }
             }
             
-            // Construir respuesta completa
+            // Build complete response
             const broadcasterInfo = {
-                // Información básica
+                // Basic info
                 username: broadcasterUsername,
                 user_id: broadcasterId,
-                profile_picture: `/logo2.jpg`, // Ruta a la imagen del broadcaster
+                profile_picture: `/logo2.jpg`, // Path to broadcaster image
                 channel_url: `https://kick.com/${broadcasterUsername.toLowerCase()}`,
-                is_verified: true, // Luisardito está verificado
+                is_verified: true, // Luisardito is verified
                 
-                // Estado del stream
+                // Stream status
                 stream: {
                     is_live: isOnline,
                     status: isOnline ? 'online' : 'offline',
@@ -89,7 +89,7 @@ class BroadcasterInfoService {
                     last_live_ago: lastLiveAgo,
                 },
                 
-                // Timestamps de actualización
+                // Update timestamps
                 metadata: {
                     last_status_update: lastStatusUpdate,
                     last_metadata_update: lastMetadataUpdate,
@@ -97,14 +97,14 @@ class BroadcasterInfoService {
                 }
             };
             
-            logger.info(`[BroadcasterInfo] Info obtenida: ${broadcasterUsername} - ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+            logger.info(`[BroadcasterInfo] Info retrieved: ${broadcasterUsername} - ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
             
             return broadcasterInfo;
             
         } catch (error) {
-            logger.error('[BroadcasterInfo] Error obteniendo información del broadcaster:', error.message);
+            logger.error('[BroadcasterInfo] Error getting broadcaster info:', error.message);
             
-            // Retornar información básica en caso de error
+            // Return basic info on error
             return {
                 username: 'Luisardito',
                 user_id: config.kick.broadcasterId,
@@ -127,15 +127,15 @@ class BroadcasterInfoService {
                     last_status_update: null,
                     last_metadata_update: null,
                     data_updated_at: new Date().toISOString(),
-                    error: 'Error obteniendo datos del servidor'
+                    error: 'Error getting server data'
                 }
             };
         }
     }
     
     /**
-     * Obtiene solo el estado básico del stream (más rápido)
-     * @returns {Promise<Object>} Estado básico del stream
+     * Gets only the basic stream status (faster)
+     * @returns {Promise<Object>} Basic stream status
      */
     async getStreamStatus() {
         try {
@@ -148,7 +148,7 @@ class BroadcasterInfoService {
                 checked_at: new Date().toISOString()
             };
         } catch (error) {
-            logger.error('[BroadcasterInfo] Error obteniendo estado del stream:', error.message);
+            logger.error('[BroadcasterInfo] Error getting stream status:', error.message);
             return {
                 is_live: false,
                 status: 'unknown',

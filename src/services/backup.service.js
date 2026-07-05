@@ -22,18 +22,18 @@ class BackupService {
             dbPassword: process.env.MYSQL_ROOT_PASSWORD || 'root'
         };
 
-        // Validar configuración
+        // Validate configuration
         if (this.config.enabled && !this.config.githubToken) {
-            logger.warn('⚠️ Backup habilitado pero falta BACKUP_GITHUB_TOKEN');
+            logger.warn('Backup enabled but BACKUP_GITHUB_TOKEN is missing');
         }
     }
 
     /**
-     * Crea un backup completo de la base de datos
+     * Creates a full database backup
      */
     async createBackup() {
         if (!this.config.enabled) {
-            logger.info('ℹ️ Backups deshabilitados (BACKUP_ENABLED=false)');
+            logger.info('Backups disabled (BACKUP_ENABLED=false)');
             return { success: false, reason: 'disabled' };
         }
 
@@ -42,39 +42,39 @@ class BackupService {
         const gzFilename = `${filename}.gz`;
 
         try {
-            logger.info('🔄 Iniciando backup de base de datos...');
+            logger.info('Starting database backup...');
 
-            // Asegurar que existen los directorios
+            // Ensure directories exist
             await this.ensureDirectories();
 
-            // 1. Crear backup con mysqldump
+            // 1. Create backup with mysqldump
             const localBackupPath = path.join(this.config.localPath, filename);
             await this.dumpDatabase(localBackupPath);
 
-            // 2. Comprimir el backup
+            // 2. Compress the backup
             const localGzPath = path.join(this.config.localPath, gzFilename);
             await this.compressBackup(localBackupPath, localGzPath);
 
-            // 3. Eliminar backup sin comprimir
+            // 3. Remove uncompressed backup
             await fs.unlink(localBackupPath);
 
-            // 4. Obtener tamaño del backup
+            // 4. Get backup size
             const stats = await fs.stat(localGzPath);
             const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
-            logger.info(`✅ Backup creado: ${gzFilename} (${sizeMB} MB)`);
+            logger.info(`Backup created: ${gzFilename} (${sizeMB} MB)`);
 
-            // 5. Subir a GitHub
+            // 5. Upload to GitHub
             if (this.config.githubToken) {
                 await this.pushToGitHub(localGzPath, gzFilename);
             } else {
-                logger.warn('⚠️ GitHub token no configurado, saltando subida a GitHub');
+                logger.warn('GitHub token not configured, skipping GitHub upload');
             }
 
-            // 6. Limpiar backups antiguos
+            // 6. Clean old backups
             await this.cleanOldBackups();
 
-            logger.info('✅ Proceso de backup completado exitosamente');
+            logger.info('Backup process completed successfully');
 
             return {
                 success: true,
@@ -84,7 +84,7 @@ class BackupService {
             };
 
         } catch (error) {
-            logger.error('❌ Error en proceso de backup:', error);
+            logger.error('Error in backup process:', error);
             return {
                 success: false,
                 error: error.message,
@@ -94,17 +94,17 @@ class BackupService {
     }
 
     /**
-     * Crea el dump de la base de datos
+     * Creates the database dump
      */
     async dumpDatabase(outputPath) {
-        logger.info('Creando dump de MySQL...');
+        logger.info('Creating MySQL dump...');
 
-        // Crear el dump directamente en un archivo temporal en el contenedor MySQL
-        // Nombre único para evitar colisiones y ataques de symlink
+        // Create the dump directly in a temp file inside the MySQL container
+        // Unique name to avoid collisions and symlink attacks
         const tempId = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
         const tempFile = `/tmp/backup-${tempId}.sql`;
 
-        // Paso 1: Crear el dump dentro del contenedor MySQL
+        // Step 1: Create the dump inside the MySQL container
         const dumpCommand = `docker exec ${this.config.dbContainer} sh -c "mysqldump ` +
             `-u ${this.config.dbUser} ` +
             `-p${this.config.dbPassword} ` +
@@ -115,47 +115,47 @@ class BackupService {
             `--ignore-table=${this.config.dbName}.kick_webhook_events ` +
             `${this.config.dbName} > ${tempFile}"`;
 
-        // Paso 2: Copiar el archivo del contenedor al host
+        // Step 2: Copy the file from the container to the host
         const copyCommand = `docker cp ${this.config.dbContainer}:${tempFile} "${outputPath}"`;
 
-        // Paso 3: Limpiar el archivo temporal
+        // Step 3: Clean up the temp file
         const cleanCommand = `docker exec ${this.config.dbContainer} rm -f ${tempFile}`;
 
         try {
-            logger.info(`[Backup] Ejecutando mysqldump en contenedor ${this.config.dbContainer}`);
+            logger.info(`[Backup] Running mysqldump in container ${this.config.dbContainer}`);
 
-            // Crear dump dentro del contenedor
+            // Create dump inside the container
             const { stderr: dumpStderr } = await execAsync(dumpCommand);
 
             if (dumpStderr && !dumpStderr.includes('Warning') && !dumpStderr.includes('Using a password')) {
-                logger.warn('[Backup] Advertencias de mysqldump:', dumpStderr);
+                logger.warn('[Backup] mysqldump warnings:', dumpStderr);
             }
 
-            // Copiar archivo al host
+            // Copy file to host
             await execAsync(copyCommand);
 
-            // Limpiar archivo temporal
+            // Clean up temp file
             await execAsync(cleanCommand);
 
-            // Verificar que el archivo no esté vacío
+            // Verify the file is not empty
             const stats = await fs.stat(outputPath);
             if (stats.size === 0) {
-                throw new Error('El archivo de backup esta vacio');
+                throw new Error('The backup file is empty');
             }
 
-            logger.info(`Dump de MySQL completado (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
+            logger.info(`MySQL dump completed (${(stats.size / 1024 / 1024).toFixed(2)} MB)`);
         } catch (error) {
-            logger.error('[Backup] Error detallado:', error.message);
+            logger.error('[Backup] Detailed error:', error.message);
             if (error.stderr) logger.error('[Backup] stderr:', error.stderr);
-            throw new Error(`Error al crear dump de MySQL: ${error.message}`);
+            throw new Error(`Error creating MySQL dump: ${error.message}`);
         }
     }
 
     /**
-     * Comprime el backup usando gzip
+     * Compresses the backup using gzip
      */
     async compressBackup(inputPath, outputPath) {
-        logger.info('🗜️ Comprimiendo backup...');
+        logger.info('Compressing backup...');
 
         const zlib = require('zlib');
         const { createReadStream, createWriteStream } = require('fs');
@@ -167,42 +167,42 @@ class BackupService {
                 zlib.createGzip(),
                 createWriteStream(outputPath)
             );
-            logger.info('✅ Backup comprimido');
+            logger.info('Backup compressed');
         } catch (error) {
-            logger.error('[Backup] Error al comprimir:', error);
-            throw new Error(`Error al comprimir backup: ${error.message}`);
+            logger.error('[Backup] Error compressing:', error);
+            throw new Error(`Error compressing backup: ${error.message}`);
         }
     }
 
     /**
-     * Sube el backup a GitHub
+     * Uploads the backup to GitHub
      */
     async pushToGitHub(backupPath, filename) {
-        logger.info('☁️ Subiendo backup a GitHub...');
+        logger.info('Uploading backup to GitHub...');
 
         try {
-            // Verificar tamaño del archivo
+            // Check file size
             const stats = await fs.stat(backupPath);
             const sizeMB = stats.size / 1024 / 1024;
 
-            // Inicializar repo si no existe (esto también configura Git LFS)
+            // Initialize repo if it does not exist (this also configures Git LFS)
             await this.initGitHubRepo();
 
-            // Verificar si Git LFS está disponible
+            // Check if Git LFS is available
             const hasLFS = await this.checkGitLFS();
 
             if (!hasLFS && sizeMB > 95) {
-                logger.warn(`⚠️ Backup muy grande (${sizeMB.toFixed(2)} MB) - GitHub tiene límite de 100 MB`);
-                logger.warn('💡 Sugerencia: Instala Git LFS para manejar archivos grandes');
-                logger.warn('💡 Los backups locales están funcionando correctamente');
+                logger.warn(`Backup too large (${sizeMB.toFixed(2)} MB) - GitHub has a 100 MB limit`);
+                logger.warn('Suggestion: install Git LFS to handle large files');
+                logger.warn('Local backups are working correctly');
                 return;
             }
 
             if (hasLFS && sizeMB > 95) {
-                logger.info(`📦 Usando Git LFS para archivo grande (${sizeMB.toFixed(2)} MB)`);
+                logger.info(`Using Git LFS for large file (${sizeMB.toFixed(2)} MB)`);
             }
 
-            // Copiar archivo al directorio de GitHub
+            // Copy file to the GitHub directory
             const year = new Date().getFullYear();
             const month = String(new Date().getMonth() + 1).padStart(2, '0');
             const destDir = path.join(this.config.githubPath, String(year), month);
@@ -211,41 +211,41 @@ class BackupService {
             const destPath = path.join(destDir, filename);
             await fs.copyFile(backupPath, destPath);
 
-            // Hacer commit y push
+            // Commit and push
             const repoPath = this.config.githubPath;
             const relativePath = path.join(String(year), month, filename);
 
-            // Configurar merge como estrategia por defecto
+            // Set merge as the default strategy
             await execAsync(`cd "${repoPath}" && git config pull.rebase false`);
 
             await execAsync(`cd "${repoPath}" && git add "${relativePath}"`);
-            await execAsync(`cd "${repoPath}" && git commit -m "Backup automático: ${filename}"`);
+            await execAsync(`cd "${repoPath}" && git commit -m "Automatic backup: ${filename}"`);
 
-            // Intentar sincronizar con remoto
+            // Try to sync with remote
             try {
                 await execAsync(`cd "${repoPath}" && git pull origin main --no-edit`);
                 await execAsync(`cd "${repoPath}" && git push origin main`);
             } catch (syncError) {
-                // Si hay conflictos, forzar push (los backups no necesitan preservar historial)
-                logger.warn('[Backup] Conflicto detectado, forzando push...');
+                // If there are conflicts, force push (backups don't need to preserve history)
+                logger.warn('[Backup] Conflict detected, forcing push...');
                 await execAsync(`cd "${repoPath}" && git push --force origin main`);
             }
 
-            logger.info('✅ Backup subido a GitHub exitosamente');
+            logger.info('Backup uploaded to GitHub successfully');
         } catch (error) {
-            logger.error('❌ Error al subir a GitHub:', error.message);
-            // No fallar todo el proceso si falla GitHub
+            logger.error('Error uploading to GitHub:', error.message);
+            // Don't fail the whole process if GitHub fails
         }
     }
 
     /**
-     * Verifica si Git LFS está disponible y configurado
+     * Checks if Git LFS is available and configured
      */
     async checkGitLFS() {
         try {
             await execAsync('git lfs version');
 
-            // Verificar si está configurado en el repo
+            // Check if it is configured in the repo
             const gitattributesPath = path.join(this.config.githubPath, '.gitattributes');
             const content = await fs.readFile(gitattributesPath, 'utf-8');
             return content.includes('*.sql.gz');
@@ -255,131 +255,131 @@ class BackupService {
     }
 
     /**
-     * Inicializa el repositorio de GitHub si no existe
+     * Initializes the GitHub repository if it does not exist
      */
     async initGitHubRepo() {
         const repoPath = this.config.githubPath;
 
         try {
-            // Verificar si ya existe
+            // Check if it already exists
             await fs.access(path.join(repoPath, '.git'));
             
-            // Actualizar remote con token
+            // Update remote with token
             const authUrl = this.config.githubRepoUrl.replace(
                 'https://',
                 `https://x-access-token:${this.config.githubToken}@`
             );
             await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
             
-            // Asegurar que Git LFS está configurado
+            // Ensure Git LFS is configured
             await this.ensureGitLFS(repoPath);
 
         } catch {
-            // No existe, inicializar desde cero
-            logger.info('📥 Inicializando repositorio de backups...');
+            // Does not exist, initialize from scratch
+            logger.info('Initializing backup repository...');
 
             const authUrl = this.config.githubRepoUrl.replace(
                 'https://',
                 `https://x-access-token:${this.config.githubToken}@`
             );
 
-            // Asegurar que el directorio existe y está vacío
+            // Ensure the directory exists and is empty
             await fs.mkdir(repoPath, { recursive: true });
             
             try {
-                // Intentar clonar primero (si el repo tiene contenido)
+                // Try to clone first (if the repo has content)
                 await execAsync(`git clone "${authUrl}" "${repoPath}"`);
-                logger.info('✅ Repositorio clonado exitosamente');
+                logger.info('Repository cloned successfully');
             } catch (cloneError) {
-                // Si falla el clone, inicializar repo nuevo
-                logger.info('📝 Repositorio vacío, inicializando nuevo repo...');
+                // If clone fails, initialize a new repo
+                logger.info('Empty repository, initializing new repo...');
 
-                // Configurar safe.directory para evitar errores de ownership
+                // Configure safe.directory to avoid ownership errors
                 await execAsync(`git config --global --add safe.directory "${repoPath}"`);
 
-                // Inicializar git en el directorio
+                // Initialize git in the directory
                 await execAsync(`cd "${repoPath}" && git init`);
 
-                // Intentar agregar remote, si falla usar set-url
+                // Try to add remote, if it fails use set-url
                 try {
                     await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
                 } catch (remoteError) {
-                    // El remote ya existe, actualizarlo
+                    // Remote already exists, update it
                     await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
                 }
 
-                // Crear o cambiar a rama main
+                // Create or switch to main branch
                 try {
                     await execAsync(`cd "${repoPath}" && git checkout -b main`);
                 } catch {
                     await execAsync(`cd "${repoPath}" && git checkout main`);
                 }
 
-                logger.info('✅ Repositorio inicializado');
+                logger.info('Repository initialized');
             }
 
-            // Configurar safe.directory también para repos existentes (por si acaso)
+            // Configure safe.directory for existing repos too (just in case)
             await execAsync(`git config --global --add safe.directory "${repoPath}"`).catch(() => {});
 
-            // Configurar git user (ahora estamos seguros de que es un repo git)
+            // Configure git user (now we are sure it is a git repo)
             const email = this.config.githubUserEmail || 'backup@luisardito.com';
             await execAsync(`cd "${repoPath}" && git config user.email "${email}"`);
             await execAsync(`cd "${repoPath}" && git config user.name "Backup Bot"`);
             
-            // Configurar Git LFS
+            // Configure Git LFS
             await this.ensureGitLFS(repoPath);
 
-            logger.info('✅ Repositorio de backups configurado completamente');
+            logger.info('Backup repository fully configured');
         }
     }
 
     /**
-     * Asegura que Git LFS está configurado en el repositorio
+     * Ensures Git LFS is configured in the repository
      */
     async ensureGitLFS(repoPath) {
         try {
-            // Verificar si git-lfs está instalado
+            // Check if git-lfs is installed
             await execAsync('git lfs version');
 
-            // Inicializar Git LFS en el repositorio
+            // Initialize Git LFS in the repository
             await execAsync(`cd "${repoPath}" && git lfs install`);
 
-            // Verificar si .gitattributes existe y tiene la configuración correcta
+            // Check if .gitattributes exists and has the correct configuration
             const gitattributesPath = path.join(repoPath, '.gitattributes');
             try {
                 const content = await fs.readFile(gitattributesPath, 'utf-8');
                 if (!content.includes('*.sql.gz')) {
-                    // Agregar tracking de archivos .sql.gz
+                    // Add tracking for .sql.gz files
                     await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
-                    logger.info('✅ Git LFS configurado para rastrear archivos *.sql.gz');
+                    logger.info('Git LFS configured to track *.sql.gz files');
                 }
             } catch {
-                // .gitattributes no existe, crear tracking
+                // .gitattributes does not exist, create tracking
                 await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
 
-                // Hacer commit del .gitattributes si es nuevo
+                // Commit .gitattributes if it is new
                 try {
                     await execAsync(`cd "${repoPath}" && git add .gitattributes`);
-                    await execAsync(`cd "${repoPath}" && git commit -m "chore: configurar Git LFS para backups"`);
+                    await execAsync(`cd "${repoPath}" && git commit -m "chore: configure Git LFS for backups"`);
                     await execAsync(`cd "${repoPath}" && git push origin main`);
-                    logger.info('✅ Git LFS configurado y .gitattributes commiteado');
+                    logger.info('Git LFS configured and .gitattributes committed');
                 } catch (commitError) {
-                    // Si falla el commit, probablemente porque no hay cambios o el repo está vacío
-                    logger.info('ℹ️ Git LFS configurado localmente');
+                    // If commit fails, probably because there are no changes or the repo is empty
+                    logger.info('Git LFS configured locally');
                 }
             }
 
         } catch (error) {
-            logger.warn('⚠️ Git LFS no está disponible:', error.message);
-            logger.warn('💡 Instala Git LFS con: apk add git-lfs (en Alpine) o apt-get install git-lfs (en Debian/Ubuntu)');
+            logger.warn('Git LFS is not available:', error.message);
+            logger.warn('Install Git LFS with: apk add git-lfs (on Alpine) or apt-get install git-lfs (on Debian/Ubuntu)');
         }
     }
 
     /**
-     * Limpia backups antiguos según retention policy
+     * Cleans old backups according to the retention policy
      */
     async cleanOldBackups() {
-        logger.info('🧹 Limpiando backups antiguos...');
+        logger.info('Cleaning old backups...');
 
         const cutoffDate = new Date();
         cutoffDate.setDate(cutoffDate.getDate() - this.config.retentionDays);
@@ -399,23 +399,23 @@ class BackupService {
                 if (stats.mtime < cutoffDate) {
                     await fs.unlink(filePath);
                     deletedCount++;
-                    logger.info(`🗑️ Eliminado backup antiguo: ${file}`);
+                    logger.info(`Deleted old backup: ${file}`);
                 }
             }
 
             if (deletedCount > 0) {
-                logger.info(`✅ Limpiados ${deletedCount} backups antiguos`);
+                logger.info(`Cleaned ${deletedCount} old backups`);
             } else {
-                logger.info('ℹ️ No hay backups antiguos para limpiar');
+                logger.info('No old backups to clean');
             }
 
         } catch (error) {
-            logger.warn('⚠️ Error al limpiar backups antiguos:', error.message);
+            logger.warn('Error cleaning old backups:', error.message);
         }
     }
 
     /**
-     * Asegura que existen los directorios necesarios
+     * Ensures the required directories exist
      */
     async ensureDirectories() {
         await fs.mkdir(this.config.localPath, { recursive: true });
@@ -423,7 +423,7 @@ class BackupService {
     }
 
     /**
-     * Lista los backups disponibles
+     * Lists available backups
      */
     async listBackups() {
         try {
@@ -445,31 +445,31 @@ class BackupService {
 
             return backups.sort((a, b) => b.date - a.date);
         } catch (error) {
-            logger.error('Error al listar backups:', error);
+            logger.error('Error listing backups:', error);
             return [];
         }
     }
 
     /**
-     * Restaura un backup
+     * Restores a backup
      */
     async restoreBackup(filename) {
-        logger.info(`🔄 Iniciando restauración de backup: ${filename}`);
+        logger.info(`Starting backup restore: ${filename}`);
 
         const backupPath = path.join(this.config.localPath, filename);
         
         try {
-            // Verificar que existe el archivo
+            // Verify the file exists
             await fs.access(backupPath);
 
-            // Descomprimir si está comprimido
+            // Decompress if compressed
             let sqlFile = backupPath;
             if (filename.endsWith('.gz')) {
                 sqlFile = backupPath.replace('.gz', '');
                 await execAsync(`gunzip -c "${backupPath}" > "${sqlFile}"`);
             }
 
-            // Restaurar en MySQL usando docker exec
+            // Restore into MySQL using docker exec
             const command = `docker exec -i ${this.config.dbContainer} mysql ` +
                 `-u ${this.config.dbUser} ` +
                 `-p${this.config.dbPassword} ` +
@@ -477,16 +477,16 @@ class BackupService {
 
             await execAsync(command);
 
-            // Limpiar archivo descomprimido temporal
+            // Clean up the temporary decompressed file
             if (sqlFile !== backupPath) {
                 await fs.unlink(sqlFile);
             }
 
-            logger.info('✅ Backup restaurado exitosamente');
+            logger.info('Backup restored successfully');
             return { success: true };
 
         } catch (error) {
-            logger.error('❌ Error al restaurar backup:', error);
+            logger.error('Error restoring backup:', error);
             return { success: false, error: error.message };
         }
     }

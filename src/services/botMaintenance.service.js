@@ -5,8 +5,8 @@ const { Op } = require("sequelize");
 const logger = require("../utils/logger");
 
 /**
- * Servicio de mantenimiento automático del bot de Kick
- * Se ejecuta cada hora para mantener los tokens activos
+ * Automatic maintenance service for the Kick bot
+ * Runs every hour to keep tokens active
  */
 class BotMaintenanceService {
   constructor() {
@@ -14,26 +14,26 @@ class BotMaintenanceService {
     this.isRunning = false;
     this.intervalMinutes = parseInt(
       process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60",
-    ); // Por defecto cada 60 minutos
+    ); // Default every 60 minutes
   }
 
   /**
-   * Inicia el mantenimiento automático
+   * Starts automatic maintenance
    */
   start() {
     if (this.isRunning) {
-      logger.info("🤖 [BOT-MAINTENANCE] Servicio ya está ejecutándose");
+      logger.info("[BOT-MAINTENANCE] Service is already running");
       return;
     }
 
     logger.info(
-      `🤖 [BOT-MAINTENANCE] Iniciando mantenimiento automático cada ${this.intervalMinutes} minutos`,
+      `[BOT-MAINTENANCE] Starting automatic maintenance every ${this.intervalMinutes} minutes`,
     );
 
-    // Ejecutar inmediatamente al iniciar
+    // Run immediately on start
     this.performMaintenance();
 
-    // Configurar intervalo
+    // Configure interval
     const intervalMs = this.intervalMinutes * 60 * 1000;
     this.intervalId = setInterval(() => {
       this.performMaintenance();
@@ -41,13 +41,13 @@ class BotMaintenanceService {
 
     this.isRunning = true;
 
-    // Manejar señales de terminación para detener el servicio correctamente
+    // Handle termination signals to stop the service correctly
     process.on("SIGINT", () => this.stop());
     process.on("SIGTERM", () => this.stop());
   }
 
   /**
-   * Detiene el mantenimiento automático
+   * Stops automatic maintenance
    */
   stop() {
     if (this.intervalId) {
@@ -55,36 +55,36 @@ class BotMaintenanceService {
       this.intervalId = null;
     }
     this.isRunning = false;
-    logger.info("🤖 [BOT-MAINTENANCE] Servicio detenido");
+    logger.info("[BOT-MAINTENANCE] Service stopped");
   }
 
   /**
-   * Ejecuta el mantenimiento del bot
+   * Runs bot maintenance
    */
   async performMaintenance() {
     try {
-      logger.info("🔧 [BOT-MAINTENANCE] Iniciando mantenimiento programado...");
+      logger.info("[BOT-MAINTENANCE] Starting scheduled maintenance...");
 
-      // 1. Limpiar tokens expirados
+      // 1. Clean up expired tokens
       await this.cleanupExpiredTokens();
 
-      // 2. Renovar todos los tokens que expiren pronto
+      // 2. Renew all tokens expiring soon
       await this.refreshExpiringTokens();
 
-      // 3. Opcional: Simular actividad del chat
+      // 3. Optional: simulate chat activity
       await this.simulateChatActivity();
 
-      logger.info("🎉 [BOT-MAINTENANCE] Mantenimiento completado exitosamente");
+      logger.info("[BOT-MAINTENANCE] Maintenance completed successfully");
     } catch (error) {
       logger.error(
-        "❌ [BOT-MAINTENANCE] Error en mantenimiento:",
+        "[BOT-MAINTENANCE] Error in maintenance:",
         error.message,
       );
     }
   }
 
   /**
-   * Limpia tokens expirados
+   * Cleans up expired tokens
    */
   async cleanupExpiredTokens() {
     try {
@@ -107,30 +107,30 @@ class BotMaintenanceService {
           },
         );
         logger.info(
-          `🧹 [BOT-MAINTENANCE] ${expiredTokens.length} tokens expirados marcados como inactivos`,
+          `[BOT-MAINTENANCE] ${expiredTokens.length} expired tokens marked as inactive`,
         );
       } else {
         logger.info(
-          "✅ [BOT-MAINTENANCE] No hay tokens expirados para limpiar",
+          "[BOT-MAINTENANCE] No expired tokens to clean up",
         );
       }
     } catch (error) {
       logger.error(
-        "❌ [BOT-MAINTENANCE] Error limpiando tokens:",
+        "[BOT-MAINTENANCE] Error cleaning tokens:",
         error.message,
       );
     }
   }
 
   /**
-   * Renueva todos los tokens que expiren pronto
+   * Renews all tokens expiring soon
    */
   async refreshExpiringTokens() {
     try {
       logger.info(
-        "🔄 [BOT-MAINTENANCE] Verificando tokens que expiran pronto...",
+        "[BOT-MAINTENANCE] Checking tokens expiring soon...",
       );
-      const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutos a partir de ahora
+      const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
       const tokens = await KickBotToken.findAll({
         where: {
           is_active: true,
@@ -144,50 +144,50 @@ class BotMaintenanceService {
 
       if (tokens.length > 0) {
         logger.info(
-          `✅ [BOT-MAINTENANCE] ${tokens.length} tokens renovados exitosamente`,
+          `[BOT-MAINTENANCE] ${tokens.length} tokens renewed successfully`,
         );
       } else {
-        logger.info("✅ [BOT-MAINTENANCE] No hay tokens próximos a expirar");
+        logger.info("[BOT-MAINTENANCE] No tokens close to expiry");
       }
     } catch (error) {
       logger.error(
-        "❌ [BOT-MAINTENANCE] Error renovando tokens:",
+        "[BOT-MAINTENANCE] Error renewing tokens:",
         error.message,
       );
     }
   }
 
   /**
-   * Simula actividad del chat para mantener el bot activo
+   * Simulates chat activity to keep the bot active
    */
   async simulateChatActivity() {
     try {
-      // Solo simular actividad si está habilitado
+      // Only simulate activity if enabled
       const simulateActivity =
         process.env.BOT_MAINTENANCE_SIMULATE_ACTIVITY === "true";
 
       if (!simulateActivity) {
-        return; // No simular actividad
+        return; // Do not simulate activity
       }
 
-      logger.info("🛒 [BOT-MAINTENANCE] Simulando actividad del chat...");
+      logger.info("[BOT-MAINTENANCE] Simulating chat activity...");
 
-      // NOTA: Ya no simulamos comandos hardcodeados
-      // Los comandos ahora son dinámicos desde la base de datos
-      // Si necesitas simular actividad, usa el comando dinámico !tienda desde la DB
+      // NOTE: We no longer simulate hardcoded commands
+      // Commands are now dynamic from the database
+      // If you need to simulate activity, use the dynamic !tienda command from the DB
       logger.info(
-        "ℹ️ [BOT-MAINTENANCE] Simulación de actividad deshabilitada - Los comandos ahora son dinámicos",
+        "[BOT-MAINTENANCE] Activity simulation disabled - commands are now dynamic",
       );
     } catch (error) {
       logger.error(
-        "❌ [BOT-MAINTENANCE] Error en simulación de actividad:",
+        "[BOT-MAINTENANCE] Error in activity simulation:",
         error.message,
       );
     }
   }
 
   /**
-   * Obtiene estadísticas del servicio
+   * Gets service statistics
    */
   getStats() {
     return {
@@ -200,6 +200,6 @@ class BotMaintenanceService {
   }
 }
 
-// Exportar instancia singleton
+// Export singleton instance
 const botMaintenanceService = new BotMaintenanceService();
 module.exports = botMaintenanceService;

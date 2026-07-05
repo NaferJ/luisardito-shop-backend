@@ -3,7 +3,7 @@ const { Op } = require('sequelize');
 
 class PromocionService {
     /**
-     * Obtener promociones activas para un producto específico
+     * Get active promotions for a specific product
      */
     async obtenerPromocionesActivasProducto(productoId, usuarioId = null) {
         const ahora = new Date();
@@ -33,7 +33,7 @@ class PromocionService {
             order: [['prioridad', 'DESC'], ['creado', 'ASC']]
         });
 
-        // Filtrar promociones por usuario si se proporciona
+        // Filter promotions by user if provided
         if (usuarioId) {
             const promocionesValidas = [];
             for (const promo of promociones) {
@@ -49,7 +49,7 @@ class PromocionService {
     }
 
     /**
-     * Obtener todas las promociones activas
+     * Get all active promotions
      */
     async obtenerPromocionesActivas() {
         const ahora = new Date();
@@ -72,7 +72,7 @@ class PromocionService {
     }
 
     /**
-     * Calcular el mejor descuento para un producto
+     * Calculate the best discount for a product
      */
     async calcularMejorDescuento(productoId, precioOriginal, usuarioId = null) {
         const promociones = await this.obtenerPromocionesActivasProducto(productoId, usuarioId);
@@ -87,7 +87,7 @@ class PromocionService {
             };
         }
 
-        // Calcular descuentos para todas las promociones aplicables
+        // Calculate discounts for all applicable promotions
         let mejorPromocion = null;
         let mayorDescuento = 0;
 
@@ -121,38 +121,38 @@ class PromocionService {
     }
 
     /**
-     * Aplicar promoción a un producto (registrar uso)
+     * Apply promotion to a product (register usage)
      */
     async aplicarPromocion(promocionId, usuarioId, productoId, canjeId = null, externalTransaction = null) {
         const transaction = externalTransaction || await sequelize.transaction();
-        const shouldCommit = !externalTransaction; // Solo hacer commit si creamos la transacción
+        const shouldCommit = !externalTransaction; // Only commit if we created the transaction
 
         try {
             const promocion = await Promocion.findByPk(promocionId, { transaction });
             
             if (!promocion) {
-                throw new Error('Promoción no encontrada');
+                throw new Error('Promotion not found');
             }
 
             if (!promocion.estaActiva()) {
-                throw new Error('La promoción no está activa');
+                throw new Error('Promotion is not active');
             }
 
             const puedeUsar = await promocion.puedeUsarUsuario(usuarioId);
             if (!puedeUsar) {
-                throw new Error('Has alcanzado el límite de usos para esta promoción');
+                throw new Error('You have reached the usage limit for this promotion');
             }
 
             const producto = await Producto.findByPk(productoId, { transaction });
             if (!producto) {
-                throw new Error('Producto no encontrado');
+                throw new Error('Product not found');
             }
 
             const precioOriginal = producto.precio;
             const descuento = promocion.calcularDescuento(precioOriginal);
             const precioFinal = Math.max(0, precioOriginal - descuento);
 
-            // Registrar el uso
+            // Register the usage
             const uso = await UsoPromocion.create({
                 promocion_id: promocionId,
                 usuario_id: usuarioId,
@@ -168,7 +168,7 @@ class PromocionService {
                 }
             }, { transaction });
 
-            // Incrementar contador de usos
+            // Increment usage counter
             await promocion.increment('cantidad_usos_actuales', { transaction });
 
             if (shouldCommit) {
@@ -191,7 +191,7 @@ class PromocionService {
     }
 
     /**
-     * Validar código de promoción
+     * Validate promotion code
      */
     async validarCodigoPromocion(codigo, productoId = null, usuarioId = null) {
         const ahora = new Date();
@@ -220,14 +220,14 @@ class PromocionService {
         if (!promocion) {
             return {
                 valido: false,
-                mensaje: 'Código de promoción inválido o expirado'
+                mensaje: 'Invalid or expired promotion code'
             };
         }
 
         if (!promocion.estaActiva()) {
             return {
                 valido: false,
-                mensaje: 'Esta promoción ya no está disponible'
+                mensaje: 'This promotion is no longer available'
             };
         }
 
@@ -236,7 +236,7 @@ class PromocionService {
             if (!puedeUsar) {
                 return {
                     valido: false,
-                    mensaje: 'Has alcanzado el límite de usos para este código'
+                    mensaje: 'You have reached the usage limit for this code'
                 };
             }
         }
@@ -248,12 +248,12 @@ class PromocionService {
     }
 
     /**
-     * Actualizar estados de promociones (ejecutar periódicamente)
+     * Update promotion statuses (run periodically)
      */
     async actualizarEstadosPromociones() {
         const ahora = new Date();
         
-        // Activar promociones programadas que ya iniciaron
+        // Activate scheduled promotions that have already started
         await Promocion.update(
             { estado: 'activo' },
             {
@@ -265,7 +265,7 @@ class PromocionService {
             }
         );
 
-        // Expirar promociones activas que ya terminaron
+        // Expire active promotions that have already ended
         await Promocion.update(
             { estado: 'expirado' },
             {
@@ -276,7 +276,7 @@ class PromocionService {
             }
         );
 
-        // Expirar promociones que alcanzaron el límite de usos
+        // Expire promotions that reached the usage limit
         await Promocion.update(
             { estado: 'expirado' },
             {
@@ -294,7 +294,7 @@ class PromocionService {
     }
 
     /**
-     * Obtener estadísticas de una promoción
+     * Get promotion statistics
      */
     async obtenerEstadisticasPromocion(promocionId) {
         const promocion = await Promocion.findByPk(promocionId, {
@@ -316,7 +316,7 @@ class PromocionService {
         });
 
         if (!promocion) {
-            throw new Error('Promoción no encontrada');
+            throw new Error('Promotion not found');
         }
 
         const estadisticas = await UsoPromocion.findOne({
@@ -330,7 +330,7 @@ class PromocionService {
             raw: true
         });
 
-        // Top 5 usuarios que más han usado la promoción
+        // Top 5 users who have used the promotion the most
         const topUsuarios = await UsoPromocion.findAll({
             where: { promocion_id: promocionId },
             attributes: [
@@ -346,7 +346,7 @@ class PromocionService {
             limit: 5
         });
 
-        // Productos más canjeados con esta promoción
+        // Most redeemed products with this promotion
         const topProductos = await UsoPromocion.findAll({
             where: { promocion_id: promocionId },
             attributes: [

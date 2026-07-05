@@ -5,25 +5,25 @@ const logger = require('../utils/logger');
 
 class BotrixMigrationService {
     /**
-     * Procesar mensaje de chat para detectar respuesta de BotRix
-     * @param {Object} chatMessage - Mensaje de chat recibido del webhook
+     * Process chat message to detect BotRix response
+     * @param {Object} chatMessage - Chat message received from the webhook
      */
     static async processChatMessage(chatMessage) {
         try {
             const { sender, content, broadcaster } = chatMessage;
 
-            // Verificar que el mensaje viene de BotRix
+            // Verify the message comes from BotRix
             if (sender.username !== 'BotRix') {
                 return { processed: false, reason: 'Not from BotRix' };
             }
 
-            // Verificar configuración activa
+            // Check active configuration
             const config = await BotrixMigrationConfig.getConfig();
             if (!config.migration_enabled) {
                 return { processed: false, reason: 'Migration disabled' };
             }
 
-            // Regex para detectar el patrón: "@usuario tiene X puntos."
+            // Regex to detect the pattern: "@user has X points."
             const pointsRegex = /@(\w+)\s+tiene\s+(\d+)\s+puntos\./i;
             const match = content.match(pointsRegex);
 
@@ -34,12 +34,12 @@ class BotrixMigrationService {
             const [, targetUsername, botrixPoints] = match;
             const pointsAmount = parseInt(botrixPoints, 10);
 
-            logger.info(`🔄 [BOTRIX MIGRATION] Detected: @${targetUsername} has ${pointsAmount} points`);
+            logger.info(`[BOTRIX MIGRATION] Detected: @${targetUsername} has ${pointsAmount} points`);
 
-            // Buscar el usuario por nickname de Kick
+            // Find the user by Kick nickname
             const usuario = await Usuario.findOne({
                 where: {
-                    // Buscar por kick_data.username o nickname
+                    // Search by kick_data.username or nickname
                     [Op.or]: [
                         sequelize.literal(`JSON_EXTRACT(kick_data, '$.username') = '${targetUsername}'`),
                         { nickname: targetUsername }
@@ -48,7 +48,7 @@ class BotrixMigrationService {
             });
 
             if (!usuario) {
-                logger.info(`❌ [BOTRIX MIGRATION] Usuario ${targetUsername} no encontrado en la base de datos`);
+                logger.info(`[BOTRIX MIGRATION] User ${targetUsername} not found in the database`);
                 return {
                     processed: false,
                     reason: 'User not found',
@@ -56,9 +56,9 @@ class BotrixMigrationService {
                 };
             }
 
-            // Verificar si ya migró
+            // Check if already migrated
             if (usuario.botrix_migrated) {
-                logger.info(`⚠️ [BOTRIX MIGRATION] Usuario ${targetUsername} ya migró puntos anteriormente`);
+                logger.info(`[BOTRIX MIGRATION] User ${targetUsername} already migrated points previously`);
                 return {
                     processed: false,
                     reason: 'Already migrated',
@@ -71,10 +71,10 @@ class BotrixMigrationService {
                 };
             }
 
-            // Realizar la migración
+            // Perform the migration
             const result = await this.migrateBotrixPoints(usuario, pointsAmount, targetUsername);
 
-            logger.info(`✅ [BOTRIX MIGRATION] Migración completada para ${targetUsername}: ${pointsAmount} puntos`);
+            logger.info(`[BOTRIX MIGRATION] Migration completed for ${targetUsername}: ${pointsAmount} points`);
             return {
                 processed: true,
                 reason: 'Migration successful',
@@ -82,7 +82,7 @@ class BotrixMigrationService {
             };
 
         } catch (error) {
-            logger.error('❌ [BOTRIX MIGRATION] Error:', error);
+            logger.error('[BOTRIX MIGRATION] Error:', error);
             return {
                 processed: false,
                 reason: 'Error',
@@ -92,16 +92,16 @@ class BotrixMigrationService {
     }
 
     /**
-     * Realizar migración de puntos de Botrix
-     * @param {Object} usuario - Usuario de la base de datos
-     * @param {number} pointsAmount - Cantidad de puntos a migrar
-     * @param {string} kickUsername - Username de Kick para logs
+     * Perform Botrix points migration
+     * @param {Object} usuario - Database user
+     * @param {number} pointsAmount - Amount of points to migrate
+     * @param {string} kickUsername - Kick username for logs
      */
     static async migrateBotrixPoints(usuario, pointsAmount, kickUsername) {
         const transaction = await sequelize.transaction();
 
         try {
-            // Actualizar puntos del usuario
+            // Update user points
             const puntosAnteriores = usuario.puntos;
             const nuevosTotal = puntosAnteriores + pointsAmount;
 
@@ -112,13 +112,13 @@ class BotrixMigrationService {
                 botrix_points_migrated: pointsAmount
             }, { transaction });
 
-            // Crear entrada en historial de puntos
+            // Create entry in points history
             await HistorialPunto.create({
                 usuario_id: usuario.id,
                 puntos: pointsAmount,
                 tipo: 'ganado',
-                concepto: 'Migración desde Botrix',
-                motivo: `Puntos migrados automáticamente desde Botrix por respuesta del bot`,
+                concepto: 'Migration from Botrix',
+                motivo: `Points migrated automatically from Botrix by bot response`,
                 kick_event_data: {
                     event_type: 'botrix_migration',
                     kick_username: kickUsername,
@@ -146,7 +146,7 @@ class BotrixMigrationService {
     }
 
     /**
-     * Obtener estadísticas de migración
+     * Get migration statistics
      */
     static async getMigrationStats() {
         const totalUsers = await Usuario.count();
@@ -171,27 +171,27 @@ class BotrixMigrationService {
     }
 
     /**
-     * Procesar mensaje de chat para detectar watchtime de BotRix
-     * Patrón: "@usuario ha pasado X dias Y horas Z min viendo este canal"
-     * @param {Object} chatMessage - Mensaje de chat recibido del webhook
+     * Process chat message to detect BotRix watchtime
+     * Pattern: "@user has spent X days Y hours Z min watching this channel"
+     * @param {Object} chatMessage - Chat message received from the webhook
      */
     static async processWatchtimeMessage(chatMessage) {
         try {
             const { sender, content, broadcaster } = chatMessage;
 
-            // Verificar que el mensaje viene de BotRix
+            // Verify the message comes from BotRix
             if (sender.username !== 'BotRix') {
                 return { processed: false, reason: 'Not from BotRix' };
             }
 
-            // Verificar configuración de migración de watchtime activa
+            // Check active watchtime migration configuration
             const config = await BotrixMigrationConfig.getConfig();
             if (!config.watchtime_migration_enabled) {
                 return { processed: false, reason: 'Watchtime migration disabled' };
             }
 
-            // Regex para detectar: "@usuario ha pasado [X dias] [Y h/horas] [Z min] viendo [este canal|el stream]"
-            // Patrón seguro: captura la parte de tiempo como secuencia de "número + unidad"
+            // Regex to detect watchtime messages from Kick chat (Spanish format: "@user has spent [X days] [Y hours] [Z min] watching [this channel|the stream]")
+            // Safe pattern: captures the time part as a sequence of "number + unit"
             const watchtimeRegex = /@(\w+)\s+ha\s+pasado\s+((?:\d+\s+(?:d[íi]as?|horas?|h|min)\s*)+)viendo\s+(?:este\s+canal|el\s+stream)/i;
             const match = content.match(watchtimeRegex);
 
@@ -201,7 +201,7 @@ class BotrixMigrationService {
 
             const [, targetUsername, timeStr] = match;
 
-            // Extraer componentes de tiempo sin regex (evita backtracking - S5852)
+            // Extract time components without regex (avoids backtracking - S5852)
             let days = 0, hours = 0, minutes = 0;
             const parts = timeStr.trim().split(' ').filter(Boolean);
             for (let i = 0; i < parts.length - 1; i++) {
@@ -213,12 +213,12 @@ class BotrixMigrationService {
                 else if (unit.startsWith('d')) days = num;
             }
 
-            // Convertir todo a minutos: días × 24 × 60 + horas × 60 + minutos
+            // Convert everything to minutes: days * 24 * 60 + hours * 60 + minutes
             const totalWatchtimeMinutes = (days * 24 * 60) + (hours * 60) + minutes;
 
-            logger.info(`🔄 [BOTRIX WATCHTIME MIGRATION] Detected: @${targetUsername} has ${days}d ${hours}h ${minutes}m = ${totalWatchtimeMinutes} minutes`);
+            logger.info(`[BOTRIX WATCHTIME MIGRATION] Detected: @${targetUsername} has ${days}d ${hours}h ${minutes}m = ${totalWatchtimeMinutes} minutes`);
 
-            // Buscar el usuario por nickname de Kick
+            // Find the user by Kick nickname
             const usuario = await Usuario.findOne({
                 where: {
                     [Op.or]: [
@@ -229,7 +229,7 @@ class BotrixMigrationService {
             });
 
             if (!usuario) {
-                logger.info(`❌ [BOTRIX WATCHTIME MIGRATION] Usuario ${targetUsername} no encontrado en la base de datos`);
+                logger.info(`[BOTRIX WATCHTIME MIGRATION] User ${targetUsername} not found in the database`);
                 return {
                     processed: false,
                     reason: 'User not found',
@@ -237,9 +237,9 @@ class BotrixMigrationService {
                 };
             }
 
-            // Verificar si ya migró watchtime
+            // Check if watchtime was already migrated
             if (usuario.botrix_watchtime_migrated) {
-                logger.info(`⚠️ [BOTRIX WATCHTIME MIGRATION] Usuario ${targetUsername} ya migró watchtime anteriormente`);
+                logger.info(`[BOTRIX WATCHTIME MIGRATION] User ${targetUsername} already migrated watchtime previously`);
                 return {
                     processed: false,
                     reason: 'Already migrated',
@@ -252,10 +252,10 @@ class BotrixMigrationService {
                 };
             }
 
-            // Realizar la migración
+            // Perform the migration
             const result = await this.migrateWatchtime(usuario, totalWatchtimeMinutes, targetUsername, { days, hours, minutes });
 
-            logger.info(`✅ [BOTRIX WATCHTIME MIGRATION] Migración completada para ${targetUsername}: ${totalWatchtimeMinutes} minutos`);
+            logger.info(`[BOTRIX WATCHTIME MIGRATION] Migration completed for ${targetUsername}: ${totalWatchtimeMinutes} minutes`);
             return {
                 processed: true,
                 reason: 'Migration successful',
@@ -263,7 +263,7 @@ class BotrixMigrationService {
             };
 
         } catch (error) {
-            logger.error('❌ [BOTRIX WATCHTIME MIGRATION] Error:', error);
+            logger.error('[BOTRIX WATCHTIME MIGRATION] Error:', error);
             return {
                 processed: false,
                 reason: 'Error',
@@ -273,24 +273,24 @@ class BotrixMigrationService {
     }
 
     /**
-     * Realizar migración de watchtime de Botrix
-     * @param {Object} usuario - Usuario de la base de datos
-     * @param {number} totalWatchtimeMinutes - Minutos totales a migrar
-     * @param {string} kickUsername - Username de Kick para logs
-     * @param {Object} breakdown - Desglose de días, horas, minutos
+     * Perform Botrix watchtime migration
+     * @param {Object} usuario - Database user
+     * @param {number} totalWatchtimeMinutes - Total minutes to migrate
+     * @param {string} kickUsername - Kick username for logs
+     * @param {Object} breakdown - Breakdown of days, hours, minutes
      */
     static async migrateWatchtime(usuario, totalWatchtimeMinutes, kickUsername, breakdown = {}) {
         const transaction = await sequelize.transaction();
 
         try {
-            // Obtener o crear registro de watchtime del usuario
+            // Get or create user watchtime record
             let userWatchtime = await UserWatchtime.findOne({
                 where: { usuario_id: usuario.id },
                 transaction
             });
 
             if (!userWatchtime) {
-                // Crear nuevo registro de watchtime
+                // Create new watchtime record
                 userWatchtime = await UserWatchtime.create({
                     usuario_id: usuario.id,
                     kick_user_id: usuario.user_id_ext,
@@ -299,13 +299,13 @@ class BotrixMigrationService {
                     first_message_date: new Date()
                 }, { transaction });
             } else {
-                // Actualizar watchtime existente
+                // Update existing watchtime
                 const previousWatchtime = userWatchtime.total_watchtime_minutes;
                 userWatchtime.total_watchtime_minutes += totalWatchtimeMinutes;
                 await userWatchtime.save({ transaction });
             }
 
-            // Actualizar usuario con información de migración
+            // Update user with migration info
             await usuario.update({
                 botrix_watchtime_migrated: true,
                 botrix_watchtime_migrated_at: new Date(),
@@ -331,7 +331,7 @@ class BotrixMigrationService {
     }
 
     /**
-     * Obtener estadísticas de migración de watchtime
+     * Get watchtime migration statistics
      */
     static async getWatchtimeMigrationStats() {
         const totalUsers = await Usuario.count();
@@ -356,7 +356,7 @@ class BotrixMigrationService {
     }
 
     /**
-     * Activar/desactivar migración
+     * Enable/disable migration
      */
     static async toggleMigration(enabled) {
         const config = await BotrixMigrationConfig.getConfig();

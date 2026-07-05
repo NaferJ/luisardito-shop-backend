@@ -1,53 +1,53 @@
 const { KickBotCommand } = require('../models');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
-const kickBotService = require('./kickBot.service'); // Importar la instancia singleton
+const kickBotService = require('./kickBot.service'); // Import the singleton instance
 
 /**
- * Servicio para envío automático de comandos del bot de Kick
- * Revisa periódicamente los comandos con auto_send_interval_seconds > 0
- * y los envía automáticamente al chat de Kick
- * NOTA: Este sistema es exclusivo para Kick, NO envía a Discord
+ * Service for automatic sending of Kick bot commands
+ * Periodically checks commands with auto_send_interval_seconds > 0
+ * and sends them automatically to the Kick chat
+ * NOTE: This system is exclusive to Kick, it does NOT send to Discord
  */
 class KickBotAutoSendService {
     constructor() {
-        this.kickBotService = kickBotService; // Usar la instancia singleton
+        this.kickBotService = kickBotService; // Use the singleton instance
         this.intervalId = null;
         this.isRunning = false;
-        this.checkInterval = 10000; // Revisar cada 10 segundos
+        this.checkInterval = 10000; // Check every 10 seconds
     }
 
     /**
-     * Inicia el servicio de envío automático
+     * Starts the auto-send service
      */
     start() {
         if (this.isRunning) {
-            logger.info('[AUTO-SEND] Servicio ya está ejecutándose');
+            logger.info('[AUTO-SEND] Service is already running');
             return;
         }
 
-        logger.info('[AUTO-SEND] 🚀 Iniciando servicio de envío automático de comandos');
+        logger.info('[AUTO-SEND] Starting automatic command sending service');
         this.isRunning = true;
 
-        // Ejecutar inmediatamente la primera vez
+        // Run immediately the first time
         this.checkAndSendCommands();
 
-        // Configurar intervalo periódico
+        // Configure periodic interval
         this.intervalId = setInterval(() => {
             this.checkAndSendCommands();
         }, this.checkInterval);
     }
 
     /**
-     * Detiene el servicio de envío automático
+     * Stops the auto-send service
      */
     stop() {
         if (!this.isRunning) {
-            logger.info('[AUTO-SEND] Servicio ya está detenido');
+            logger.info('[AUTO-SEND] Service is already stopped');
             return;
         }
 
-        logger.info('[AUTO-SEND] 🛑 Deteniendo servicio de envío automático');
+        logger.info('[AUTO-SEND] Stopping automatic command sending service');
         this.isRunning = false;
 
         if (this.intervalId) {
@@ -57,11 +57,11 @@ class KickBotAutoSendService {
     }
 
     /**
-     * Revisa y envía comandos automáticamente
+     * Checks and sends commands automatically
      */
     async checkAndSendCommands() {
         try {
-            // Obtener comandos con envío automático habilitado
+            // Get commands with auto-send enabled
             const autoSendCommands = await KickBotCommand.findAll({
                 where: {
                     enabled: true,
@@ -72,35 +72,35 @@ class KickBotAutoSendService {
             });
 
             if (autoSendCommands.length === 0) {
-                return; // No hay comandos para enviar automáticamente
+                return; // No commands to send automatically
             }
 
             const now = new Date();
 
             for (const command of autoSendCommands) {
                 try {
-                    // Verificar si es tiempo de enviar este comando
+                    // Check if it is time to send this command
                     if (await this.shouldSendCommand(command, now)) {
                         await this.sendCommand(command);
-                        // Actualizar el último envío
+                        // Update last sent
                         command.last_used_at = now;
                         await command.save();
                     }
                 } catch (error) {
-                    logger.error(`[AUTO-SEND] Error procesando comando ${command.command}:`, error);
+                    logger.error(`[AUTO-SEND] Error processing command ${command.command}:`, error);
                 }
             }
         } catch (error) {
-            logger.error('[AUTO-SEND] Error en checkAndSendCommands:', error);
+            logger.error('[AUTO-SEND] Error in checkAndSendCommands:', error);
         }
     }
 
     /**
-     * Verifica si un comando debe enviarse en este momento
+     * Checks if a command should be sent at this time
      */
     async shouldSendCommand(command, now) {
         if (!command.last_used_at) {
-            // Nunca se ha enviado, enviar ahora
+            // Never sent, send now
             return true;
         }
 
@@ -111,61 +111,61 @@ class KickBotAutoSendService {
     }
 
     /**
-     * Envía un comando automáticamente
+     * Sends a command automatically
      */
     async sendCommand(command) {
         try {
-            logger.info(`[AUTO-SEND] 📤 Enviando comando automático: !${command.command}`);
+            logger.info(`[AUTO-SEND] Sending automatic command: !${command.command}`);
 
             let response;
 
             if (command.command_type === 'dynamic') {
-                // Para comandos dinámicos, necesitamos simular el contexto
-                // Usar el handler correspondiente
+                // For dynamic commands, we need to simulate the context
+                // Use the corresponding handler
                 const handler = command.dynamic_handler;
                 if (handler === 'puntos_handler') {
-                    // Para puntos_handler, necesitamos un usuario. Usar un mensaje genérico
-                    response = '¡Recuerda que puedes consultar tus puntos con !puntos!';
+                    // For puntos_handler, we need a user. Use a generic message
+                    response = 'Remember you can check your points with !puntos!';
                 } else {
-                    // Para otros handlers, usar el mensaje simple
+                    // For other handlers, use the simple message
                     response = command.response_message;
                 }
             } else {
-                // Comando simple: reemplazar variables con valores por defecto
+                // Simple command: replace variables with default values
                 response = command.response_message
-                    .replace(/{username}/g, 'Sistema')
+                    .replace(/{username}/g, 'System')
                     .replace(/{channel}/g, 'luisardito')
                     .replace(/{args}/g, '')
-                    .replace(/{target_user}/g, 'todos')
+                    .replace(/{target_user}/g, 'everyone')
                     .replace(/{points}/g, '0');
             }
 
             if (response) {
-                // Enviar SOLO a Kick (el auto-send es exclusivo para Kick bot)
+                // Send ONLY to Kick (auto-send is exclusive to the Kick bot)
                 const kickResult = await this.kickBotService.sendMessage(response);
                 if (kickResult.ok) {
-                    logger.info(`[AUTO-SEND] ✅ Comando enviado a Kick: !${command.command}`);
+                    logger.info(`[AUTO-SEND] Command sent to Kick: !${command.command}`);
                 } else {
-                    logger.error(`[AUTO-SEND] ❌ Error enviando a Kick: ${kickResult.error}`);
+                    logger.error(`[AUTO-SEND] Error sending to Kick: ${kickResult.error}`);
                 }
 
 
-                // Incrementar contador de uso
+                // Increment usage counter
                 await command.incrementUsage();
             }
         } catch (error) {
-            logger.error(`[AUTO-SEND] Error enviando comando ${command.command}:`, error);
+            logger.error(`[AUTO-SEND] Error sending command ${command.command}:`, error);
         }
     }
 
     /**
-     * Obtiene el estado del servicio
+     * Gets the service status
      */
     getStatus() {
         return {
             isRunning: this.isRunning,
             checkInterval: this.checkInterval,
-            nextCheckIn: this.intervalId ? 'Próxima revisión en breve' : 'Servicio detenido'
+            nextCheckIn: this.intervalId ? 'Next check shortly' : 'Service stopped'
         };
     }
 }

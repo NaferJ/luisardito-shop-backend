@@ -1,19 +1,19 @@
-﻿const { Op } = require('sequelize');
+const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 /**
- * Servicio de limpieza periodica de la base de datos.
+ * Periodic database cleanup service.
  *
- * Elimina registros antiguos de tablas que crecen sin control
- * para mantener un tamano saludable de la BD y de los backups.
+ * Removes old records from tables that grow without control
+ * to maintain a healthy DB size and backups.
  *
- * Tablas objetivo:
- *  - kick_webhook_events  -> solo sirven para idempotencia (7 dias)
- *  - historial_puntos     -> registros de chat pesados (90 dias)
- *  - notificaciones       -> leidas (60 dias), no leidas (120 dias)
- *  - refresh_tokens       -> revocados Y expirados (7 dias)
+ * Target tables:
+ *  - kick_webhook_events  -> only used for idempotency (7 days)
+ *  - historial_puntos     -> heavy chat records (90 days)
+ *  - notificaciones       -> read (60 days), unread (120 days)
+ *  - refresh_tokens       -> revoked AND expired (7 days)
  */
 class DbCleanupService {
-    // kick_webhook_events - eliminar eventos procesados > 7 dias
+    // kick_webhook_events - delete processed events > 7 days
     static async cleanKickWebhookEvents() {
         const KickWebhookEvent = require('../models/kickWebhookEvent.model');
         const cutoff = new Date();
@@ -24,7 +24,7 @@ class DbCleanupService {
                 message_timestamp: { [Op.lt]: cutoff }
             }
         });
-        // Tambien eliminar eventos no procesados muy antiguos (> 30 dias)
+        // Also delete very old unprocessed events (> 30 days)
         const cutoff30 = new Date();
         cutoff30.setDate(cutoff30.getDate() - 30);
         const deletedOld = await KickWebhookEvent.destroy({
@@ -34,23 +34,23 @@ class DbCleanupService {
         });
         return { deleted_processed: deleted, deleted_very_old: deletedOld };
     }
-    // historial_puntos - limpiar datos JSON y registros de chat viejos
+    // historial_puntos - clean JSON data and old chat records
     static async cleanHistorialPuntos() {
         const { sequelize } = require('../models/database');
-        // 1. Nullificar kick_event_data en registros > 30 dias
+        // 1. Nullify kick_event_data in records > 30 days
         const [, nullifiedMeta] = await sequelize.query(
             "UPDATE historial_puntos SET kick_event_data = NULL WHERE kick_event_data IS NOT NULL AND fecha < DATE_SUB(NOW(), INTERVAL 30 DAY)"
         );
         const nullified = nullifiedMeta?.affectedRows || 0;
-        // 2. Eliminar registros de tipo chat > 90 dias (son los mas numerosos)
-        //    Los registros de subs, follows, canjes, rewards se mantienen
+        // 2. Delete chat-type records > 90 days (the most numerous)
+        //    Subs, follows, redemptions, rewards records are kept
         const [, deletedMeta] = await sequelize.query(
             "DELETE FROM historial_puntos WHERE concepto LIKE 'Mensaje en chat%' AND fecha < DATE_SUB(NOW(), INTERVAL 90 DAY) LIMIT 50000"
         );
         const deletedChat = deletedMeta?.affectedRows || 0;
         return { nullified_json: nullified, deleted_chat_records: deletedChat };
     }
-    // notificaciones - leidas > 60 dias, no leidas > 120 dias
+    // notificaciones - read > 60 days, unread > 120 days
     static async cleanNotificaciones() {
         const Notificacion = require('../models/notificacion.model');
         const cutoff60 = new Date();
@@ -70,8 +70,8 @@ class DbCleanupService {
         });
         return { deleted_read: deletedRead, deleted_old_unread: deletedUnread };
     }
-    // refresh_tokens - SOLO revocados Y expirados > 7 dias
-    // NUNCA toca tokens activos (no revocados y no expirados)
+    // refresh_tokens - ONLY revoked AND expired > 7 days
+    // NEVER touches active tokens (not revoked and not expired)
     static async cleanRefreshTokens() {
         const RefreshToken = require('../models/refreshToken.model');
         const cutoff = new Date();
@@ -84,22 +84,22 @@ class DbCleanupService {
         });
         return { deleted_revoked_expired: deleted };
     }
-    // Ejecutar TODAS las limpiezas
+    // Run ALL cleanups
     static async runAll() {
         const results = {};
         try {
-            logger.info('🧹 [DB-CLEANUP] Iniciando limpieza de base de datos...');
+            logger.info('[DB-CLEANUP] Starting database cleanup...');
             results.webhookEvents = await this.cleanKickWebhookEvents();
-            logger.info('🧹 [DB-CLEANUP] kick_webhook_events: ' + results.webhookEvents.deleted_processed + ' procesados eliminados, ' + results.webhookEvents.deleted_very_old + ' muy antiguos eliminados');
+            logger.info('[DB-CLEANUP] kick_webhook_events: ' + results.webhookEvents.deleted_processed + ' processed deleted, ' + results.webhookEvents.deleted_very_old + ' very old deleted');
             results.historialPuntos = await this.cleanHistorialPuntos();
-            logger.info('🧹 [DB-CLEANUP] historial_puntos: ' + results.historialPuntos.nullified_json + ' JSONs limpiados, ' + results.historialPuntos.deleted_chat_records + ' registros de chat eliminados');
+            logger.info('[DB-CLEANUP] historial_puntos: ' + results.historialPuntos.nullified_json + ' JSONs cleaned, ' + results.historialPuntos.deleted_chat_records + ' chat records deleted');
             results.notificaciones = await this.cleanNotificaciones();
-            logger.info('🧹 [DB-CLEANUP] notificaciones: ' + results.notificaciones.deleted_read + ' leidas eliminadas, ' + results.notificaciones.deleted_old_unread + ' antiguas eliminadas');
+            logger.info('[DB-CLEANUP] notificaciones: ' + results.notificaciones.deleted_read + ' read deleted, ' + results.notificaciones.deleted_old_unread + ' old deleted');
             results.refreshTokens = await this.cleanRefreshTokens();
-            logger.info('🧹 [DB-CLEANUP] refresh_tokens: ' + results.refreshTokens.deleted_revoked_expired + ' revocados/expirados eliminados');
-            logger.info('✅ [DB-CLEANUP] Limpieza de base de datos completada');
+            logger.info('[DB-CLEANUP] refresh_tokens: ' + results.refreshTokens.deleted_revoked_expired + ' revoked/expired deleted');
+            logger.info('[DB-CLEANUP] Database cleanup completed');
         } catch (error) {
-            logger.error('❌ [DB-CLEANUP] Error durante limpieza:', error);
+            logger.error('[DB-CLEANUP] Error during cleanup:', error);
             results.error = error.message;
         }
         return results;

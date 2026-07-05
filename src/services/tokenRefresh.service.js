@@ -6,35 +6,35 @@ class TokenRefreshService {
     constructor() {
         this.isRunning = false;
         this.intervalId = null;
-        this.intervalMs = 30 * 60 * 1000; // 30 minutos en milisegundos
+        this.intervalMs = 30 * 60 * 1000; // 30 minutes in milliseconds
     }
 
     /**
-     * Inicia el servicio de refresh automático de tokens
+     * Starts the automatic token refresh service
      */
     start() {
         if (this.isRunning) {
-            logger.info('[Token Refresh Service] Ya está en ejecución');
+            logger.info('[Token Refresh Service] Already running');
             return;
         }
 
-        logger.info('[Token Refresh Service] Iniciando servicio...');
+        logger.info('[Token Refresh Service] Starting service...');
 
-        // Ejecutar inmediatamente al iniciar
+        // Run immediately on start
         this.checkAndRefreshTokens();
 
-        // Programar ejecución cada 30 minutos
+        // Schedule execution every 30 minutes
         this.intervalId = setInterval(() => {
             this.checkAndRefreshTokens();
         }, this.intervalMs);
 
         this.isRunning = true;
 
-        logger.info('[Token Refresh Service] ✅ Servicio iniciado - verificará tokens cada 30 minutos');
+        logger.info('[Token Refresh Service] Service started - will check tokens every 30 minutes');
     }
 
     /**
-     * Detiene el servicio
+     * Stops the service
      */
     stop() {
         if (this.intervalId) {
@@ -42,22 +42,22 @@ class TokenRefreshService {
             this.intervalId = null;
         }
         this.isRunning = false;
-        logger.info('[Token Refresh Service] ❌ Servicio detenido');
+        logger.info('[Token Refresh Service] Service stopped');
     }
 
     /**
-     * Verifica y refresca tokens que están por expirar
+     * Checks and refreshes tokens that are about to expire
      */
     async checkAndRefreshTokens() {
         try {
-            logger.info('[Token Refresh Service] Verificando tokens...');
+            logger.info('[Token Refresh Service] Checking tokens...');
 
             const activeTokens = await KickBroadcasterToken.findAll({
                 where: { is_active: true }
             });
 
             if (activeTokens.length === 0) {
-                logger.info('[Token Refresh Service] No hay tokens activos');
+                logger.info('[Token Refresh Service] No active tokens');
                 return;
             }
 
@@ -66,50 +66,50 @@ class TokenRefreshService {
             }
 
         } catch (error) {
-            logger.error('[Token Refresh Service] Error verificando tokens:', error.message);
+            logger.error('[Token Refresh Service] Error checking tokens:', error.message);
         }
     }
 
     /**
-     * Verifica si un token específico necesita ser refrescado
+     * Checks if a specific token needs to be refreshed
      */
     async checkTokenExpiration(broadcasterToken) {
         try {
             const now = new Date();
-            const bufferTime = 60 * 60 * 1000; // 1 hora de buffer
+            const bufferTime = 60 * 60 * 1000; // 1 hour buffer
             const expiresAt = new Date(broadcasterToken.token_expires_at);
 
-            logger.info(`[Token Refresh Service] Verificando token de ${broadcasterToken.kick_username}`);
-            logger.info(`[Token Refresh Service] Expira: ${expiresAt}, Ahora: ${now}`);
+            logger.info(`[Token Refresh Service] Checking token for ${broadcasterToken.kick_username}`);
+            logger.info(`[Token Refresh Service] Expires: ${expiresAt}, Now: ${now}`);
 
-            // Si el token expira en menos de 1 hora, refrescarlo
+            // If the token expires in less than 1 hour, refresh it
             if (expiresAt.getTime() - now.getTime() < bufferTime) {
-                logger.info(`[Token Refresh Service] Token de ${broadcasterToken.kick_username} expira pronto, refrescando...`);
+                logger.info(`[Token Refresh Service] Token for ${broadcasterToken.kick_username} expiring soon, refreshing...`);
 
                 const refreshed = await refreshAccessToken(broadcasterToken);
 
                 if (refreshed) {
-                    logger.info(`[Token Refresh Service] ✅ Token de ${broadcasterToken.kick_username} refrescado exitosamente`);
+                    logger.info(`[Token Refresh Service] Token for ${broadcasterToken.kick_username} refreshed successfully`);
                 } else {
-                    logger.error(`[Token Refresh Service] ❌ No se pudo refrescar el token de ${broadcasterToken.kick_username}`);
+                    logger.error(`[Token Refresh Service] Could not refresh token for ${broadcasterToken.kick_username}`);
 
-                    // Marcar como inactivo si no se puede refrescar
+                    // Mark as inactive if it cannot be refreshed
                     await broadcasterToken.update({
                         is_active: false,
-                        subscription_error: 'Token expirado y no se pudo refrescar'
+                        subscription_error: 'Token expired and could not be refreshed'
                     });
                 }
             } else {
-                logger.info(`[Token Refresh Service] Token de ${broadcasterToken.kick_username} aún válido`);
+                logger.info(`[Token Refresh Service] Token for ${broadcasterToken.kick_username} still valid`);
             }
 
         } catch (error) {
-            logger.error(`[Token Refresh Service] Error verificando token de ${broadcasterToken.kick_username}:`, error.message);
+            logger.error(`[Token Refresh Service] Error checking token for ${broadcasterToken.kick_username}:`, error.message);
         }
     }
 
     /**
-     * Fuerza el refresh de un token específico
+     * Forces refresh of a specific token
      */
     async forceRefresh(kickUserId) {
         try {
@@ -121,27 +121,27 @@ class TokenRefreshService {
             });
 
             if (!token) {
-                throw new Error('Token no encontrado');
+                throw new Error('Token not found');
             }
 
-            logger.info(`[Token Refresh Service] Forzando refresh del token de ${token.kick_username}`);
+            logger.info(`[Token Refresh Service] Forcing refresh of token for ${token.kick_username}`);
             const success = await refreshAccessToken(token);
 
             if (success) {
-                logger.info(`[Token Refresh Service] ✅ Refresh forzado exitoso para ${token.kick_username}`);
-                return { success: true, message: 'Token refrescado exitosamente' };
+                logger.info(`[Token Refresh Service] Forced refresh successful for ${token.kick_username}`);
+                return { success: true, message: 'Token refreshed successfully' };
             } else {
-                throw new Error('No se pudo refrescar el token');
+                throw new Error('Could not refresh the token');
             }
 
         } catch (error) {
-            logger.error('[Token Refresh Service] Error en refresh forzado:', error.message);
+            logger.error('[Token Refresh Service] Error in forced refresh:', error.message);
             return { success: false, error: error.message };
         }
     }
 
     /**
-     * Obtiene el estado del servicio
+     * Gets the service status
      */
     getStatus() {
         const nextExecution = this.isRunning ? new Date(Date.now() + this.intervalMs) : null;
@@ -155,7 +155,7 @@ class TokenRefreshService {
     }
 }
 
-// Instancia singleton
+// Singleton instance
 const tokenRefreshService = new TokenRefreshService();
 
 module.exports = tokenRefreshService;

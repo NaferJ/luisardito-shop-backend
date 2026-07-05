@@ -8,59 +8,59 @@ class BackupScheduler {
     }
 
     /**
-     * Inicia el scheduler de backups automáticos
+     * Starts the automatic backup scheduler
      */
     start() {
         const backupTime = process.env.BACKUP_TIME || '03:00';
         const enabled = process.env.BACKUP_ENABLED === 'true';
 
         if (!enabled) {
-            logger.info('ℹ️ Scheduler de backups deshabilitado');
+            logger.info('Backup scheduler disabled');
             return;
         }
 
-        // Parsear hora (formato HH:mm)
+        // Parse time (HH:mm format)
         const [hour, minute] = backupTime.split(':');
         
-        // Cron expression: "minuto hora * * *"
+        // Cron expression: "minute hour * * *"
         const cronExpression = `${minute} ${hour} * * *`;
 
-        logger.info(`⏰ Programando backup diario a las ${backupTime}`);
+        logger.info(`Scheduling daily backup at ${backupTime}`);
 
         this.scheduledTask = cron.schedule(cronExpression, async () => {
-            logger.info('🕐 Ejecutando backup programado...');
+            logger.info('Running scheduled backup...');
             
             try {
                 const result = await backupService.createBackup();
                 
                 if (result.success) {
-                    logger.info(`✅ Backup programado completado: ${result.filename}`);
+                    logger.info(`Scheduled backup completed: ${result.filename}`);
                 } else {
-                    logger.error(`❌ Backup programado falló: ${result.error || result.reason}`);
+                    logger.error(`Scheduled backup failed: ${result.error || result.reason}`);
                 }
             } catch (error) {
-                logger.error('❌ Error en backup programado:', error);
+                logger.error('Error in scheduled backup:', error);
             }
         });
 
-        logger.info(`✅ Scheduler de backups iniciado (${cronExpression})`);
+        logger.info(`Backup scheduler started (${cronExpression})`);
     }
 
     /**
-     * Detiene el scheduler
+     * Stops the scheduler
      */
     stop() {
         if (this.scheduledTask) {
             this.scheduledTask.stop();
-            logger.info('⏹️ Scheduler de backups detenido');
+            logger.info('Backup scheduler stopped');
         }
     }
 
     /**
-     * Ejecuta un backup manual inmediatamente
+     * Runs a manual backup immediately
      */
     async runManualBackup() {
-        logger.info('🔄 Ejecutando backup manual...');
+        logger.info('Running manual backup...');
         return await backupService.createBackup();
     }
 }

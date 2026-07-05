@@ -4,89 +4,89 @@ const sequelize = require('sequelize');
 const logger = require('../utils/logger');
 const formatWatchtime = require('../utils/formatWatchtime');
 
-// Importar EmbedBuilder solo si discord.js está disponible
+// Import EmbedBuilder only if discord.js is available
 let EmbedBuilder;
 try {
     EmbedBuilder = require('discord.js').EmbedBuilder;
 } catch (error) {
-    // discord.js no está disponible (ej. en entorno Kick)
+    // discord.js is not available (e.g. in Kick environment)
     EmbedBuilder = null;
 }
 
-// Importar axios para llamadas HTTP
+// Import axios for HTTP calls
 const axios = require('axios');
 
 /**
  * ==========================================
- * 🤖 SERVICIO DE MANEJO DE COMANDOS DEL BOT
+ * BOT COMMAND HANDLER SERVICE
  * ==========================================
- * Este servicio maneja la ejecución dinámica de comandos
- * configurados en la base de datos
+ * This service handles the dynamic execution of commands
+ * configured in the database
  */
 
 class KickBotCommandHandlerService {
     /**
-     * Procesa un mensaje del chat para detectar y ejecutar comandos
-     * @param {string} message - Mensaje del chat
-     * @param {string} username - Usuario que envió el mensaje
-     * @param {string} channelName - Nombre del canal
-     * @param {object} bot - Instancia del bot service
-     * @param {object} messageContext - Contexto del mensaje (para Discord)
-     * @param {string} platform - Plataforma: 'kick' o 'discord'
-     * @param {string} discordUserId - ID del usuario en Discord (solo para Discord)
-     * @param {string} displayName - Nombre de visualización del usuario en Kick
-     * @returns {Promise<boolean>} - True si se procesó un comando, false si no
+     * Processes a chat message to detect and execute commands
+     * @param {string} message - Chat message
+     * @param {string} username - User who sent the message
+     * @param {string} channelName - Channel name
+     * @param {object} bot - Bot service instance
+     * @param {object} messageContext - Message context (for Discord)
+     * @param {string} platform - Platform: 'kick' or 'discord'
+     * @param {string} discordUserId - Discord user ID (Discord only)
+     * @param {string} displayName - User display name on Kick
+     * @returns {Promise<boolean>} - True if a command was processed, false otherwise
      */
     async processMessage(message, username, channelName, bot, messageContext = null, platform = 'kick', discordUserId = null, displayName = null) {
         try {
             const content = String(message || '').trim();
 
-            // Verificar si es un comando (empieza con !)
+            // Check if it is a command (starts with !)
             if (!content.startsWith('!')) {
                 return false;
             }
 
-            // Buscar el comando en la base de datos
+            // Look up the command in the database
             const command = await KickBotCommand.findByCommand(content);
 
             if (!command) {
-                // Comando especial !discord para Discord - generar embed directamente
+                // Special !discord command for Discord - generate embed directly
                 if (platform === 'discord' && content.trim() === '!discord') {
-                    logger.info(`🤖 [BOT-COMMAND] Comando especial !discord detectado en Discord (no existe en DB), generando embed`);
+                    logger.info(`[BOT-COMMAND] Special !discord command detected in Discord (not in DB), generating embed`);
                     const embedResult = await this.createDiscordEmbed();
                     await bot.sendMessage(embedResult, messageContext);
                     return true;
                 }
 
-                // No es un comando registrado
+                // Not a registered command
                 return false;
             }
 
-            logger.info(`🤖 [BOT-COMMAND] Ejecutando comando: !${command.command} por ${username} (${platform}) - Tipo: ${command.command_type}`);
+            logger.info(`[BOT-COMMAND] Executing command: !${command.command} by ${username} (${platform}) - Type: ${command.command_type}`);
 
-            // Encontrar el usuario en la base de datos
+            // Find the user in the database
             let usuario = null;
             if (platform === 'discord' && discordUserId) {
-                // Para Discord, buscar por vinculación
+                // For Discord, look up by link
                 const link = await DiscordUserLink.findOne({
                     where: { discord_user_id: discordUserId },
                     include: [{ model: Usuario, as: 'usuario' }]
                 });
                 usuario = link?.usuario;
-                logger.info(`🤖 [BOT-COMMAND] Usuario encontrado por Discord ID:`, usuario ? usuario.nickname : 'no encontrado');
+                logger.info(`[BOT-COMMAND] User found by Discord ID:`, usuario ? usuario.nickname : 'not found');
             } else {
-                // Para Kick, buscar por user_id_ext
+                // For Kick, look up by user_id_ext
                 usuario = await Usuario.findOne({ where: { user_id_ext: username } });
-                logger.info(`🤖 [BOT-COMMAND] Usuario encontrado por Kick ID:`, usuario ? usuario.nickname : 'no encontrado');
+                logger.info(`[BOT-COMMAND] User found by Kick ID:`, usuario ? usuario.nickname : 'not found');
             }
 
-            // Verificar cooldown
+            // Check cooldown
             if (!(await this.checkCooldown(command, username))) {
-                logger.info(`⏳ [BOT-COMMAND] Comando !${command.command} en cooldown para ${username}`);
+                logger.info(`[BOT-COMMAND] Command !${command.command} on cooldown for ${username}`);
                 return false;
             }
 
-            // Ejecutar el comando según su tipo
+            // Execute the command based on its type
             let response;
             if (command.command_type === 'dynamic') {
                 response = await this.executeDynamicCommand(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
@@ -94,36 +94,36 @@ class KickBotCommandHandlerService {
                 response = await this.executeSimpleCommand(command, content, username, channelName, usuario);
             }
 
-            // Enviar la respuesta si existe
+            // Send the response if any
             if (response) {
                 await bot.sendMessage(response, messageContext);
 
-                // Incrementar contador de uso
+                // Increment usage counter
                 await command.incrementUsage();
 
-                logger.info(`✅ [BOT-COMMAND] Comando !${command.command} ejecutado exitosamente`);
+                logger.info(`[BOT-COMMAND] Command !${command.command} executed successfully`);
             }
 
             return true;
         } catch (error) {
-            logger.error('[BOT-COMMAND] Error procesando comando:', error);
+            logger.error('[BOT-COMMAND] Error processing command:', error);
             return false;
         }
     }
 
     /**
-     * Ejecuta un comando simple (respuesta estática con variables)
+     * Executes a simple command (static response with variables)
      */
     async executeSimpleCommand(command, content, username, channelName, usuario = null, platform = 'kick') {
         const args = this.extractArgs(content);
 
-        // Comando especial !discord con embed elegante para Discord
+        // Special !discord command with elegant embed for Discord
         if (command.command === 'discord' && platform === 'discord') {
-            logger.info(`🤖 [BOT-COMMAND] Generando embed para !discord desde executeSimpleCommand`);
+            logger.info(`[BOT-COMMAND] Generating embed for !discord from executeSimpleCommand`);
             return await this.createDiscordEmbed();
         }
 
-        // Reemplazar variables en el mensaje
+        // Replace variables in the message
         let response = command.response_message
             .replace(/{username}/g, username)
             .replace(/{channel}/g, channelName)
@@ -134,17 +134,17 @@ class KickBotCommandHandlerService {
     }
 
     /**
-     * Ejecuta un comando dinámico (con lógica especial)
+     * Executes a dynamic command (with special logic)
      */
     async executeDynamicCommand(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
         const handler = command.dynamic_handler;
 
         if (!handler) {
-            logger.error(`[BOT-COMMAND] Comando dinámico !${command.command} no tiene handler definido`);
+            logger.error(`[BOT-COMMAND] Dynamic command !${command.command} has no handler defined`);
             return null;
         }
 
-        // Ejecutar el handler correspondiente
+        // Execute the corresponding handler
         switch (handler) {
             case 'puntos_handler':
                 return await this.puntosHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
@@ -152,49 +152,49 @@ class KickBotCommandHandlerService {
             case 'watchtime_handler':
                 return await this.watchtimeHandler(command, content, username, channelName, usuario, platform, discordUserId, messageContext, displayName);
 
-            // Aquí puedes agregar más handlers según necesites
+            // More handlers can be added here as needed
             // case 'custom_handler':
             //     return await this.customHandler(command, content, username, channelName);
 
             default:
-                logger.error(`[BOT-COMMAND] Handler desconocido: ${handler}`);
+                logger.error(`[BOT-COMMAND] Unknown handler: ${handler}`);
                 return null;
         }
     }
 
     /**
-     * Handler especial para el comando !puntos
-     * Consulta los puntos de un usuario en la base de datos
+     * Special handler for the !puntos command
+     * Looks up a user's points in the database
      */
     async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
         try {
             const args = this.extractArgs(content);
 
-            // Si hay argumentos, buscar al usuario especificado
+            // If there are arguments, look up the specified user
             if (args.length > 0) {
                 const lookupArg = args[0];
 
                 let targetUser = null;
 
-                // Lógica específica para Discord: detectar menciones
+                // Discord-specific logic: detect mentions
                 if (platform === 'discord' && messageContext && lookupArg.match(/^<@!?(\d+)>$/)) {
                     const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
-                    logger.info(`[BOT-COMMAND] Buscando usuario por mención Discord: ${mentionedUserId}`);
+                    logger.info(`[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`);
 
-                    // Buscar en DiscordUserLink
+                    // Look up in DiscordUserLink
                     const discordLink = await DiscordUserLink.findOne({
                         where: { discord_user_id: mentionedUserId },
                         include: [{ model: Usuario, as: 'usuario' }]
                     });
 
                     targetUser = discordLink?.usuario;
-                    logger.info(`[BOT-COMMAND] Usuario encontrado por Discord ID:`, targetUser ? targetUser.nickname : 'no encontrado');
+                    logger.info(`[BOT-COMMAND] User found by Discord ID:`, targetUser ? targetUser.nickname : 'not found');
                 } else {
-                    // Lógica para Kick y Discord (búsqueda por nickname)
+                    // Logic for Kick and Discord (lookup by nickname)
                     const lookupName = lookupArg.replace(/^@/, '');
-                    logger.info(`[BOT-COMMAND] Buscando usuario por nickname: ${lookupName}`);
+                    logger.info(`[BOT-COMMAND] Looking up user by nickname: ${lookupName}`);
 
-                    // Para MySQL, usar LOWER() para case insensitive
+                    // For MySQL, use LOWER() for case insensitive
                     targetUser = await Usuario.findOne({
                         where: sequelize.where(
                             sequelize.fn('LOWER', sequelize.col('nickname')),
@@ -202,14 +202,14 @@ class KickBotCommandHandlerService {
                         )
                     });
 
-                    logger.info(`[BOT-COMMAND] Usuario encontrado por nickname:`, targetUser ? targetUser.nickname : 'no encontrado');
+                    logger.info(`[BOT-COMMAND] User found by nickname:`, targetUser ? targetUser.nickname : 'not found');
                 }
 
                 const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
 
                 let response;
                 if (puntos !== null) {
-                    // Usuario encontrado - usar template del comando
+                    // User found - use command template
                     const displayName = targetUser.nickname;
                     response = command.response_message
                         .replace(/{username}/g, username)
@@ -217,32 +217,32 @@ class KickBotCommandHandlerService {
                         .replace(/{target_user}/g, displayName)
                         .replace(/{points}/g, puntos.toString());
                 } else {
-                    // Usuario no encontrado - respuesta por defecto
+                    // User not found - default response
                     let displayName = lookupArg.replace(/^@/, '');
                     if (lookupArg.match(/^<@!?(\d+)>/)) {
-                        displayName = 'usuario mencionado';
+                        displayName = 'mentioned user';
                     }
-                    response = `${displayName} no existe o no tiene puntos registrados.`;
+                    response = `${displayName} does not exist or has no registered points.`;
                 }
 
                 return response;
             } else {
-                // No hay argumentos, mostrar puntos del usuario actual
+                // No arguments, show current user's points
                 if (!usuario) {
                     if (platform === 'discord') {
-                        return `@${username} No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de puntos.`;
+                        return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use points commands.`;
                     } else {
                         if (displayName) {
-                            return `@${displayName} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                            return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use points commands.`;
                         } else {
-                            return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de puntos.`;
+                            return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use points commands.`;
                         }
                     }
                 }
 
                 const puntos = Number(usuario.puntos || 0);
 
-                // Usar template del comando
+                // Use command template
                 const response = command.response_message
                     .replace(/{username}/g, username)
                     .replace(/{channel}/g, channelName)
@@ -252,44 +252,44 @@ class KickBotCommandHandlerService {
                 return response;
             }
         } catch (error) {
-            logger.error('[BOT-COMMAND] Error en puntosHandler:', error);
-            return `Ocurrió un error al verificar los puntos.`;
+            logger.error('[BOT-COMMAND] Error in puntosHandler:', error);
+            return `An error occurred while checking points.`;
         }
     }
 
     /**
-     * Handler especial para el comando !watchtime
-     * Consulta el watchtime de un usuario en la base de datos
+     * Special handler for the !watchtime command
+     * Looks up a user's watchtime in the database
      */
     async watchtimeHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
         try {
             const args = this.extractArgs(content);
 
-            // Si hay argumentos, buscar al usuario especificado
+            // If there are arguments, look up the specified user
             if (args.length > 0) {
                 const lookupArg = args[0];
 
                 let targetUser = null;
 
-                // Lógica específica para Discord: detectar menciones
+                // Discord-specific logic: detect mentions
                 if (platform === 'discord' && messageContext && lookupArg.match(/^<@!?(\d+)>$/)) {
                     const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
-                    logger.info(`[BOT-COMMAND] Buscando usuario por mención Discord: ${mentionedUserId}`);
+                    logger.info(`[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`);
 
-                    // Buscar en DiscordUserLink
+                    // Look up in DiscordUserLink
                     const discordLink = await DiscordUserLink.findOne({
                         where: { discord_user_id: mentionedUserId },
                         include: [{ model: Usuario, as: 'usuario' }]
                     });
 
                     targetUser = discordLink?.usuario;
-                    logger.info(`[BOT-COMMAND] Usuario encontrado por Discord ID:`, targetUser ? targetUser.nickname : 'no encontrado');
+                    logger.info(`[BOT-COMMAND] User found by Discord ID:`, targetUser ? targetUser.nickname : 'not found');
                 } else {
-                    // Lógica para Kick y Discord (búsqueda por nickname)
+                    // Logic for Kick and Discord (lookup by nickname)
                     const lookupName = lookupArg.replace(/^@/, '');
-                    logger.info(`[BOT-COMMAND] Buscando usuario por nickname: ${lookupName}`);
+                    logger.info(`[BOT-COMMAND] Looking up user by nickname: ${lookupName}`);
 
-                    // Para MySQL, usar LOWER() para case insensitive
+                    // For MySQL, use LOWER() for case insensitive
                     targetUser = await Usuario.findOne({
                         where: sequelize.where(
                             sequelize.fn('LOWER', sequelize.col('nickname')),
@@ -298,17 +298,17 @@ class KickBotCommandHandlerService {
                         include: [{ model: UserWatchtime, required: false }]
                     });
 
-                    logger.info(`[BOT-COMMAND] Usuario encontrado por nickname:`, targetUser ? targetUser.nickname : 'no encontrado');
+                    logger.info(`[BOT-COMMAND] User found by nickname:`, targetUser ? targetUser.nickname : 'not found');
                 }
 
                 let response;
                 if (targetUser) {
-                    // Obtener watchtime del usuario
+                    // Get user watchtime
                     const userWatchtime = targetUser.UserWatchtime;
                     const watchtimeMinutes = userWatchtime ? userWatchtime.total_watchtime_minutes : 0;
                     const formattedWatchtime = formatWatchtime(watchtimeMinutes);
 
-                    // Usuario encontrado - usar template del comando
+                    // User found - use command template
                     const displayNameTarget = targetUser.nickname;
                     response = command.response_message
                         .replace(/{username}/g, username)
@@ -316,37 +316,37 @@ class KickBotCommandHandlerService {
                         .replace(/{target_user}/g, displayNameTarget)
                         .replace(/{watchtime}/g, formattedWatchtime);
                 } else {
-                    // Usuario no encontrado - respuesta por defecto
+                    // User not found - default response
                     let displayNameLookup = lookupArg.replace(/^@/, '');
                     if (lookupArg.match(/^<@!?(\d+)>/)) {
-                        displayNameLookup = 'usuario mencionado';
+                        displayNameLookup = 'mentioned user';
                     }
-                    response = `${displayNameLookup} no existe o no tiene watchtime registrado.`;
+                    response = `${displayNameLookup} does not exist or has no registered watchtime.`;
                 }
 
                 return response;
             } else {
-                // No hay argumentos, mostrar watchtime del usuario actual
+                // No arguments, show current user's watchtime
                 if (!usuario) {
                     if (platform === 'discord') {
-                        return `@${username} No pude encontrar tu información. ¿Has vinculado tu cuenta de Discord? Vincúlala en https://shop.luisardito.com/perfil para usar comandos de watchtime.`;
+                        return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use watchtime commands.`;
                     } else {
                         if (displayName) {
-                            return `@${displayName} No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de watchtime.`;
+                            return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use watchtime commands.`;
                         } else {
-                            return `No pude encontrar tu información. ¿Estás registrado en la tienda? Regístrate en https://shop.luisardito.com/ para usar comandos de watchtime.`;
+                            return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use watchtime commands.`;
                         }
                     }
                 }
 
-                // Obtener watchtime del usuario
+                // Get user watchtime
                 const userWatchtime = await UserWatchtime.findOne({
                     where: { usuario_id: usuario.id }
                 });
                 const watchtimeMinutes = userWatchtime ? userWatchtime.total_watchtime_minutes : 0;
                 const formattedWatchtime = formatWatchtime(watchtimeMinutes);
 
-                // Usar template del comando
+                // Use command template
                 const response = command.response_message
                     .replace(/{username}/g, username)
                     .replace(/{channel}/g, channelName)
@@ -356,38 +356,38 @@ class KickBotCommandHandlerService {
                 return response;
             }
         } catch (error) {
-            logger.error('[BOT-COMMAND] Error en watchtimeHandler:', error);
-            return `Ocurrió un error al verificar el watchtime.`;
+            logger.error('[BOT-COMMAND] Error in watchtimeHandler:', error);
+            return `An error occurred while checking watchtime.`;
         }
     }
 
     /**
-     * Extrae los argumentos de un comando
-     * Ejemplo: comando arg1 arg2 retorna array con argumentos
+     * Extracts arguments from a command
+     * Example: command arg1 arg2 returns array with arguments
      */
     extractArgs(content) {
         const parts = content.trim().split(/\s+/);
-        return parts.slice(1); // Remover el comando mismo
+        return parts.slice(1); // Remove the command itself
     }
 
     /**
-     * Verifica si un usuario tiene el permiso requerido para ejecutar un comando
-     * (Por ahora retorna true, pero puedes implementar lógica de permisos aquí)
+     * Checks if a user has the required permission to execute a command
+     * (Currently returns true, but permission logic can be implemented here)
      */
     async checkPermission(command, username) {
         if (!command.requires_permission) {
             return true;
         }
 
-        // TODO: Implementar lógica de permisos según tu sistema
-        // Por ejemplo, verificar si el usuario es moderador, VIP, etc.
+        // TODO: Implement permission logic according to your system
+        // For example, check if the user is a moderator, VIP, etc.
 
         return true;
     }
 
     /**
-     * Verifica el cooldown de un comando para un usuario
-     * (Por ahora retorna true, pero puedes implementar lógica de cooldown aquí)
+     * Checks the cooldown of a command for a user
+     * (Currently returns true, but cooldown logic can be implemented here)
      */
     async checkCooldown(command, username) {
         if (command.cooldown_seconds === 0) {
@@ -399,70 +399,70 @@ class KickBotCommandHandlerService {
 
         const key = `bot_command_cooldown:${command.command}:${username}`;
 
-        // Verificar si el usuario está en cooldown para este comando
+        // Check if the user is on cooldown for this command
         const exists = await redis.exists(key);
         if (exists) {
-            return false; // Está en cooldown
+            return false; // On cooldown
         }
 
-        // Establecer cooldown con TTL
+        // Set cooldown with TTL
         await redis.setex(key, command.cooldown_seconds, Date.now().toString());
         return true;
     }
 
     /**
-     * Crea un embed elegante para el comando !discord
+     * Creates an elegant embed for the !discord command
      */
     async createDiscordEmbed() {
         if (!EmbedBuilder) {
-            // Fallback si discord.js no está disponible
-            return 'POXY CLUB\nUnite: https://discord.gg/arsANX7aWt\n\nComunidad de gaming, anime y streams\nPlataformas: Kick, Twitch, YouTube\nMiembros: > 1.2K\n\nEnlace directo: https://discord.gg/arsANX7aWt';
+            // Fallback if discord.js is not available
+            return 'POXY CLUB\nJoin: https://discord.gg/arsANX7aWt\n\nGaming, anime and streams community\nPlatforms: Kick, Twitch, YouTube\nMembers: > 1.2K\n\nDirect link: https://discord.gg/arsANX7aWt';
         }
 
-        // Obtener la URL del banner
+        // Get the banner URL
         const bannerUrl = this.getBannerUrl();
 
-        // EMBED 1: Solo el banner (ancho completo, arriba)
+        // EMBED 1: Just the banner (full width, top)
         const bannerEmbed = new EmbedBuilder()
             .setColor(0x9B59B6)
             .setImage(bannerUrl);
 
-        // EMBED 2: El contenido (abajo)
+        // EMBED 2: The content (bottom)
         const contentEmbed = new EmbedBuilder()
             .setColor(0x9B59B6)
             .setTitle('POXY CLUB')
             .setURL('https://discord.gg/arsANX7aWt')
-            .setDescription('¡Saludos a todos! Únete a la comunidad de gaming, anime y streams en Discord.\n\n**Beneficios:**')
+            .setDescription('Greetings everyone! Join the gaming, anime and streams community on Discord.\n\n**Benefits:**')
             .addFields(
-                { name: '🎮 Gaming', value: 'Eventos y torneos', inline: true },
-                { name: '📺 Streams', value: 'Transmisiones en vivo', inline: true },
-                { name: '🎬 Contenido', value: 'Anime y clips', inline: true }
+                { name: 'Gaming', value: 'Events and tournaments', inline: true },
+                { name: 'Streams', value: 'Live broadcasts', inline: true },
+                { name: 'Content', value: 'Anime and clips', inline: true }
             )
-            .setFooter({ text: '🥇 Participante | 🧢 Coach' })
+            .setFooter({ text: 'Participant | Coach' })
             .setTimestamp();
 
-        return { embeds: [bannerEmbed, contentEmbed] }; // 👈 Devuelve objeto con array de embeds
+        return { embeds: [bannerEmbed, contentEmbed] }; // Returns object with array of embeds
     }
 
     /**
-     * Obtiene información dinámica del servidor de Discord
+     * Gets dynamic Discord server info
      */
     async getDiscordServerInfo() {
         try {
             const config = require('../../config');
 
-            // Si no hay configuración de Discord, devolver valores por defecto
+            // If there is no Discord configuration, return default values
             if (!config.discord?.botToken || !config.discord?.guildId) {
-                logger.warn('[DISCORD-API] Configuración de Discord incompleta:', {
+                logger.warn('[DISCORD-API] Incomplete Discord configuration:', {
                     hasToken: !!config.discord?.botToken,
                     hasGuildId: !!config.discord?.guildId
                 });
                 return { memberCount: '> 1.2K' };
             }
 
-            logger.info('[DISCORD-API] Consultando información del servidor Discord...');
+            logger.info('[DISCORD-API] Querying Discord server info...');
 
-            // Hacer llamada a la API de Discord
+            // Make Discord API call
             const response = await axios.get(
                 `https://discord.com/api/guilds/${config.discord.guildId}`,
                 {
@@ -474,7 +474,7 @@ class KickBotCommandHandlerService {
             );
 
             const guildData = response.data;
-            logger.info('[DISCORD-API] Información obtenida:', {
+            logger.info('[DISCORD-API] Info retrieved:', {
                 name: guildData.name,
                 memberCount: guildData.approximate_member_count
             });
@@ -488,38 +488,38 @@ class KickBotCommandHandlerService {
             };
 
         } catch (error) {
-            logger.error('[DISCORD-API] Error obteniendo información del servidor:', {
+            logger.error('[DISCORD-API] Error getting server info:', {
                 message: error.message,
                 status: error.response?.status,
                 data: error.response?.data
             });
-            // En caso de error, devolver valores por defecto
+            // On error, return default values
             return { memberCount: '> 1.2K' };
         }
     }
 
     /**
-     * Obtiene la URL del banner para el embed
+     * Gets the banner URL for the embed
      */
     getBannerUrl() {
         const config = require('../../config');
 
-        // En producción, usar URL externa si está configurada
+        // In production, use external URL if configured
         if (process.env.NODE_ENV === 'production' && process.env.DISCORD_BANNER_URL) {
             return process.env.DISCORD_BANNER_URL;
         }
 
-        // Usar URL de Cloudinary si está configurada
+        // Use Cloudinary URL if configured
         if (process.env.DISCORD_BANNER_URL) {
             return process.env.DISCORD_BANNER_URL;
         }
 
-        // Banner por defecto subido a Cloudinary
+        // Default banner uploaded to Cloudinary
         return 'https://res.cloudinary.com/naferj/image/upload/v1765492099/discordbanner_jjgpko.jpg';
     }
 
     /**
-     * Formatea el conteo de miembros de manera legible
+     * Formats the member count in a readable way
      */
     formatMemberCount(count) {
         if (count >= 1000) {

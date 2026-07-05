@@ -5,27 +5,27 @@ class LeaderboardSnapshotTask {
     constructor() {
         this.intervalId = null;
         this.isRunning = false;
-        // Configuración: ejecutar cada 6 horas por defecto
+        // Configuration: run every 6 hours by default
         this.intervalHours = parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS) || 6;
         this.cleanupDays = parseInt(process.env.LEADERBOARD_CLEANUP_DAYS) || 30;
     }
 
     /**
-     * Inicia la tarea programada de snapshots
+     * Starts the scheduled snapshot task
      */
     start() {
         if (this.isRunning) {
-            logger.warn('⚠️  [LEADERBOARD-SNAPSHOT] La tarea ya está en ejecución');
+            logger.warn('[LEADERBOARD-SNAPSHOT] Task is already running');
             return;
         }
 
-        logger.info(`🚀 [LEADERBOARD-SNAPSHOT] Iniciando tarea programada (cada ${this.intervalHours} horas)`);
+        logger.info(`[LEADERBOARD-SNAPSHOT] Starting scheduled task (every ${this.intervalHours} hours)`);
 
-        // NO ejecutar inmediatamente al iniciar para evitar limpieza accidental en cada reinicio
-        // Solo ejecutar en el intervalo programado
+        // Do NOT run immediately on start to avoid accidental cleanup on every restart
+        // Only run on the scheduled interval
         // this._executeSnapshot();
 
-        // Programar ejecución periódica
+        // Schedule periodic execution
         const intervalMs = this.intervalHours * 60 * 60 * 1000;
         this.intervalId = setInterval(() => {
             this._executeSnapshot();
@@ -33,15 +33,15 @@ class LeaderboardSnapshotTask {
 
         this.isRunning = true;
 
-        logger.info(`✅ [LEADERBOARD-SNAPSHOT] Tarea programada iniciada correctamente`);
+        logger.info(`[LEADERBOARD-SNAPSHOT] Scheduled task started successfully`);
     }
 
     /**
-     * Detiene la tarea programada
+     * Stops the scheduled task
      */
     stop() {
         if (!this.isRunning) {
-            logger.warn('⚠️  [LEADERBOARD-SNAPSHOT] La tarea no está en ejecución');
+            logger.warn('[LEADERBOARD-SNAPSHOT] Task is not running');
             return;
         }
 
@@ -51,63 +51,63 @@ class LeaderboardSnapshotTask {
         }
 
         this.isRunning = false;
-        logger.info('🛑 [LEADERBOARD-SNAPSHOT] Tarea programada detenida');
+        logger.info('[LEADERBOARD-SNAPSHOT] Scheduled task stopped');
     }
 
     /**
-     * Ejecuta el snapshot y limpieza de datos antiguos
+     * Executes the snapshot and cleanup of old data
      * @private
      */
     async _executeSnapshot() {
         try {
-            logger.info('📸 [LEADERBOARD-SNAPSHOT] Iniciando snapshot del leaderboard...');
+            logger.info('[LEADERBOARD-SNAPSHOT] Starting leaderboard snapshot...');
 
-            // 1. Crear snapshot del leaderboard actual
+            // 1. Create snapshot of current leaderboard
             const snapshotResult = await leaderboardService.createSnapshot();
 
             if (snapshotResult.success) {
                 logger.info(
-                    `✅ [LEADERBOARD-SNAPSHOT] Snapshot creado: ${snapshotResult.users_count} usuarios registrados`
+                    `[LEADERBOARD-SNAPSHOT] Snapshot created: ${snapshotResult.users_count} users registered`
                 );
             }
 
-            // 2. Limpiar snapshots antiguos solo si realmente hay datos que limpiar
+            // 2. Clean old snapshots only if there is data to clean
             const shouldCleanup = await this._shouldCleanup();
             if (shouldCleanup) {
-                logger.info(`🧹 [LEADERBOARD-SNAPSHOT] Iniciando limpieza de snapshots antiguos (>${this.cleanupDays} días)...`);
+                logger.info(`[LEADERBOARD-SNAPSHOT] Starting old snapshot cleanup (>${this.cleanupDays} days)...`);
 
                 const cleanupResult = await leaderboardService.cleanOldSnapshots(this.cleanupDays);
 
                 if (cleanupResult.success) {
                     logger.info(
-                        `✅ [LEADERBOARD-SNAPSHOT] Limpieza completada: ${cleanupResult.deleted_count} registros eliminados`
+                        `[LEADERBOARD-SNAPSHOT] Cleanup completed: ${cleanupResult.deleted_count} records removed`
                     );
                 }
             } else {
-                logger.info('✅ [LEADERBOARD-SNAPSHOT] No hay snapshots antiguos para limpiar');
+                logger.info('[LEADERBOARD-SNAPSHOT] No old snapshots to clean');
             }
 
         } catch (error) {
-            logger.error('❌ [LEADERBOARD-SNAPSHOT] Error al ejecutar snapshot:', error);
-            // No lanzar el error para que la tarea continúe ejecutándose
+            logger.error('[LEADERBOARD-SNAPSHOT] Error executing snapshot:', error);
+            // Do not throw the error so the task continues running
         }
     }
 
     /**
-     * Verifica si debe ejecutarse la limpieza de snapshots antiguos
-     * Consulta directamente la base de datos para determinar si hay snapshots
-     * más antiguos que el período de retención configurado
+     * Checks if old snapshot cleanup should run
+     * Queries the database directly to determine if there are snapshots
+     * older than the configured retention period
      * @private
      */
     async _shouldCleanup() {
         try {
             const LeaderboardSnapshot = require('../models/leaderboardSnapshot.model');
             
-            // Calcular la fecha límite de retención
+            // Calculate retention cutoff date
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - this.cleanupDays);
 
-            // Verificar si existen snapshots más antiguos que el límite
+            // Check if there are snapshots older than the cutoff
             const oldSnapshotsCount = await LeaderboardSnapshot.count({
                 where: {
                     snapshot_date: {
@@ -116,18 +116,18 @@ class LeaderboardSnapshotTask {
                 }
             });
 
-            // Solo ejecutar limpieza si hay snapshots antiguos
+            // Only run cleanup if there are old snapshots
             return oldSnapshotsCount > 0;
         } catch (error) {
-            logger.error('❌ [LEADERBOARD-SNAPSHOT] Error al verificar necesidad de limpieza:', error);
-            return false; // En caso de error, no ejecutar limpieza por seguridad
+            logger.error('[LEADERBOARD-SNAPSHOT] Error checking cleanup need:', error);
+            return false; // On error, do not run cleanup for safety
         }
     }
 
     /**
-     * Obtiene la fecha de la última limpieza (deprecated - mantenido por compatibilidad)
+     * Gets the last cleanup date (deprecated - kept for compatibility)
      * @private
-     * @deprecated Ya no se usa, la lógica ahora consulta directamente la BD
+     * @deprecated No longer used, logic now queries the DB directly
      */
     _getLastCleanupDate() {
         if (!this._lastCleanupDate) {
@@ -137,24 +137,24 @@ class LeaderboardSnapshotTask {
     }
 
     /**
-     * Marca que se ejecutó la limpieza (deprecated - mantenido por compatibilidad)
+     * Marks that cleanup was executed (deprecated - kept for compatibility)
      * @private
-     * @deprecated Ya no se usa, la lógica ahora consulta directamente la BD
+     * @deprecated No longer used, logic now queries the DB directly
      */
     _markCleanupDone() {
         this._lastCleanupDate = new Date();
     }
 
     /**
-     * Ejecuta un snapshot manual (útil para testing)
+     * Executes a manual snapshot (useful for testing)
      */
     async executeManual() {
-        logger.info('🔧 [LEADERBOARD-SNAPSHOT] Ejecución manual solicitada');
+        logger.info('[LEADERBOARD-SNAPSHOT] Manual execution requested');
         await this._executeSnapshot();
     }
 
     /**
-     * Obtiene el estado actual de la tarea
+     * Gets the current task status
      */
     getStatus() {
         return {

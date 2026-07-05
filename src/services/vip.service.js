@@ -5,10 +5,10 @@ const logger = require('../utils/logger');
 
 class VipService {
     /**
-     * Otorgar VIP a un usuario basado en un canje
-     * @param {number} canjeId - ID del canje
-     * @param {number} usuarioId - ID del usuario
-     * @param {Object} vipConfig - Configuración del VIP (duración, etc.)
+     * Grant VIP to a user based on a redemption
+     * @param {number} canjeId - Redemption ID
+     * @param {number} usuarioId - User ID
+     * @param {Object} vipConfig - VIP configuration (duration, etc.)
      */
     static async grantVipFromCanje(canjeId, usuarioId, vipConfig = {}) {
         const transaction = await sequelize.transaction();
@@ -16,23 +16,23 @@ class VipService {
         try {
             const usuario = await Usuario.findByPk(usuarioId);
             if (!usuario) {
-                throw new Error('Usuario no encontrado');
+                throw new Error('User not found');
             }
 
             const canje = await Canje.findByPk(canjeId);
             if (!canje) {
-                throw new Error('Canje no encontrado');
+                throw new Error('Redemption not found');
             }
 
-            // Calcular fecha de expiración
+            // Calculate expiration date
             let vipExpiresAt = null;
             if (vipConfig.duration_days && vipConfig.duration_days > 0) {
                 vipExpiresAt = new Date();
                 vipExpiresAt.setDate(vipExpiresAt.getDate() + vipConfig.duration_days);
             }
-            // Si no se especifica duración, es permanente (null)
+            // If no duration specified, it is permanent (null)
 
-            // Actualizar usuario como VIP
+            // Update user as VIP
             await usuario.update({
                 is_vip: true,
                 vip_granted_at: new Date(),
@@ -40,13 +40,13 @@ class VipService {
                 vip_granted_by_canje_id: canjeId
             }, { transaction });
 
-            // Crear entrada en historial
+            // Create history entry
             await HistorialPunto.create({
                 usuario_id: usuarioId,
-                puntos: 0, // No se otorgan puntos, solo se registra el evento
-                tipo: 'ajuste', // Usar 'ajuste' que es válido en el ENUM
-                concepto: 'VIP otorgado',
-                motivo: `VIP otorgado por canje #${canjeId}${vipExpiresAt ? ` (expira: ${vipExpiresAt.toLocaleDateString()})` : ' (permanente)'}`,
+                puntos: 0, // No points awarded, only the event is logged
+                tipo: 'ajuste', // Use 'ajuste' which is valid in the ENUM
+                concepto: 'VIP granted',
+                motivo: `VIP granted by redemption #${canjeId}${vipExpiresAt ? ` (expires: ${vipExpiresAt.toLocaleDateString()})` : ' (permanent)'}`,
                 kick_event_data: {
                     event_type: 'vip_granted',
                     canje_id: canjeId,
@@ -57,7 +57,7 @@ class VipService {
 
             await transaction.commit();
 
-            logger.info(`✅ [VIP] VIP otorgado a ${usuario.nickname} por canje #${canjeId}`);
+            logger.info(`[VIP] VIP granted to ${usuario.nickname} by redemption #${canjeId}`);
             return {
                 usuario_id: usuarioId,
                 nickname: usuario.nickname,
@@ -74,9 +74,9 @@ class VipService {
     }
 
     /**
-     * Remover VIP de un usuario
-     * @param {number} usuarioId - ID del usuario
-     * @param {string} reason - Razón para remover el VIP
+     * Remove VIP from a user
+     * @param {number} usuarioId - User ID
+     * @param {string} reason - Reason for removing VIP
      */
     static async removeVip(usuarioId, reason = 'Manual') {
         const transaction = await sequelize.transaction();
@@ -84,14 +84,14 @@ class VipService {
         try {
             const usuario = await Usuario.findByPk(usuarioId);
             if (!usuario) {
-                throw new Error('Usuario no encontrado');
+                throw new Error('User not found');
             }
 
             if (!usuario.is_vip) {
-                throw new Error('El usuario no es VIP');
+                throw new Error('User is not VIP');
             }
 
-            // Remover VIP
+            // Remove VIP
             await usuario.update({
                 is_vip: false,
                 vip_granted_at: null,
@@ -99,13 +99,13 @@ class VipService {
                 vip_granted_by_canje_id: null
             }, { transaction });
 
-            // Crear entrada en historial
+            // Create history entry
             await HistorialPunto.create({
                 usuario_id: usuarioId,
                 puntos: 0,
-                tipo: 'ajuste', // Usar 'ajuste' que es válido en el ENUM
-                concepto: 'VIP removido',
-                motivo: `VIP removido: ${reason}`,
+                tipo: 'ajuste', // Use 'ajuste' which is valid in the ENUM
+                concepto: 'VIP removed',
+                motivo: `VIP removed: ${reason}`,
                 kick_event_data: {
                     event_type: 'vip_removed',
                     reason: reason,
@@ -115,7 +115,7 @@ class VipService {
 
             await transaction.commit();
 
-            logger.info(`🔴 [VIP] VIP removido de ${usuario.nickname} - Razón: ${reason}`);
+            logger.info(`[VIP] VIP removed from ${usuario.nickname} - Reason: ${reason}`);
             return {
                 usuario_id: usuarioId,
                 nickname: usuario.nickname,
@@ -130,7 +130,7 @@ class VipService {
     }
 
     /**
-     * Verificar y limpiar VIPs expirados
+     * Check and clean up expired VIPs
      */
     static async cleanupExpiredVips() {
         const expiredVips = await Usuario.findAll({
@@ -145,19 +145,19 @@ class VipService {
         let cleanedCount = 0;
         for (const user of expiredVips) {
             try {
-                await this.removeVip(user.id, 'Expiración automática');
+                await this.removeVip(user.id, 'Automatic expiration');
                 cleanedCount++;
             } catch (error) {
-                logger.error(`❌ [VIP CLEANUP] Error removing expired VIP for user ${user.id}:`, error);
+                logger.error(`[VIP CLEANUP] Error removing expired VIP for user ${user.id}:`, error);
             }
         }
 
-        logger.info(`🧹 [VIP CLEANUP] ${cleanedCount} VIPs expirados removidos`);
+        logger.info(`[VIP CLEANUP] ${cleanedCount} expired VIPs removed`);
         return { cleaned_count: cleanedCount, total_expired: expiredVips.length };
     }
 
     /**
-     * Obtener configuración de puntos VIP
+     * Get VIP points configuration
      */
     static async getVipPointsConfig() {
         const config = await BotrixMigrationConfig.getConfig();
@@ -170,7 +170,7 @@ class VipService {
     }
 
     /**
-     * Actualizar configuración de puntos VIP
+     * Update VIP points configuration
      */
     static async updateVipPointsConfig(newConfig) {
         const config = await BotrixMigrationConfig.getConfig();
@@ -194,10 +194,10 @@ class VipService {
     }
 
     /**
-     * Calcular puntos según tipo de usuario
-     * @param {Object} usuario - Usuario
-     * @param {string} eventType - Tipo de evento ('chat', 'follow', 'sub')
-     * @param {number} defaultPoints - Puntos por defecto
+     * Calculate points based on user type
+     * @param {Object} usuario - User
+     * @param {string} eventType - Event type ('chat', 'follow', 'sub')
+     * @param {number} defaultPoints - Default points
      */
     static async calculatePointsForUser(usuario, eventType, defaultPoints) {
         const config = await this.getVipPointsConfig();
@@ -219,7 +219,7 @@ class VipService {
     }
 
     /**
-     * Obtener estadísticas de VIPs
+     * Get VIP statistics
      */
     static async getVipStats() {
         const totalVips = await Usuario.count({ where: { is_vip: true } });

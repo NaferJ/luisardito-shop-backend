@@ -2,15 +2,15 @@ const { KickReward } = require('../models');
 const logger = require('../utils/logger');
 
 /**
- * 🎁 Servicio simplificado para Kick Rewards
- * Solo maneja datos locales para el webhook
- * Las recompensas se crean manualmente en Kick.com
+ * Simplified service for Kick Rewards
+ * Only handles local data for the webhook
+ * Rewards are created manually on Kick.com
  */
 
 /**
- * 🔍 Obtiene una recompensa por su kick_reward_id
- * Usado por el webhook para procesar canjeos
- * @param {string} kickRewardId - ID de la recompensa en Kick
+ * Gets a reward by its kick_reward_id
+ * Used by the webhook to process redemptions
+ * @param {string} kickRewardId - Reward ID on Kick
  * @returns {Promise<Object|null>}
  */
 async function getRewardByKickId(kickRewardId) {
@@ -20,13 +20,13 @@ async function getRewardByKickId(kickRewardId) {
         });
         return reward;
     } catch (error) {
-        logger.error('🎁 [Kick Rewards] ❌ Error obteniendo recompensa por kick_id:', error.message);
+        logger.error('[Kick Rewards] Error getting reward by kick_id:', error.message);
         throw error;
     }
 }
 
 /**
- * 📊 Obtiene estadísticas de recompensas
+ * Gets reward statistics
  * @returns {Promise<Object>}
  */
 async function getRewardStats() {
@@ -46,7 +46,7 @@ async function getRewardStats() {
             total_redemptions: totalRedemptions
         };
     } catch (error) {
-        logger.error('🎁 [Kick Rewards] ❌ Error obteniendo estadísticas:', error.message);
+        logger.error('[Kick Rewards] Error getting statistics:', error.message);
         throw error;
     }
 }
