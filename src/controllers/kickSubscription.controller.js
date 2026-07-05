@@ -4,14 +4,14 @@ const { KickEventSubscription } = require('../models');
 const logger = require('../utils/logger');
 
 /**
- * Obtiene todas las suscripciones a eventos de Kick
+ * Gets all Kick event subscriptions
  */
 exports.getSubscriptions = async (req, res) => {
     try {
         const { authorization } = req.headers;
 
         if (!authorization) {
-            return res.status(401).json({ error: 'Token de autorización requerido' });
+            return res.status(401).json({ error: 'Authorization token required' });
         }
 
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
@@ -23,7 +23,7 @@ exports.getSubscriptions = async (req, res) => {
             timeout: 10000
         });
 
-        // También traemos las suscripciones almacenadas localmente
+        // Also fetch locally stored subscriptions
         const localSubscriptions = await KickEventSubscription.findAll({
             where: { status: 'active' },
             order: [['created_at', 'DESC']]
@@ -36,24 +36,24 @@ exports.getSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('[Kick Subscription] Error obteniendo suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error fetching subscriptions:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
-                error: 'Error al obtener suscripciones de Kick',
-                message: error.response.data?.message || 'Error desconocido'
+                error: 'Error fetching Kick subscriptions',
+                message: error.response.data?.message || 'Unknown error'
             });
         }
 
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Crea nuevas suscripciones a eventos de Kick
+ * Creates new Kick event subscriptions
  */
 exports.createSubscriptions = async (req, res) => {
-    // Métodos de suscripción permitidos por la API de Kick
+    // Subscription methods allowed by the Kick API
     const ALLOWED_METHODS = ['webhook', 'websocket'];
 
     try {
@@ -61,16 +61,16 @@ exports.createSubscriptions = async (req, res) => {
         const { broadcaster_user_id, events, method = 'webhook' } = req.body;
 
         if (!authorization) {
-            return res.status(401).json({ error: 'Token de autorización requerido' });
+            return res.status(401).json({ error: 'Authorization token required' });
         }
 
         if (!broadcaster_user_id || !events || !Array.isArray(events)) {
             return res.status(400).json({
-                error: 'broadcaster_user_id y events (array) son requeridos'
+                error: 'broadcaster_user_id and events (array) are required'
             });
         }
 
-        // Validar que method sea un valor permitido (prevenir SSRF / inyección)
+        // Validate that method is an allowed value (prevent SSRF / injection)
         const sanitizedMethod = ALLOWED_METHODS.includes(method) ? method : 'webhook';
 
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
@@ -89,7 +89,7 @@ exports.createSubscriptions = async (req, res) => {
             timeout: 10000
         });
 
-        // Almacenar las suscripciones exitosas en la base de datos local
+        // Store successful subscriptions in the local database
         const subscriptionsData = response.data.data || [];
         const createdSubscriptions = [];
 
@@ -106,7 +106,7 @@ exports.createSubscriptions = async (req, res) => {
                     });
                     createdSubscriptions.push(localSub);
                 } catch (dbError) {
-                    logger.error('[Kick Subscription] Error guardando suscripción localmente:', dbError.message);
+                    logger.error('[Kick Subscription] Error saving subscription locally:', dbError.message);
                 }
             }
         }
@@ -114,43 +114,43 @@ exports.createSubscriptions = async (req, res) => {
         return res.status(200).json({
             kick_response: response.data,
             local_subscriptions: createdSubscriptions,
-            message: 'Suscripciones creadas exitosamente'
+            message: 'Subscriptions created successfully'
         });
 
     } catch (error) {
-        logger.error('[Kick Subscription] Error creando suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error creating subscriptions:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
-                error: 'Error al crear suscripciones en Kick',
-                message: error.response.data?.message || 'Error desconocido'
+                error: 'Error creating subscriptions in Kick',
+                message: error.response.data?.message || 'Unknown error'
             });
         }
 
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Elimina suscripciones a eventos de Kick
+ * Deletes Kick event subscriptions
  */
 exports.deleteSubscriptions = async (req, res) => {
     try {
         const { authorization } = req.headers;
-        const { id } = req.query; // Puede ser un array o un string
+        const { id } = req.query; // Can be an array or a string
 
         if (!authorization) {
-            return res.status(401).json({ error: 'Token de autorización requerido' });
+            return res.status(401).json({ error: 'Authorization token required' });
         }
 
         if (!id) {
-            return res.status(400).json({ error: 'ID(s) de suscripción requerido(s)' });
+            return res.status(400).json({ error: 'Subscription ID(s) required' });
         }
 
         const ids = Array.isArray(id) ? id : [id];
         const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
-        // Crear query string con múltiples IDs
+        // Build query string with multiple IDs
         const queryParams = ids.map(subId => `id=${encodeURIComponent(subId)}`).join('&');
 
         const response = await axios.delete(`${apiUrl}?${queryParams}`, {
@@ -160,33 +160,33 @@ exports.deleteSubscriptions = async (req, res) => {
             timeout: 10000
         });
 
-        // Eliminar o marcar como inactivas las suscripciones locales
+        // Delete or mark local subscriptions as inactive
         await KickEventSubscription.update(
             { status: 'inactive' },
             { where: { subscription_id: ids } }
         );
 
         return res.status(204).json({
-            message: 'Suscripciones eliminadas exitosamente',
+            message: 'Subscriptions deleted successfully',
             data: response.data
         });
 
     } catch (error) {
-        logger.error('[Kick Subscription] Error eliminando suscripciones:', error.message);
+        logger.error('[Kick Subscription] Error deleting subscriptions:', error.message);
 
         if (error.response) {
             return res.status(error.response.status).json({
-                error: 'Error al eliminar suscripciones de Kick',
-                message: error.response.data?.message || 'Error desconocido'
+                error: 'Error deleting Kick subscriptions',
+                message: error.response.data?.message || 'Unknown error'
             });
         }
 
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Obtiene todas las suscripciones almacenadas localmente
+ * Gets all locally stored subscriptions
  */
 exports.getLocalSubscriptions = async (req, res) => {
     try {
@@ -207,7 +207,7 @@ exports.getLocalSubscriptions = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('[Kick Subscription] Error obteniendo suscripciones locales:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Subscription] Error fetching local subscriptions:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };

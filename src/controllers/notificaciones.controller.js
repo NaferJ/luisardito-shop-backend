@@ -16,7 +16,7 @@ exports.listar = async (req, res) => {
 
         res.json(resultado);
     } catch (error) {
-        logger.error(`[Notificaciones] Error listando: ${error.message}`);
+        logger.error(`[Notificaciones] Error listing: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 };
@@ -28,7 +28,7 @@ exports.obtenerDetalle = async (req, res) => {
 
         const notificacion = await NotificacionService.obtenerDetalle(id, usuarioId);
 
-        // Marcar como leída automáticamente al ver el detalle
+        // Mark as read automatically when viewing details
         if (notificacion.estado === 'no_leida') {
             await NotificacionService.marcarComoLeida(id, usuarioId);
             notificacion.estado = 'leida';
@@ -37,7 +37,7 @@ exports.obtenerDetalle = async (req, res) => {
 
         res.json(notificacion);
     } catch (error) {
-        logger.error(`[Notificaciones] Error obteniendo detalle: ${error.message}`);
+        logger.error(`[Notificaciones] Error fetching detail: ${error.message}`);
         res.status(404).json({ error: error.message });
     }
 };
@@ -50,11 +50,11 @@ exports.marcarComoLeida = async (req, res) => {
         const notificacion = await NotificacionService.marcarComoLeida(id, usuarioId);
 
         res.json({
-            mensaje: 'Notificación marcada como leída',
+            mensaje: 'Notification marked as read',
             notificacion
         });
     } catch (error) {
-        logger.error(`[Notificaciones] Error marcando como leída: ${error.message}`);
+        logger.error(`[Notificaciones] Error marking as read: ${error.message}`);
         res.status(404).json({ error: error.message });
     }
 };
@@ -66,11 +66,11 @@ exports.marcarTodasComoLeidas = async (req, res) => {
         const resultado = await NotificacionService.marcarTodasComoLeidas(usuarioId);
 
         res.json({
-            mensaje: 'Todas las notificaciones marcadas como leídas',
+            mensaje: 'All notifications marked as read',
             ...resultado
         });
     } catch (error) {
-        logger.error(`[Notificaciones] Error marcando todas: ${error.message}`);
+        logger.error(`[Notificaciones] Error marking all as read: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 };
@@ -84,7 +84,7 @@ exports.eliminar = async (req, res) => {
 
         res.json(resultado);
     } catch (error) {
-        logger.error(`[Notificaciones] Error eliminando: ${error.message}`);
+        logger.error(`[Notificaciones] Error deleting: ${error.message}`);
         res.status(404).json({ error: error.message });
     }
 };
@@ -97,7 +97,7 @@ exports.contarNoLeidas = async (req, res) => {
 
         res.json(resultado);
     } catch (error) {
-        logger.error(`[Notificaciones] Error contando no leídas: ${error.message}`);
+        logger.error(`[Notificaciones] Error counting unread: ${error.message}`);
         res.status(500).json({ error: error.message });
     }
 };

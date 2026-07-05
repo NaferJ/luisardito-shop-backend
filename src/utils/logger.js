@@ -1,20 +1,20 @@
 /**
- * Sistema de logging centralizado con control por variable de entorno
- * Los logs de debug pueden desactivarse en producción sin afectar errores críticos
+ * Centralized logging system with environment variable control
+ * Debug logs can be disabled in production without affecting critical errors
  */
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const isDebugEnabled = process.env.DEBUG_LOGS === 'true';
 
-// Determinar si deben mostrarse los logs de debug
+// Determine if debug logs should be shown
 const shouldLog = isDevelopment || isDebugEnabled;
 
 /**
- * Logger principal con diferentes niveles
+ * Main logger with different levels
  */
 const logger = {
     /**
-     * Logs informativos - pueden desactivarse en producción
+     * Info logs - can be disabled in production
      */
     info: (...args) => {
         if (shouldLog) {
@@ -23,7 +23,7 @@ const logger = {
     },
 
     /**
-     * Logs de advertencia - pueden desactivarse en producción
+     * Warning logs - can be disabled in production
      */
     warn: (...args) => {
         if (shouldLog) {
@@ -32,14 +32,14 @@ const logger = {
     },
 
     /**
-     * Logs de error - SIEMPRE se registran (críticos)
+     * Error logs - ALWAYS logged (critical)
      */
     error: (...args) => {
         console.error(...args);
     },
 
     /**
-     * Logs de debug - solo en desarrollo o cuando DEBUG_LOGS=true
+     * Debug logs - only in development or when DEBUG_LOGS=true
      */
     debug: (...args) => {
         if (shouldLog) {

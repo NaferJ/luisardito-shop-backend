@@ -1,7 +1,8 @@
 const { KickPointsConfig } = require('../models');
+const logger = require('../utils/logger');
 
 /**
- * Obtiene toda la configuración de puntos
+ * Gets all points configuration
  */
 exports.getConfig = async (req, res) => {
     try {
@@ -9,68 +10,68 @@ exports.getConfig = async (req, res) => {
             order: [['config_key', 'ASC']]
         });
 
-        console.log('🔍 [KICK POINTS DEBUG] Configuración encontrada:', {
+        logger.debug('[KICK POINTS DEBUG] Configuration found:', {
             total: config.length,
             configs: config.map(c => ({ key: c.config_key, value: c.config_value, enabled: c.enabled }))
         });
 
-        // Si no hay configuración, inicializar automáticamente
+        // If no configuration, initialize automatically
         if (config.length === 0) {
-            console.log('⚠️ [KICK POINTS DEBUG] No hay configuración, inicializando...');
+            logger.warn('[KICK POINTS DEBUG] No configuration found, initializing...');
 
             const defaultConfigs = [
                 {
                     config_key: 'chat_points_regular',
                     config_value: 10,
-                    description: 'Puntos por mensaje en chat (usuarios regulares)',
+                    description: 'Points per chat message (regular users)',
                     enabled: true
                 },
                 {
                     config_key: 'chat_points_subscriber',
                     config_value: 20,
-                    description: 'Puntos por mensaje en chat (suscriptores)',
+                    description: 'Points per chat message (subscribers)',
                     enabled: true
                 },
                 {
                     config_key: 'chat_points_vip',
                     config_value: 30,
-                    description: 'Puntos por mensaje en chat (VIPs)',
+                    description: 'Points per chat message (VIPs)',
                     enabled: true
                 },
                 {
                     config_key: 'follow_points',
                     config_value: 50,
-                    description: 'Puntos por seguir el canal (primera vez)',
+                    description: 'Points for following the channel (first time)',
                     enabled: true
                 },
                 {
                     config_key: 'subscription_new_points',
                     config_value: 500,
-                    description: 'Puntos por nueva suscripción',
+                    description: 'Points for new subscription',
                     enabled: true
                 },
                 {
                     config_key: 'subscription_renewal_points',
                     config_value: 300,
-                    description: 'Puntos por renovación de suscripción',
+                    description: 'Points for subscription renewal',
                     enabled: true
                 },
                 {
                     config_key: 'gift_given_points',
                     config_value: 100,
-                    description: 'Puntos por cada suscripción regalada',
+                    description: 'Points per gifted subscription',
                     enabled: true
                 },
                 {
                     config_key: 'gift_received_points',
                     config_value: 400,
-                    description: 'Puntos por recibir una suscripción regalada',
+                    description: 'Points for receiving a gifted subscription',
                     enabled: true
                 },
                 {
                     config_key: 'kicks_gifted_multiplier',
                     config_value: 2,
-                    description: 'Multiplicador de puntos por kicks regalados',
+                    description: 'Points multiplier per gifted kicks',
                     enabled: true
                 }
             ];
@@ -81,13 +82,13 @@ exports.getConfig = async (req, res) => {
                 created.push(newConfig);
             }
 
-            console.log('✅ [KICK POINTS DEBUG] Configuración inicializada con', created.length, 'elementos');
+            logger.info('[KICK POINTS DEBUG] Configuration initialized with', created.length, 'items');
 
             return res.json({
                 config: created,
                 total: created.length,
                 initialized: true,
-                message: 'Configuración inicializada automáticamente'
+                message: 'Configuration initialized automatically'
             });
         }
 
@@ -98,11 +99,11 @@ exports.getConfig = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [KICK POINTS DEBUG] Error obteniendo configuración:', error.message);
+        logger.error('[KICK POINTS DEBUG] Error fetching configuration:', error.message);
 
-        // En caso de error, retornar estructura básica para que el frontend no falle
+        // On error, return a basic structure so the frontend does not break
         return res.status(500).json({
-            error: 'Error interno del servidor',
+            error: 'Internal server error',
             config: [],
             total: 0,
             initialized: false
@@ -111,14 +112,14 @@ exports.getConfig = async (req, res) => {
 };
 
 /**
- * Actualiza un valor de configuración
+ * Updates a configuration value
  */
 exports.updateConfig = async (req, res) => {
     try {
         const { config_key, config_value, enabled } = req.body;
 
         if (!config_key) {
-            return res.status(400).json({ error: 'config_key es requerido' });
+            return res.status(400).json({ error: 'config_key is required' });
         }
 
         const config = await KickPointsConfig.findOne({
@@ -126,7 +127,7 @@ exports.updateConfig = async (req, res) => {
         });
 
         if (!config) {
-            return res.status(404).json({ error: 'Configuración no encontrada' });
+            return res.status(404).json({ error: 'Configuration not found' });
         }
 
         const updateData = {};
@@ -136,25 +137,25 @@ exports.updateConfig = async (req, res) => {
         await config.update(updateData);
 
         return res.json({
-            message: 'Configuración actualizada',
+            message: 'Configuration updated',
             config
         });
 
     } catch (error) {
-        console.error('[Kick Points Config] Error actualizando configuración:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Points Config] Error updating configuration:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Actualiza múltiples configuraciones a la vez
+ * Updates multiple configurations at once
  */
 exports.updateMultipleConfigs = async (req, res) => {
     try {
         const { configs } = req.body;
 
         if (!Array.isArray(configs)) {
-            return res.status(400).json({ error: 'configs debe ser un array' });
+            return res.status(400).json({ error: 'configs must be an array' });
         }
 
         const updated = [];
@@ -179,18 +180,18 @@ exports.updateMultipleConfigs = async (req, res) => {
         }
 
         return res.json({
-            message: `${updated.length} configuraciones actualizadas`,
+            message: `${updated.length} configurations updated`,
             configs: updated
         });
 
     } catch (error) {
-        console.error('[Kick Points Config] Error actualizando configuraciones:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Points Config] Error updating configurations:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Inicializa la configuración con valores por defecto
+ * Initializes configuration with default values
  */
 exports.initializeConfig = async (req, res) => {
     try {
@@ -198,49 +199,49 @@ exports.initializeConfig = async (req, res) => {
             {
                 config_key: 'chat_points_regular',
                 config_value: 10,
-                description: 'Puntos por mensaje en chat (usuarios regulares)',
+                description: 'Points per chat message (regular users)',
                 enabled: true
             },
             {
                 config_key: 'chat_points_subscriber',
                 config_value: 20,
-                description: 'Puntos por mensaje en chat (suscriptores)',
+                description: 'Points per chat message (subscribers)',
                 enabled: true
             },
             {
                 config_key: 'follow_points',
                 config_value: 50,
-                description: 'Puntos por seguir el canal (primera vez)',
+                description: 'Points for following the channel (first time)',
                 enabled: true
             },
             {
                 config_key: 'subscription_new_points',
                 config_value: 500,
-                description: 'Puntos por nueva suscripción',
+                description: 'Points for new subscription',
                 enabled: true
             },
             {
                 config_key: 'subscription_renewal_points',
                 config_value: 300,
-                description: 'Puntos por renovación de suscripción',
+                description: 'Points for subscription renewal',
                 enabled: true
             },
             {
                 config_key: 'gift_given_points',
                 config_value: 100,
-                description: 'Puntos por cada suscripción regalada',
+                description: 'Points per gifted subscription',
                 enabled: true
             },
             {
                 config_key: 'gift_received_points',
                 config_value: 400,
-                description: 'Puntos por recibir una suscripción regalada',
+                description: 'Points for receiving a gifted subscription',
                 enabled: true
             },
             {
                 config_key: 'kicks_gifted_multiplier',
                 config_value: 2,
-                description: 'Multiplicador de puntos por kicks regalados',
+                description: 'Points multiplier per gifted kicks',
                 enabled: true
             }
         ];
@@ -259,13 +260,13 @@ exports.initializeConfig = async (req, res) => {
         }
 
         return res.json({
-            message: `Configuración inicializada (${created.length} nuevos, ${defaultConfigs.length - created.length} existentes)`,
+            message: `Configuration initialized (${created.length} new, ${defaultConfigs.length - created.length} existing)`,
             created,
             total: defaultConfigs.length
         });
 
     } catch (error) {
-        console.error('[Kick Points Config] Error inicializando configuración:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Points Config] Error initializing configuration:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };

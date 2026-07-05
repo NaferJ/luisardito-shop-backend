@@ -3,11 +3,12 @@ const BotrixMigrationService = require('../services/botrixMigration.service');
 const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 /**
- * Función helper para enriquecer información de usuario con datos de Discord
- * @param {Object} user - Instancia del modelo Usuario
- * @returns {Object} Información enriquecida de Discord
+ * Helper to enrich user info with Discord data
+ * @param {Object} user - Usuario model instance
+ * @returns {Object} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -36,13 +37,13 @@ async function enrichUserWithDiscordInfo(user) {
 }
 
 /**
- * Obtener configuración de migración y VIP
+ * Get migration and VIP configuration
  */
 exports.getConfig = async (req, res) => {
     try {
         const config = await BotrixMigrationConfig.getConfig();
 
-        // Obtener estadísticas reales de migración de puntos
+        // Get real point migration stats
         const migrationStats = await Usuario.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'migrated_users'],
@@ -55,7 +56,7 @@ exports.getConfig = async (req, res) => {
             raw: true
         });
 
-        // Obtener estadísticas reales de migración de watchtime
+        // Get real watchtime migration stats
         const watchtimeMigrationStats = await Usuario.findAll({
             attributes: [
                 [sequelize.fn('COUNT', sequelize.col('id')), 'migrated_users'],
@@ -68,15 +69,15 @@ exports.getConfig = async (req, res) => {
             raw: true
         });
 
-        // Obtener estadísticas reales de VIP
+        // Get real VIP stats
         const now = new Date();
 
         const activeVips = await Usuario.count({
             where: {
                 is_vip: true,
                 [Op.or]: [
-                    { vip_expires_at: null }, // VIP permanente
-                    { vip_expires_at: { [Op.gt]: now } } // VIP no expirado
+                    { vip_expires_at: null }, // Permanent VIP
+                    { vip_expires_at: { [Op.gt]: now } } // Non-expired VIP
                 ]
             }
         });
@@ -84,11 +85,11 @@ exports.getConfig = async (req, res) => {
         const expiredVips = await Usuario.count({
             where: {
                 is_vip: true,
-                vip_expires_at: { [Op.lt]: now } // VIP expirado
+                vip_expires_at: { [Op.lt]: now } // Expired VIP
             }
         });
 
-        console.log('📊 [KICK ADMIN DEBUG] Estadísticas calculadas:', {
+        logger.debug('[KICK ADMIN DEBUG] Calculated stats:', {
             migration: migrationStats[0],
             watchtimeMigration: watchtimeMigrationStats[0],
             vip: { activeVips, expiredVips }
@@ -122,7 +123,7 @@ exports.getConfig = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error obteniendo configuración:', error);
+        logger.error('[KICK ADMIN DEBUG] Error fetching configuration:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -131,11 +132,11 @@ exports.getConfig = async (req, res) => {
 };
 
 /**
- * Actualizar configuración de migración
+ * Update migration configuration
  */
 exports.updateMigrationConfig = async (req, res) => {
     try {
-        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en migration config:', {
+        logger.debug('[KICK ADMIN DEBUG] Data received in migration config:', {
             body: req.body,
             bodyKeys: Object.keys(req.body),
             migration_enabled_value: req.body.migration_enabled,
@@ -148,7 +149,7 @@ exports.updateMigrationConfig = async (req, res) => {
 
         const { migration_enabled } = req.body;
 
-        // Validación más flexible para manejar strings "true"/"false"
+        // More flexible validation to handle "true"/"false" strings
         let booleanValue;
 
         if (typeof migration_enabled === 'boolean') {
@@ -159,33 +160,33 @@ exports.updateMigrationConfig = async (req, res) => {
             } else if (migration_enabled.toLowerCase() === 'false') {
                 booleanValue = false;
             } else {
-                console.log('❌ [KICK ADMIN DEBUG] Valor string inválido:', migration_enabled);
+                logger.debug('[KICK ADMIN DEBUG] Invalid string value:', migration_enabled);
                 return res.status(400).json({
                     success: false,
-                    error: 'migration_enabled debe ser un booleano o "true"/"false"'
+                    error: 'migration_enabled must be a boolean or "true"/"false"'
                 });
             }
         } else {
-            console.log('❌ [KICK ADMIN DEBUG] Tipo inválido:', typeof migration_enabled, 'valor:', migration_enabled);
+            logger.debug('[KICK ADMIN DEBUG] Invalid type:', typeof migration_enabled, 'value:', migration_enabled);
             return res.status(400).json({
                 success: false,
-                error: 'migration_enabled debe ser un booleano'
+                error: 'migration_enabled must be a boolean'
             });
         }
 
-        console.log('✅ [KICK ADMIN DEBUG] Valor procesado:', booleanValue);
+        logger.debug('[KICK ADMIN DEBUG] Processed value:', booleanValue);
 
         await BotrixMigrationConfig.setConfig('migration_enabled', booleanValue);
 
         res.json({
             success: true,
-            message: `Migración de Botrix ${booleanValue ? 'activada' : 'desactivada'}`,
+            message: `Botrix migration ${booleanValue ? 'enabled' : 'disabled'}`,
             config: {
                 migration_enabled: booleanValue
             }
         });
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración de migración:', error);
+        logger.error('[KICK ADMIN DEBUG] Error updating migration configuration:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -194,11 +195,11 @@ exports.updateMigrationConfig = async (req, res) => {
 };
 
 /**
- * Actualizar configuración de puntos VIP
+ * Update VIP points configuration
  */
 exports.updateVipConfig = async (req, res) => {
     try {
-        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en VIP config:', {
+        logger.debug('[KICK ADMIN DEBUG] Data received in VIP config:', {
             body: req.body,
             bodyKeys: Object.keys(req.body),
             types: {
@@ -213,7 +214,7 @@ exports.updateVipConfig = async (req, res) => {
 
         const updateData = {};
 
-        // Validar y convertir vip_points_enabled
+        // Validate and convert vip_points_enabled
         if (vip_points_enabled !== undefined) {
             if (typeof vip_points_enabled === 'boolean') {
                 updateData.vip_points_enabled = vip_points_enabled;
@@ -225,24 +226,24 @@ exports.updateVipConfig = async (req, res) => {
                 } else {
                     return res.status(400).json({
                         success: false,
-                        error: 'vip_points_enabled debe ser un booleano'
+                        error: 'vip_points_enabled must be a boolean'
                     });
                 }
             } else {
                 return res.status(400).json({
                     success: false,
-                    error: 'vip_points_enabled debe ser un booleano'
+                    error: 'vip_points_enabled must be a boolean'
                 });
             }
         }
 
-        // Validar y convertir números
+        // Validate and convert numbers
         if (vip_chat_points !== undefined) {
             const num = Number(vip_chat_points);
             if (isNaN(num) || num < 0) {
                 return res.status(400).json({
                     success: false,
-                    error: 'vip_chat_points debe ser un número positivo'
+                    error: 'vip_chat_points must be a non-negative number'
                 });
             }
             updateData.vip_chat_points = num;
@@ -253,7 +254,7 @@ exports.updateVipConfig = async (req, res) => {
             if (isNaN(num) || num < 0) {
                 return res.status(400).json({
                     success: false,
-                    error: 'vip_follow_points debe ser un número positivo'
+                    error: 'vip_follow_points must be a non-negative number'
                 });
             }
             updateData.vip_follow_points = num;
@@ -264,7 +265,7 @@ exports.updateVipConfig = async (req, res) => {
             if (isNaN(num) || num < 0) {
                 return res.status(400).json({
                     success: false,
-                    error: 'vip_sub_points debe ser un número positivo'
+                    error: 'vip_sub_points must be a non-negative number'
                 });
             }
             updateData.vip_sub_points = num;
@@ -273,24 +274,24 @@ exports.updateVipConfig = async (req, res) => {
         if (Object.keys(updateData).length === 0) {
             return res.status(400).json({
                 success: false,
-                error: 'No se proporcionaron datos válidos para actualizar'
+                error: 'No valid data provided to update'
             });
         }
 
-        console.log('✅ [KICK ADMIN DEBUG] Datos a actualizar:', updateData);
+        logger.debug('[KICK ADMIN DEBUG] Data to update:', updateData);
 
-        // Actualizar cada configuración
+        // Update each configuration
         for (const [key, value] of Object.entries(updateData)) {
             await BotrixMigrationConfig.setConfig(key, value);
         }
 
         res.json({
             success: true,
-            message: 'Configuración VIP actualizada',
+            message: 'VIP configuration updated',
             config: updateData
         });
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración VIP:', error);
+        logger.error('[KICK ADMIN DEBUG] Error updating VIP configuration:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -299,11 +300,11 @@ exports.updateVipConfig = async (req, res) => {
 };
 
 /**
- * Actualizar configuración de migración de watchtime
+ * Update watchtime migration configuration
  */
 exports.updateWatchtimeMigrationConfig = async (req, res) => {
     try {
-        console.log('🔍 [KICK ADMIN DEBUG] Datos recibidos en watchtime migration config:', {
+        logger.debug('[KICK ADMIN DEBUG] Data received in watchtime migration config:', {
             body: req.body,
             bodyKeys: Object.keys(req.body),
             watchtime_migration_enabled_value: req.body.watchtime_migration_enabled,
@@ -312,7 +313,7 @@ exports.updateWatchtimeMigrationConfig = async (req, res) => {
 
         const { watchtime_migration_enabled } = req.body;
 
-        // Validación más flexible para manejar strings "true"/"false"
+        // More flexible validation to handle "true"/"false" strings
         let booleanValue;
 
         if (typeof watchtime_migration_enabled === 'boolean') {
@@ -323,33 +324,33 @@ exports.updateWatchtimeMigrationConfig = async (req, res) => {
             } else if (watchtime_migration_enabled.toLowerCase() === 'false') {
                 booleanValue = false;
             } else {
-                console.log('❌ [KICK ADMIN DEBUG] Valor string inválido:', watchtime_migration_enabled);
+                logger.debug('[KICK ADMIN DEBUG] Invalid string value:', watchtime_migration_enabled);
                 return res.status(400).json({
                     success: false,
-                    error: 'watchtime_migration_enabled debe ser un booleano o "true"/"false"'
+                    error: 'watchtime_migration_enabled must be a boolean or "true"/"false"'
                 });
             }
         } else {
-            console.log('❌ [KICK ADMIN DEBUG] Tipo inválido:', typeof watchtime_migration_enabled, 'valor:', watchtime_migration_enabled);
+            logger.debug('[KICK ADMIN DEBUG] Invalid type:', typeof watchtime_migration_enabled, 'value:', watchtime_migration_enabled);
             return res.status(400).json({
                 success: false,
-                error: 'watchtime_migration_enabled debe ser un booleano'
+                error: 'watchtime_migration_enabled must be a boolean'
             });
         }
 
-        console.log('✅ [KICK ADMIN DEBUG] Valor procesado:', booleanValue);
+        logger.debug('[KICK ADMIN DEBUG] Processed value:', booleanValue);
 
         await BotrixMigrationConfig.setConfig('watchtime_migration_enabled', booleanValue);
 
         res.json({
             success: true,
-            message: `Migración de watchtime ${booleanValue ? 'activada' : 'desactivada'}`,
+            message: `Watchtime migration ${booleanValue ? 'enabled' : 'disabled'}`,
             config: {
                 watchtime_migration_enabled: booleanValue
             }
         });
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error actualizando configuración de migración de watchtime:', error);
+        logger.error('[KICK ADMIN DEBUG] Error updating watchtime migration configuration:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -358,14 +359,14 @@ exports.updateWatchtimeMigrationConfig = async (req, res) => {
 };
 
 /**
- * Otorgar VIP desde canje entregado
+ * Grant VIP from a delivered canje
  */
 exports.grantVipFromCanje = async (req, res) => {
     try {
         const { canjeId } = req.params;
         const { duration_days } = req.body;
 
-        // Buscar el canje
+        // Find the canje
         const canje = await Canje.findByPk(canjeId, {
             include: [{ model: Usuario }, { model: Producto }]
         });
@@ -373,32 +374,32 @@ exports.grantVipFromCanje = async (req, res) => {
         if (!canje) {
             return res.status(404).json({
                 success: false,
-                error: 'Canje no encontrado'
+                error: 'Canje not found'
             });
         }
 
         if (canje.estado !== 'entregado') {
             return res.status(400).json({
                 success: false,
-                error: 'El canje debe estar en estado "entregado" para otorgar VIP'
+                error: 'The canje must be in "entregado" state to grant VIP'
             });
         }
 
-        // Verificar si el producto otorga VIP
+        // Check if the product grants VIP
         if (!canje.Producto.nombre.toLowerCase().includes('vip')) {
             return res.status(400).json({
                 success: false,
-                error: 'Este producto no otorga VIP'
+                error: 'This product does not grant VIP'
             });
         }
 
-        // Calcular fecha de expiración
+        // Calculate expiration date
         let vip_expires_at = null;
         if (duration_days && duration_days > 0) {
             vip_expires_at = new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000);
         }
 
-        // Otorgar VIP al usuario
+        // Grant VIP to the user
         await canje.Usuario.update({
             is_vip: true,
             vip_granted_at: new Date(),
@@ -408,13 +409,13 @@ exports.grantVipFromCanje = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'VIP otorgado exitosamente',
+            message: 'VIP granted successfully',
             user_id: canje.Usuario.id,
-            duration: duration_days ? `${duration_days} días` : 'Permanente'
+            duration: duration_days ? `${duration_days} days` : 'Permanent'
         });
 
     } catch (error) {
-        console.error('Error otorgando VIP desde canje:', error);
+        logger.error('Error granting VIP from canje:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -423,59 +424,59 @@ exports.grantVipFromCanje = async (req, res) => {
 };
 
 /**
- * Otorgar VIP manualmente a un usuario
+ * Grant VIP manually to a user
  */
 exports.grantVipManually = async (req, res) => {
     try {
         const { usuarioId } = req.params;
         const { duration_days, reason } = req.body;
 
-        // Buscar el usuario
+        // Find the user
         const usuario = await Usuario.findByPk(usuarioId);
 
         if (!usuario) {
             return res.status(404).json({
                 success: false,
-                error: 'Usuario no encontrado'
+                error: 'User not found'
             });
         }
 
-        // Verificar si ya es VIP activo
+        // Check if already an active VIP
         if (usuario.is_vip && (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > new Date())) {
             return res.status(400).json({
                 success: false,
-                error: 'El usuario ya tiene VIP activo'
+                error: 'User already has active VIP'
             });
         }
 
-        // Calcular fecha de expiración
+        // Calculate expiration date
         let vip_expires_at = null;
         if (duration_days && duration_days > 0) {
             vip_expires_at = new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000);
         }
 
-        // Otorgar VIP al usuario
+        // Grant VIP to the user
         await usuario.update({
             is_vip: true,
             vip_granted_at: new Date(),
             vip_expires_at,
-            vip_granted_by_canje_id: null // Es manual
+            vip_granted_by_canje_id: null // Manual grant
         });
 
         res.json({
             success: true,
-            message: 'VIP otorgado exitosamente',
+            message: 'VIP granted successfully',
             user: {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 vip_granted_at: new Date(),
                 vip_expires_at,
-                duration: duration_days ? `${duration_days} días` : 'Permanente'
+                duration: duration_days ? `${duration_days} days` : 'Permanent'
             }
         });
 
     } catch (error) {
-        console.error('Error otorgando VIP manualmente:', error);
+        logger.error('Error granting VIP manually:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -484,31 +485,31 @@ exports.grantVipManually = async (req, res) => {
 };
 
 /**
- * Remover VIP de un usuario
+ * Remove VIP from a user
  */
 exports.removeVip = async (req, res) => {
     try {
         const { usuarioId } = req.params;
         const { reason } = req.body;
 
-        // Buscar el usuario
+        // Find the user
         const usuario = await Usuario.findByPk(usuarioId);
 
         if (!usuario) {
             return res.status(404).json({
                 success: false,
-                error: 'Usuario no encontrado'
+                error: 'User not found'
             });
         }
 
         if (!usuario.is_vip) {
             return res.status(400).json({
                 success: false,
-                error: 'El usuario no tiene VIP'
+                error: 'User does not have VIP'
             });
         }
 
-        // Remover VIP
+        // Remove VIP
         await usuario.update({
             is_vip: false,
             vip_granted_at: null,
@@ -518,17 +519,17 @@ exports.removeVip = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'VIP removido exitosamente',
+            message: 'VIP removed successfully',
             user: {
                 id: usuario.id,
                 nickname: usuario.nickname,
                 vip_removed_at: new Date(),
-                reason: reason || 'Removido manualmente'
+                reason: reason || 'Removed manually'
             }
         });
 
     } catch (error) {
-        console.error('Error removiendo VIP:', error);
+        logger.error('Error removing VIP:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -537,13 +538,13 @@ exports.removeVip = async (req, res) => {
 };
 
 /**
- * Limpiar VIPs expirados
+ * Clean up expired VIPs
  */
 exports.cleanupExpiredVips = async (req, res) => {
     try {
         const now = new Date();
 
-        // Buscar usuarios con VIP expirado
+        // Find users with expired VIP
         const expiredVips = await Usuario.findAll({
             where: {
                 is_vip: true,
@@ -556,12 +557,12 @@ exports.cleanupExpiredVips = async (req, res) => {
         if (expiredVips.length === 0) {
             return res.json({
                 success: true,
-                message: 'No hay VIPs expirados para limpiar',
+                message: 'No expired VIPs to clean up',
                 cleaned: 0
             });
         }
 
-        // Actualizar usuarios expirados
+        // Update expired users
         await Usuario.update(
             {
                 is_vip: false,
@@ -581,7 +582,7 @@ exports.cleanupExpiredVips = async (req, res) => {
 
         res.json({
             success: true,
-            message: `${expiredVips.length} VIPs expirados limpiados exitosamente`,
+            message: `${expiredVips.length} expired VIPs cleaned up successfully`,
             cleaned: expiredVips.length,
             users: expiredVips.map(u => ({
                 id: u.id,
@@ -591,7 +592,7 @@ exports.cleanupExpiredVips = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error limpiando VIPs expirados:', error);
+        logger.error('Error cleaning up expired VIPs:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -616,10 +617,10 @@ exports.getUsersWithDetails = async (req, res) => {
                 break;
         }
 
-        // Calcular el total de usuarios
+        // Calculate the total number of users
         const total = await Usuario.count({ where: whereClause });
 
-        // Obtener usuarios con conteo de canjes
+        // Get users with canje count
         const usuarios = await Usuario.findAll({
             where: whereClause,
             order: [['actualizado', 'DESC']],
@@ -642,10 +643,10 @@ exports.getUsersWithDetails = async (req, res) => {
         const enrichedUsers = await Promise.all(usuarios.map(async user => {
             const userJson = user.toJSON();
 
-            // Información de Discord
+            // Discord info
             const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
 
-            // Calcular información de suscriptor
+            // Calculate subscriber info
             let subscriberStatus = {
                 is_active: false,
                 expires_soon: false
@@ -692,7 +693,7 @@ exports.getUsersWithDetails = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error obteniendo usuarios:', error);
+        logger.error('Error fetching users:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -708,7 +709,7 @@ exports.manualBotrixMigration = async (req, res) => {
         if (!rawUsuarioId || !rawPoints) {
             return res.status(400).json({
                 success: false,
-                error: 'usuarioId y points son requeridos'
+                error: 'usuarioId and points are required'
             })
         }
 
@@ -718,25 +719,25 @@ exports.manualBotrixMigration = async (req, res) => {
         if (Number.isNaN(usuarioId) || Number.isNaN(points)) {
             return res.status(400).json({
                 success: false,
-                error: 'usuarioId y points deben ser números válidos'
+                error: 'usuarioId and points must be valid numbers'
             })
         }
 
-        // Buscar el usuario
+        // Find the user
         const usuario = await Usuario.findByPk(usuarioId)
 
         if (!usuario) {
             return res.status(404).json({
                 success: false,
-                error: 'Usuario no encontrado'
+                error: 'User not found'
             })
         }
 
-        // Verificar si ya migró
+        // Check if already migrated
         if (usuario.botrix_migrated) {
             return res.status(400).json({
                 success: false,
-                error: 'El usuario ya tiene puntos migrados de Botrix',
+                error: 'User already has migrated Botrix points',
                 details: {
                     migrated_at: usuario.botrix_migrated_at,
                     points_migrated: usuario.botrix_points_migrated
@@ -744,7 +745,7 @@ exports.manualBotrixMigration = async (req, res) => {
             })
         }
 
-        // Realizar migración manual usando el servicio
+        // Perform manual migration using the service
         const result = await BotrixMigrationService.migrateBotrixPoints(
             usuario,
             points,
@@ -753,11 +754,11 @@ exports.manualBotrixMigration = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Migración manual completada exitosamente',
+            message: 'Manual migration completed successfully',
             migration: result
         })
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error en migración manual:', error)
+        logger.error('[KICK ADMIN DEBUG] Error in manual migration:', error)
         res.status(500).json({
             success: false,
             error: error.message
@@ -766,19 +767,19 @@ exports.manualBotrixMigration = async (req, res) => {
 }
 
 /**
- * Obtener estado de tokens del bot de Kick
+ * Get Kick bot token status
  */
 exports.getBotTokensStatus = async (req, res) => {
     try {
         const now = new Date();
         const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
 
-        // Obtener todos los tokens
+        // Get all tokens
         const allTokens = await KickBotToken.findAll({
             order: [['updated_at', 'DESC']]
         });
 
-        // Clasificar tokens
+        // Classify tokens
         const activeTokens = allTokens.filter(token =>
             token.is_active && new Date(token.token_expires_at) > now
         );
@@ -829,7 +830,7 @@ exports.getBotTokensStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error obteniendo estado de tokens:', error);
+        logger.error('[KICK ADMIN DEBUG] Error fetching token status:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -838,13 +839,13 @@ exports.getBotTokensStatus = async (req, res) => {
 };
 
 /**
- * Limpiar tokens expirados del bot
+ * Clean up expired bot tokens
  */
 exports.cleanupExpiredBotTokens = async (req, res) => {
     try {
         const now = new Date();
 
-        // Buscar tokens expirados y activos
+        // Find expired active tokens
         const expiredTokens = await KickBotToken.findAll({
             where: {
                 is_active: true,
@@ -857,12 +858,12 @@ exports.cleanupExpiredBotTokens = async (req, res) => {
         if (expiredTokens.length === 0) {
             return res.json({
                 success: true,
-                message: 'No hay tokens expirados para limpiar',
+                message: 'No expired tokens to clean up',
                 cleaned: 0
             });
         }
 
-        // Marcar como inactivos
+        // Mark as inactive
         await KickBotToken.update(
             { is_active: false },
             {
@@ -877,7 +878,7 @@ exports.cleanupExpiredBotTokens = async (req, res) => {
 
         res.json({
             success: true,
-            message: `${expiredTokens.length} tokens expirados marcados como inactivos`,
+            message: `${expiredTokens.length} expired tokens marked as inactive`,
             cleaned: expiredTokens.length,
             tokens: expiredTokens.map(token => ({
                 id: token.id,
@@ -887,7 +888,7 @@ exports.cleanupExpiredBotTokens = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error limpiando tokens expirados:', error);
+        logger.error('[KICK ADMIN DEBUG] Error cleaning up expired tokens:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -896,7 +897,7 @@ exports.cleanupExpiredBotTokens = async (req, res) => {
 };
 
 /**
- * Renovar token del bot manualmente
+ * Refresh bot token manually
  */
 exports.refreshBotToken = async (req, res) => {
     try {
@@ -906,7 +907,7 @@ exports.refreshBotToken = async (req, res) => {
         if (!token) {
             return res.status(404).json({
                 success: false,
-                error: 'Token no encontrado'
+                error: 'Token not found'
             });
         }
 
@@ -917,7 +918,7 @@ exports.refreshBotToken = async (req, res) => {
 
             res.json({
                 success: true,
-                message: 'Token renovado exitosamente',
+                message: 'Token refreshed successfully',
                 token: {
                     id: refreshedToken.id,
                     kick_username: refreshedToken.kick_username,
@@ -929,14 +930,14 @@ exports.refreshBotToken = async (req, res) => {
         } catch (refreshError) {
             res.status(400).json({
                 success: false,
-                error: 'No se pudo renovar el token',
+                error: 'Could not refresh the token',
                 details: refreshError.message,
                 code: refreshError.code || 'REFRESH_FAILED'
             });
         }
 
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error renovando token:', error);
+        logger.error('[KICK ADMIN DEBUG] Error refreshing token:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -945,7 +946,7 @@ exports.refreshBotToken = async (req, res) => {
 };
 
 /**
- * Desactivar token del bot
+ * Deactivate bot token
  */
 exports.deactivateBotToken = async (req, res) => {
     try {
@@ -956,7 +957,7 @@ exports.deactivateBotToken = async (req, res) => {
         if (!token) {
             return res.status(404).json({
                 success: false,
-                error: 'Token no encontrado'
+                error: 'Token not found'
             });
         }
 
@@ -967,16 +968,16 @@ exports.deactivateBotToken = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Token desactivado exitosamente',
+            message: 'Token deactivated successfully',
             token: {
                 id: token.id,
                 kick_username: token.kick_username,
-                reason: reason || 'Desactivado manualmente'
+                reason: reason || 'Deactivated manually'
             }
         });
 
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error desactivando token:', error);
+        logger.error('[KICK ADMIN DEBUG] Error deactivating token:', error);
         res.status(500).json({
             success: false,
             error: error.message
@@ -985,18 +986,18 @@ exports.deactivateBotToken = async (req, res) => {
 };
 
 /**
- * Probar envío de mensaje con el bot
+ * Test sending a message with the bot
  */
 exports.testBotMessage = async (req, res) => {
     try {
-        const { message = 'Mensaje de prueba desde el panel de administración' } = req.body;
+        const { message = 'Test message from the admin panel' } = req.body;
 
         const kickBotService = new KickBotService();
         const result = await kickBotService.sendMessage(message);
 
         res.json({
             success: result.ok,
-            message: result.ok ? 'Mensaje enviado exitosamente' : 'Error enviando mensaje',
+            message: result.ok ? 'Message sent successfully' : 'Error sending message',
             details: {
                 status: result.status,
                 data: result.data,
@@ -1005,7 +1006,7 @@ exports.testBotMessage = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ [KICK ADMIN DEBUG] Error enviando mensaje de prueba:', error);
+        logger.error('[KICK ADMIN DEBUG] Error sending test message:', error);
         res.status(500).json({
             success: false,
             error: error.message

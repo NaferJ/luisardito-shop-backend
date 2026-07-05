@@ -3,11 +3,12 @@ const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const promocionService = require('../services/promocion.service');
 const NotificacionService = require('../services/notificacion.service');
+const logger = require('../utils/logger');
 
 /**
- * Función helper para enriquecer información de usuario con datos de Discord
- * @param {Object} user - Instancia del modelo Usuario
- * @returns {Object} Información enriquecida de Discord
+ * Helper to enrich user info with Discord data
+ * @param {Object} user - Usuario model instance
+ * @returns {Object} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -44,21 +45,21 @@ exports.crear = async (req, res) => {
         const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
         if (!producto || producto.estado !== 'publicado') {
             await t.rollback();
-            return res.status(404).json({ error: 'Producto no disponible' });
+            return res.status(404).json({ error: 'Product not available' });
         }
         const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
         if (stockActual <= 0) {
             await t.rollback();
-            return res.status(400).json({ error: 'Sin stock disponible para este producto' });
+            return res.status(400).json({ error: 'No stock available for this product' });
         }
 
         const usuario = await Usuario.findByPk(usuarioId, { transaction: t, lock: t.LOCK.UPDATE });
         if (!usuario) {
             await t.rollback();
-            return res.status(404).json({ error: 'Usuario no encontrado' });
+            return res.status(404).json({ error: 'User not found' });
         }
 
-        // Calcular precio con descuento si hay promoción
+        // Calculate price with discount if there is a promotion
         const infoDescuento = await promocionService.calcularMejorDescuento(
             producto.id,
             producto.precio,
@@ -71,41 +72,41 @@ exports.crear = async (req, res) => {
         if (usuario.puntos < precioFinal) {
             await t.rollback();
             return res.status(400).json({ 
-                error: 'Puntos insuficientes',
+                error: 'Insufficient points',
                 precio_requerido: precioFinal,
                 puntos_disponibles: usuario.puntos
             });
         }
 
-        // 2) Crear canje con precio histórico y promoción
+        // 2) Create canje with historical price and promotion
         const canje = await Canje.create({ 
             usuario_id: usuario.id, 
             producto_id,
-            precio_al_canje: precioFinal  // 🔒 Guardar precio FINAL (con descuento) al momento del canje
+            precio_al_canje: precioFinal  // Save FINAL price (with discount) at canje time
         }, { transaction: t });
 
-        // 3) Descontar stock del producto
+        // 3) Decrement product stock
         await producto.update({ stock: stockActual - 1 }, { transaction: t });
 
-        // 4) Restar puntos al usuario
+        // 4) Subtract points from the user
         const puntosNuevos = usuario.puntos - precioFinal;
         await usuario.update({ puntos: puntosNuevos }, { transaction: t });
 
-        // 5) Registrar uso de la promoción si se aplicó
+        // 5) Record promotion usage if one was applied
         if (promocionAplicada) {
             await promocionService.aplicarPromocion(
                 promocionAplicada.id,
                 usuarioId,
                 producto_id,
                 canje.id,
-                t  // ✅ Pasar la transacción existente
+                t  // Pass the existing transaction
             );
         }
 
-        // 6) Registrar historial de puntos
+        // 6) Record points history
         const conceptoCanje = promocionAplicada 
-            ? `Canje producto: ${producto.nombre} (Promoción: ${promocionAplicada.titulo} - Ahorro: ${infoDescuento.descuento} pts)`
-            : `Canje producto: ${producto.nombre}`;
+            ? `Product redemption: ${producto.nombre} (Promotion: ${promocionAplicada.titulo} - Savings: ${infoDescuento.descuento} pts)`
+            : `Product redemption: ${producto.nombre}`;
 
         await HistorialPunto.create({
             usuario_id: usuario.id,
@@ -116,7 +117,7 @@ exports.crear = async (req, res) => {
             motivo: conceptoCanje
         }, { transaction: t });
 
-        // 7) 📬 Crear notificación de canje creado
+        // 7) Create canje-created notification
         await NotificacionService.crearNotificacionCanjeCreado(
             usuario.id,
             {
@@ -134,17 +135,17 @@ exports.crear = async (req, res) => {
 
         await t.commit();
 
-        // 📢 Enviar mensaje automático al chat de Kick
+        // Send automatic message to Kick chat
         try {
             const mensajeDescuento = promocionAplicada 
-                ? ` con ${infoDescuento.porcentajeDescuento}% de descuento (${promocionAplicada.titulo})`
+                ? ` with ${infoDescuento.porcentajeDescuento}% discount (${promocionAplicada.titulo})`
                 : '';
             const mensaje = `${usuario.nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
             await KickBotService.sendMessage(mensaje);
-            console.log(`[Canje] ✅ Mensaje enviado al chat: "${mensaje}"`);
+            logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
         } catch (botError) {
-            console.error('[Canje] ⚠️ Error enviando mensaje al chat:', botError.message);
-            // No fallar la respuesta si falla el mensaje del bot
+            logger.error('[Canje] Error sending message to chat:', botError.message);
+            // Do not fail the response if the bot message fails
         }
 
         res.status(201).json({
@@ -166,17 +167,17 @@ exports.crear = async (req, res) => {
 };
 
 exports.listar = async (req, res) => {
-    // Ruta protegida por permiso('gestionar_canjes'): devolver todos los canjes
+    // Route protected by permiso('gestionar_canjes'): return all canjes
     const search = req.query.search ? req.query.search.trim() : undefined;
     const estado = req.query.estado ? req.query.estado.trim() : undefined;
 
-    // Construir where clause
+    // Build where clause
     const whereClause = {};
     if (estado) {
         whereClause.estado = estado;
     }
     if (search) {
-        // Buscar por nickname del usuario
+        // Search by user nickname
         whereClause['$Usuario.nickname$'] = { [Op.iLike]: `%${search}%` };
     }
 
@@ -186,16 +187,16 @@ exports.listar = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de VIP y suscriptor a cada usuario
+    // Add VIP and subscriber info to each user
     const now = new Date();
     for (const canje of canjes) {
         if (canje.Usuario) {
-            // Información de Discord
+            // Discord info
             const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
             canje.Usuario.dataValues.display_name = display_name;
             canje.Usuario.dataValues.discord_info = discord_info;
 
-            // Información VIP
+            // VIP info
             canje.Usuario.dataValues.vip_status = {
                 is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
                 is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
@@ -203,7 +204,7 @@ exports.listar = async (req, res) => {
                     new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            // Información de suscriptor
+            // Subscriber info
             if (canje.Usuario.user_id_ext) {
                 const userTracking = await KickUserTracking.findOne({
                     where: { kick_user_id: canje.Usuario.user_id_ext }
@@ -235,7 +236,7 @@ exports.listar = async (req, res) => {
     res.json(canjes);
 };
 
-// Listar únicamente los canjes del usuario autenticado (para "Mis Canjes")
+// List only the authenticated user's canjes (for "My Canjes")
 exports.listarMios = async (req, res) => {
     const canjes = await Canje.findAll({
         where: { usuario_id: req.user.id },
@@ -243,11 +244,11 @@ exports.listarMios = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de VIP y suscriptor al usuario (aunque es el mismo, por consistencia)
+    // Add VIP and subscriber info to the user (same user, for consistency)
     const now = new Date();
     for (const canje of canjes) {
         if (canje.Usuario) {
-            // Información VIP
+            // VIP info
             canje.Usuario.dataValues.vip_status = {
                 is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
                 is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
@@ -255,7 +256,7 @@ exports.listarMios = async (req, res) => {
                     new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            // Información de suscriptor
+            // Subscriber info
             if (canje.Usuario.user_id_ext) {
                 const userTracking = await KickUserTracking.findOne({
                     where: { kick_user_id: canje.Usuario.user_id_ext }
@@ -287,12 +288,12 @@ exports.listarMios = async (req, res) => {
     res.json(canjes);
 };
 
-// Listar canjes de un usuario específico (vista de gestión/admin)
+// List canjes for a specific user (admin/management view)
 exports.listarPorUsuario = async (req, res) => {
     const { usuarioId } = req.params;
     const id = Number(usuarioId);
     if (!Number.isInteger(id) || id <= 0) {
-        return res.status(400).json({ error: 'usuarioId inválido' });
+        return res.status(400).json({ error: 'Invalid usuarioId' });
     }
     const canjes = await Canje.findAll({
         where: { usuario_id: id },
@@ -300,16 +301,16 @@ exports.listarPorUsuario = async (req, res) => {
         order: [['fecha', 'DESC']]
     });
 
-    // Agregar información de VIP y suscriptor al usuario
+    // Add VIP and subscriber info to the user
     const now = new Date();
     for (const canje of canjes) {
         if (canje.Usuario) {
-            // Información de Discord
+            // Discord info
             const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
             canje.Usuario.dataValues.display_name = display_name;
             canje.Usuario.dataValues.discord_info = discord_info;
 
-            // Información VIP
+            // VIP info
             canje.Usuario.dataValues.vip_status = {
                 is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
                 is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
@@ -317,7 +318,7 @@ exports.listarPorUsuario = async (req, res) => {
                     new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
             };
 
-            // Información de suscriptor
+            // Subscriber info
             if (canje.Usuario.user_id_ext) {
                 const userTracking = await KickUserTracking.findOne({
                     where: { kick_user_id: canje.Usuario.user_id_ext }
@@ -359,7 +360,7 @@ exports.actualizarEstado = async (req, res) => {
         if (!estadosPermitidos.includes(estado)) {
             await t.rollback();
             return res.status(400).json({
-                error: `Estado inválido. Permitidos: ${estadosPermitidos.join(', ')}. Para devolver use PUT /api/canjes/:id/devolver.`
+                error: `Invalid state. Allowed: ${estadosPermitidos.join(', ')}. To return use PUT /api/canjes/:id/devolver.`
             });
         }
 
@@ -373,13 +374,13 @@ exports.actualizarEstado = async (req, res) => {
 
         if (!canje) {
             await t.rollback();
-            return res.status(404).json({ error: 'No encontrado' });
+            return res.status(404).json({ error: 'Not found' });
         }
 
-        // Actualizar estado del canje
+        // Update canje state
         await canje.update({ estado }, { transaction: t });
 
-        // 📬 Crear notificaciones según el nuevo estado
+        // Create notifications based on the new state
         if (estado === 'entregado') {
             await NotificacionService.crearNotificacionCanjeEntregado(
                 canje.usuario_id,
@@ -395,41 +396,41 @@ exports.actualizarEstado = async (req, res) => {
                 {
                     canje_id: canje.id,
                     nombre_producto: canje.Producto.nombre,
-                    motivo: 'Cancelado por administrador'
+                    motivo: 'Cancelled by administrator'
                 },
                 t
             );
         }
 
-        // 🌟 FUNCIONALIDAD VIP: Si se marca como entregado y el producto contiene "VIP"
+        // VIP FEATURE: If marked as delivered and the product contains "VIP"
         if (estado === 'entregado' && canje.Producto && canje.Producto.nombre.toLowerCase().includes('vip')) {
-            console.log(`🌟 [VIP GRANT] Detectado producto VIP entregado: ${canje.Producto.nombre}`);
+            logger.info(`[VIP GRANT] VIP product delivered detected: ${canje.Producto.nombre}`);
 
-            // Verificar si el usuario ya es VIP activo
+            // Check if the user is already an active VIP
             const now = new Date();
             const isAlreadyVip = canje.Usuario.is_vip &&
                 (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now);
 
             if (!isAlreadyVip) {
                 try {
-                    // Configuración VIP por defecto (puedes ajustar según el producto)
+                    // Default VIP config (adjust per product as needed)
                     const vipConfig = {
-                        duration_days: null // VIP permanente por defecto, ajustar según necesidad
+                        duration_days: null // Permanent VIP by default, adjust as needed
                     };
 
                     await VipService.grantVipFromCanje(canje.id, canje.usuario_id, vipConfig);
-                    console.log(`✅ [VIP GRANT] VIP otorgado a ${canje.Usuario.nickname} por canje #${canje.id}`);
+                    logger.info(`[VIP GRANT] VIP granted to ${canje.Usuario.nickname} for canje #${canje.id}`);
                 } catch (vipError) {
-                    console.error(`❌ [VIP GRANT] Error otorgando VIP:`, vipError);
+                    logger.error(`[VIP GRANT] Error granting VIP:`, vipError);
                 }
             } else {
-                console.log(`⚠️ [VIP GRANT] ${canje.Usuario.nickname} ya es VIP activo, no se otorga nuevamente`);
+                logger.warn(`[VIP GRANT] ${canje.Usuario.nickname} is already an active VIP, not granting again`);
             }
         }
 
         await t.commit();
 
-        // Verificar si se debería otorgar VIP para la respuesta
+        // Check if VIP should be granted for the response
         const shouldGrantVip = estado === 'entregado' &&
             canje.Producto?.nombre.toLowerCase().includes('vip');
 
@@ -437,7 +438,7 @@ exports.actualizarEstado = async (req, res) => {
             (!canje.Usuario?.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > new Date());
 
         res.json({
-            message: 'Estado actualizado',
+            message: 'State updated',
             id: canje.id,
             estado: canje.estado,
             vip_info: shouldGrantVip ? {
@@ -449,12 +450,12 @@ exports.actualizarEstado = async (req, res) => {
 
     } catch (err) {
         await t.rollback();
-        console.error('Error actualizando estado de canje:', err);
+        logger.error('Error updating canje state:', err);
         res.status(400).json({ error: err.message });
     }
 };
 
-// Devolver un canje: marca 'devuelto', devuelve puntos y repone stock
+// Return a canje: mark as 'devuelto', refund points and restock
 exports.devolverCanje = async (req, res) => {
     const t = await Canje.sequelize.transaction();
     try {
@@ -464,54 +465,54 @@ exports.devolverCanje = async (req, res) => {
 
         if (!motivo || String(motivo).trim() === '') {
             await t.rollback();
-            return res.status(400).json({ error: 'Motivo de devolución es requerido' });
+            return res.status(400).json({ error: 'Return reason is required' });
         }
 
         const canje = await Canje.findByPk(id, { include: [Usuario, Producto], transaction: t, lock: t.LOCK.UPDATE });
         if (!canje) {
             await t.rollback();
-            return res.status(404).json({ error: 'Canje no encontrado' });
+            return res.status(404).json({ error: 'Canje not found' });
         }
 
         if (canje.estado === 'devuelto') {
             await t.rollback();
-            return res.status(400).json({ error: 'El canje ya está devuelto' });
+            return res.status(400).json({ error: 'Canje is already returned' });
         }
 
         if (!['pendiente', 'entregado'].includes(canje.estado)) {
             await t.rollback();
-            return res.status(400).json({ error: 'Solo se pueden devolver canjes pendientes o entregados' });
+            return res.status(400).json({ error: 'Only pending or delivered canjes can be returned' });
         }
 
         const usuario = canje.Usuario;
         const producto = canje.Producto;
         
-        // 🔒 Usar precio histórico del canje, con fallback al precio actual del producto
+        // Use the historical canje price, with fallback to the current product price
         const puntosADevolver = canje.precio_al_canje || producto.precio;
         const puntosAnteriores = usuario.puntos;
 
-        // 1. Marcar canje como devuelto
+        // 1. Mark canje as returned
         await canje.update({ estado: 'devuelto' }, { transaction: t });
 
-        // 2. Devolver puntos al usuario
+        // 2. Refund points to the user
         const puntosNuevos = puntosAnteriores + puntosADevolver;
         await usuario.update({ puntos: puntosNuevos }, { transaction: t });
 
-        // 3. Registrar historial
+        // 3. Record history
         await HistorialPunto.create({
             usuario_id: usuario.id,
-            puntos: puntosADevolver,  // Cantidad positiva porque se devuelven puntos
-            cambio: puntosADevolver,  // Campo legacy para compatibilidad
+            puntos: puntosADevolver,  // Positive amount because points are refunded
+            cambio: puntosADevolver,  // Legacy field for compatibility
             tipo: 'ganado',
-            concepto: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`,
-            motivo: `Devolución de canje: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`  // Campo legacy para compatibilidad
+            concepto: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`,
+            motivo: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`  // Legacy field for compatibility
         }, { transaction: t });
 
-        // 4. Reponer stock del producto (si corresponde)
+        // 4. Restock the product (if applicable)
         const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
         await producto.update({ stock: stockActual + 1 }, { transaction: t });
 
-        // 5) 📬 Crear notificación de canje devuelto
+        // 5) Create canje-returned notification
         await NotificacionService.crearNotificacionCanjeDevuelto(
             usuario.id,
             {
@@ -526,14 +527,14 @@ exports.devolverCanje = async (req, res) => {
         await t.commit();
 
         res.json({
-            message: 'Canje devuelto correctamente',
+            message: 'Canje returned successfully',
             canje: { id: canje.id, estado: 'devuelto' },
             usuario: { id: usuario.id, nickname: usuario.nickname, puntosAnteriores, puntosNuevos },
             producto: { id: producto.id, nombre: producto.nombre, stockNuevo: stockActual + 1 }
         });
     } catch (error) {
         await t.rollback();
-        console.error('Error al devolver canje:', error);
-        res.status(500).json({ error: 'Error interno del servidor', message: error.message });
+        logger.error('Error returning canje:', error);
+        res.status(500).json({ error: 'Internal server error', message: error.message });
     }
 };

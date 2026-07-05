@@ -14,8 +14,8 @@ function generatePkce() {
   const challenge = crypto.createHash('sha256').update(code_verifier).digest();
   const code_challenge = base64url(challenge);
   // Debug PKCE
-  logger.info('[PKCE][generatePkce] code_verifier generado:', code_verifier);
-  logger.info('[PKCE][generatePkce] code_challenge generado:', code_challenge);
+  logger.info('[PKCE][generatePkce] code_verifier generated:', code_verifier);
+  logger.info('[PKCE][generatePkce] code_challenge generated:', code_challenge);
   return { code_verifier, code_challenge };
 }
 

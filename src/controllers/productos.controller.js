@@ -2,18 +2,18 @@ const { Producto, Promocion, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const promocionService = require('../services/promocion.service');
 
-// Listar todos (con orden por precio; por defecto DESC). Para público, usualmente solo publicados.
+// List all (with price sort; default DESC). For public, usually only published.
 exports.listar = async (req, res) => {
     const where = {};
 
     if (!req.user || req.user.rol_id <= 2) {
-        // Usuario no logueado o usuarios básicos (rol 1-2) solo ven productos publicados
+        // Non-logged-in or basic users (role 1-2) only see published products
         where.estado = 'publicado';
     } else {
 
     }
 
-    // Soporte de orden: ?sort=price_desc | price_asc | precio_desc | precio_asc
+    // Sort support: ?sort=price_desc | price_asc | precio_desc | precio_asc
     const sortParam = (req.query.sort || '').toString().toLowerCase();
     let order;
     switch (sortParam) {
@@ -41,7 +41,7 @@ exports.listar = async (req, res) => {
         }
     });
 
-    // Agregar información de descuentos a cada producto
+    // Add discount info to each product
     const usuarioId = req.user ? req.user.id : null;
     const productosConDescuentos = await Promise.all(
         productos.map(async (producto) => {
@@ -82,9 +82,9 @@ exports.obtener = async (req, res) => {
             ]
         }
     });
-    if (!producto) return res.status(404).json({ error: 'No encontrado' });
+    if (!producto) return res.status(404).json({ error: 'Not found' });
 
-    // Agregar información de descuento
+    // Add discount info
     const usuarioId = req.user ? req.user.id : null;
     const infoDescuento = await promocionService.calcularMejorDescuento(
         producto.id,
@@ -92,7 +92,7 @@ exports.obtener = async (req, res) => {
         usuarioId
     );
 
-    // Obtener promociones activas del producto
+    // Get active promotions for the product
     const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, usuarioId);
 
     res.json({
@@ -137,10 +137,10 @@ exports.obtenerPorSlug = async (req, res) => {
         });
 
         if (!producto) {
-            return res.status(404).json({ error: 'Producto no encontrado' });
+            return res.status(404).json({ error: 'Product not found' });
         }
 
-        // Agregar información de descuento
+        // Add discount info
         const usuarioId = req.user ? req.user.id : null;
         const infoDescuento = await promocionService.calcularMejorDescuento(
             producto.id,
@@ -148,7 +148,7 @@ exports.obtenerPorSlug = async (req, res) => {
             usuarioId
         );
 
-        // Obtener promociones activas del producto
+        // Get active promotions for the product
         const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, usuarioId);
 
         res.json({
@@ -168,8 +168,8 @@ exports.obtenerPorSlug = async (req, res) => {
             promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null
         });
     } catch (error) {
-        console.error('Error al buscar producto por slug:', error);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('Error fetching product by slug:', error);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
 
@@ -185,7 +185,7 @@ exports.crear = async (req, res) => {
 exports.editar = async (req, res) => {
     try {
         const producto = await Producto.findByPk(req.params.id);
-        if (!producto) return res.status(404).json({ error: 'No encontrado' });
+        if (!producto) return res.status(404).json({ error: 'Not found' });
         await producto.update(req.body);
         res.json(producto);
     } catch (err) {
@@ -195,32 +195,33 @@ exports.editar = async (req, res) => {
 
 exports.eliminar = async (req, res) => {
     const producto = await Producto.findByPk(req.params.id);
-    if (!producto) return res.status(404).json({ error: 'No encontrado' });
+    if (!producto) return res.status(404).json({ error: 'Not found' });
     await producto.destroy();
-    res.json({ message: 'Producto eliminado' });
+    res.json({ message: 'Product deleted' });
 };
 
 /**
- * Actualizar promociones de un producto
+ * Update product promotions
  */
 exports.actualizarPromociones = async (req, res) => {
     try {
         const { id } = req.params;
-        const { promocion_ids } = req.body; // Array de IDs de promociones a asignar
+        const { promocion_ids } = req.body; // Array of promotion IDs to assign
 
         if (!Array.isArray(promocion_ids)) {
-            return res.status(400).json({ error: 'promocion_ids debe ser un array' });
+            return res.status(400).json({ error: 'promocion_ids must be an array' });
         }
 
         const producto = await Producto.findByPk(id);
         if (!producto) {
-            return res.status(404).json({ error: 'Producto no encontrado' });
+            return res.status(404).json({ error: 'Product not found' });
         }
 
         const { PromocionProducto } = require('../models');
 
-        // Para cada promoción seleccionada, actualizar su lista de productos
-        // Primero obtenemos todas las promociones activas
+        // For each selected promotion, update its product list
+        // For each selected promotion, update its product list
+        
         const todasPromociones = await Promocion.findAll({
             attributes: ['id']
         });
@@ -235,30 +236,30 @@ exports.actualizarPromociones = async (req, res) => {
             });
 
             if (debeEstar && !estaAsignado) {
-                // Agregar relación
+                // Add relation
                 await PromocionProducto.create({
                     promocion_id: promo.id,
                     producto_id: id
                 });
             } else if (!debeEstar && estaAsignado) {
-                // Eliminar relación
+                // Remove relation
                 await estaAsignado.destroy();
             }
         }
 
         res.json({
-            message: 'Promociones actualizadas correctamente',
+            message: 'Promotions updated successfully',
             producto_id: id,
             promociones_asignadas: promocion_ids
         });
 
     } catch (error) {
-        console.error('Error al actualizar promociones del producto:', error);
-        res.status(500).json({ error: 'Error al actualizar promociones' });
+        logger.error('Error updating product promotions:', error);
+        res.status(500).json({ error: 'Error updating promotions' });
     }
 };
 
-// Endpoint de debug para ver todos los productos sin filtros
+// Debug endpoint to list all products without filters
 exports.debugListar = async (req, res) => {
     try {
         const productos = await Producto.findAll({
@@ -287,14 +288,14 @@ exports.debugListar = async (req, res) => {
             }))
         });
     } catch (error) {
-        console.error('❌ [DEBUG] Error:', error.message);
+        logger.error('[DEBUG] Error:', error.message);
         res.status(500).json({ error: error.message });
     }
 };
 
-// Endpoint ADMIN: lista todos los productos con canjes_count (requiere auth/permiso a nivel de ruta)
+// ADMIN endpoint: lists all products with canjes_count (requires auth/permission at route level)
 exports.listarAdmin = async (req, res) => {
-    // Soporte de orden como en público
+    // Sort support as in public
     const sortParam = (req.query.sort || '').toString().toLowerCase();
     let order;
     switch (sortParam) {
@@ -321,14 +322,14 @@ exports.listarAdmin = async (req, res) => {
         }
     });
 
-    // Agregar información de descuentos a cada producto
-    // ⚠️ ADMIN: No filtrar por usuario - mostrar todas las promociones del producto
+    // Add discount info to each product
+    // ADMIN: Do not filter by user - show all product promotions
     const productosConDescuentos = await Promise.all(
         productos.map(async (producto) => {
             const infoDescuento = await promocionService.calcularMejorDescuento(
                 producto.id,
                 producto.precio,
-                null  // null = no filtrar por usuario
+                null  // null = no user filter
             );
 
             const promocionesActivas = await promocionService.obtenerPromocionesActivasProducto(producto.id, null);

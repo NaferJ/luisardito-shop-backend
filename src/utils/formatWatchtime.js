@@ -1,7 +1,7 @@
 /**
- * Utilidad para formatear minutos de watchtime a un formato legible
- * Convierte minutos a las unidades más relevantes: años, meses, semanas, días, horas, minutos
- * Siempre muestra las 2 unidades más significativas
+ * Utility to format watchtime minutes into a readable format
+ * Converts minutes to the most relevant units: years, months, weeks, days, hours, minutes
+ * Always shows the 2 most significant units
  */
 
 function formatWatchtime(minutes) {
@@ -9,7 +9,7 @@ function formatWatchtime(minutes) {
 
     const totalMinutes = Math.round(minutes)
 
-    // Calcular todas las unidades
+    // Calculate all units
     const years = Math.floor(totalMinutes / (60 * 24 * 365))
     let remaining = totalMinutes % (60 * 24 * 365)
 
@@ -25,7 +25,7 @@ function formatWatchtime(minutes) {
     const hours = Math.floor(remaining / 60)
     const mins = remaining % 60
 
-    // Construir la respuesta mostrando las 2 unidades más significativas
+    // Build the response showing the 2 most significant units
     const parts = []
 
     if (years > 0) {

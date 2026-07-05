@@ -3,14 +3,14 @@ const config = require('../../config');
 const logger = require('./logger');
 
 /**
- * Valida un token de acceso de Kick usando el endpoint de introspección
- * @param {string} accessToken - Token de acceso a validar
- * @returns {Promise<Object>} - Información del token
+ * Validates a Kick access token using the introspection endpoint
+ * @param {string} accessToken - Access token to validate
+ * @returns {Promise<Object>} - Token information
  */
 async function validateKickToken(accessToken) {
     try {
         const introspectUrl = `${config.kick.apiBaseUrl}/public/v1/token/introspect`;
-        logger.info('[Kick API] Validando token con introspección...');
+        logger.info('[Kick API] Validating token via introspection...');
         
         const response = await axios.post(introspectUrl, {}, {
             headers: {
@@ -21,19 +21,19 @@ async function validateKickToken(accessToken) {
             timeout: 10000
         });
 
-        logger.info('[Kick API] ✅ Validación del token exitosa:', {
+        logger.info('[Kick API] Token validation successful:', {
             active: response.data?.data?.active,
             scopes: response.data?.data?.scope,
-            expiresIn: response.data?.data?.expires_in || 'No disponible (Kick no lo proporciona)'
+            expiresIn: response.data?.data?.expires_in || 'Not available (Kick does not provide it)'
         });
 
         if (!response.data?.data?.active) {
-            throw new Error('Token inactivo o expirado');
+            throw new Error('Token inactive or expired');
         }
 
         return response.data.data;
     } catch (error) {
-        logger.error('[Kick API] ❌ Error validando token:', {
+        logger.error('[Kick API] Error validating token:', {
             status: error.response?.status,
             data: error.response?.data,
             message: error.message
@@ -43,32 +43,32 @@ async function validateKickToken(accessToken) {
 }
 
 /**
- * Obtiene datos del usuario de Kick usando diferentes métodos
- * @param {string} userIdOrToken - ID del usuario o token de acceso
- * @returns {Promise<Object>} - Datos del usuario de Kick
+ * Gets Kick user data using different methods
+ * @param {string} userIdOrToken - User ID or access token
+ * @returns {Promise<Object>} - Kick user data
  */
 async function getKickUserData(userIdOrToken) {
     try {
-        logger.info('[Kick API] Obteniendo datos del usuario. Tipo:', typeof userIdOrToken);
-        logger.info('[Kick API] Token/ID recibido (primeros 10 caracteres):', 
+        logger.info('[Kick API] Fetching user data. Type:', typeof userIdOrToken);
+        logger.info('[Kick API] Received token/ID (first 10 chars):',
             typeof userIdOrToken === 'string' ? 
-            `${userIdOrToken.substring(0, 10)}... (longitud: ${userIdOrToken.length})` : 'No es string');
+            `${userIdOrToken.substring(0, 10)}... (length: ${userIdOrToken.length})` : 'Not a string');
 
-        // Si es un token (string largo), obtener datos del usuario autenticado
+        // If it is a token (long string), get authenticated user data
         if (typeof userIdOrToken === 'string' && userIdOrToken.length > 20) {
-            logger.info('[Kick API] Detectado token de acceso. Validando...');
+        logger.info('[Kick API] Access token detected. Validating...');
 
-            // Primero validamos el token
+        // First, validate the token
             const tokenInfo = await validateKickToken(userIdOrToken);
             
-            // Si llegamos aquí, el token es válido
-            logger.info('[Kick API] Token válido. Obteniendo datos del usuario...');
-            logger.info('[Kick API] Scopes disponibles:', tokenInfo.scope);
+        // If we get here, the token is valid
+        logger.info('[Kick API] Valid token. Fetching user data...');
+        logger.info('[Kick API] Available scopes:', tokenInfo.scope);
 
             const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
             const userUrl = `${userApiBase}/public/v1/users`;
             
-            logger.info('[Kick API] URL de la API de usuarios:', userUrl);
+        logger.info('[Kick API] Users API URL:', userUrl);
 
             try {
                 const response = await axios.get(userUrl, {
@@ -80,34 +80,34 @@ async function getKickUserData(userIdOrToken) {
                     timeout: 10000
                 });
 
-                logger.info('[Kick API] ✅ Respuesta de la API de usuarios:', {
+        logger.info('[Kick API] Users API response:', {
                     status: response.status,
                     statusText: response.statusText,
-                    data: response.data ? `Recibidos ${response.data.data?.length || 0} usuarios` : 'Sin datos'
+                    data: response.data ? `Received ${response.data.data?.length || 0} users` : 'No data'
                 });
                 
-                // DEBUG: Ver la estructura completa de la respuesta
-                logger.info('[Kick API] DEBUG - Estructura completa de response.data:', JSON.stringify(response.data, null, 2));
+                // DEBUG: View full response structure
+                logger.info('[Kick API] DEBUG - Full response.data structure:', JSON.stringify(response.data, null, 2));
 
-                const userData = response.data?.data?.[0]; // Tomar el primer usuario del array
+                const userData = response.data?.data?.[0]; // Take the first user from the array
                 if (!userData) {
-                    logger.error('[Kick API] ERROR - No se encontró userData en response.data.data[0]');
+                    logger.error('[Kick API] ERROR - No userData found in response.data.data[0]');
                     logger.error('[Kick API] ERROR - response.data:', response.data);
-                    throw new Error('No se encontraron datos de usuario en la respuesta');
+                    throw new Error('No user data found in the response');
                 }
 
-                // Normalizar la estructura de datos (la API devuelve user_id y name)
+                // Normalize the data structure (the API returns user_id and name)
                 const normalizedData = {
                     id: userData.user_id || userData.id,
                     username: userData.name || userData.username,
                     email: userData.email,
                     profile_picture: userData.profile_picture,
-                    // Mantener campos originales por compatibilidad
+                    // Keep original fields for compatibility
                     user_id: userData.user_id,
                     name: userData.name
                 };
 
-                logger.info('[Kick API] ✅ Datos del usuario obtenidos:', {
+        logger.info('[Kick API] User data fetched:', {
                     id: normalizedData.id,
                     username: normalizedData.username,
                     email: normalizedData.email
@@ -115,7 +115,7 @@ async function getKickUserData(userIdOrToken) {
                 
                 return normalizedData;
             } catch (error) {
-                logger.error('[Kick API] Error en la petición con token:', {
+        logger.error('[Kick API] Error in token request:', {
                     message: error.message,
                     response: {
                         status: error.response?.status,
@@ -127,8 +127,8 @@ async function getKickUserData(userIdOrToken) {
             }
         }
 
-        // Si es un ID de usuario, usar endpoint público (si existe)
-        logger.info('[Kick API] Intentando obtener datos por ID de usuario:', userIdOrToken);
+        // If it is a user ID, use public endpoint (if it exists)
+        logger.info('[Kick API] Trying to fetch data by user ID:', userIdOrToken);
 
         try {
             const response = await axios.get(`https://kick.com/api/v1/users/${userIdOrToken}`, {
@@ -139,20 +139,20 @@ async function getKickUserData(userIdOrToken) {
                 timeout: 10000
             });
 
-            logger.info('[Kick API] ✅ Datos obtenidos por ID:', response.data?.name);
+        logger.info('[Kick API] Data fetched by ID:', response.data?.name);
             return response.data;
 
         } catch (publicApiError) {
-            logger.warn('[Kick API] Endpoint público no disponible:', {
+        logger.warn('[Kick API] Public endpoint not available:', {
                 message: publicApiError.message,
                 status: publicApiError.response?.status,
                 data: publicApiError.response?.data
             });
-            throw new Error('No se pudieron obtener datos del usuario de Kick');
+        throw new Error('Could not fetch Kick user data');
         }
 
     } catch (error) {
-        logger.error('[Kick API] Error obteniendo datos:', {
+        logger.error('[Kick API] Error fetching data:', {
             message: error.message,
             stack: error.stack,
             response: error.response?.data
@@ -162,12 +162,12 @@ async function getKickUserData(userIdOrToken) {
 }
 
 /**
- * Extrae la URL del avatar desde los datos del usuario de Kick
- * @param {Object} kickUserData - Datos del usuario de Kick
- * @returns {string|null} - URL del avatar o null si no existe
+ * Extracts the avatar URL from Kick user data
+ * @param {Object} kickUserData - Kick user data
+ * @returns {string|null} - Avatar URL or null if not present
  */
 function extractAvatarUrl(kickUserData) {
-    // Diferentes posibles ubicaciones del avatar en la respuesta de Kick
+    // Different possible avatar locations in the Kick response
     return kickUserData?.profile_picture ||
            kickUserData?.avatar_url ||
            kickUserData?.user?.profile_picture ||

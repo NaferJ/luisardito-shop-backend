@@ -1,41 +1,41 @@
 /**
- * Utilidades para manejo de cookies cross-domain
+ * Utilities for cross-domain cookie handling
  */
 
 /**
- * Obtiene las opciones de cookie configuradas correctamente para cross-domain
- * @param {string} env - Entorno ('development' o 'production')
- * @returns {Object} Opciones de cookie
+ * Gets cookie options configured for cross-domain
+ * @param {string} env - Environment
+ * @returns {Object} Cookie options
  */
 function getCookieOptions(env = process.env.NODE_ENV) {
     const isProduction = env === 'production';
 
     return {
-        httpOnly: false,        // Permitir acceso desde JavaScript en el frontend
-        secure: isProduction,   // HTTPS en producción, HTTP en desarrollo
-        sameSite: 'lax',       // Permitir cross-site para subdominios
-        domain: isProduction ? '.luisardito.com' : undefined, // Dominio compartido en producción
-        path: '/',             // Disponible en todo el sitio
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 días por defecto
+        httpOnly: false,        // Allow frontend JavaScript access
+        secure: isProduction,   // HTTPS in production, HTTP in development
+        sameSite: 'lax',       // Allow cross-site for subdomains
+        domain: isProduction ? '.luisardito.com' : undefined, // Shared domain in production
+        path: '/',             // Available site-wide
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days by default
     };
 }
 
 /**
- * Obtiene las opciones específicas para el refresh token (más duradero)
- * @param {string} env - Entorno
- * @returns {Object} Opciones de cookie para refresh token
+ * Gets specific options for the refresh token (longer lasting)
+ * @param {string} env - Environment
+ * @returns {Object} Cookie options
  */
 function getRefreshCookieOptions(env = process.env.NODE_ENV) {
     return {
         ...getCookieOptions(env),
-        maxAge: 90 * 24 * 60 * 60 * 1000 // 90 días para refresh token
+        maxAge: 90 * 24 * 60 * 60 * 1000 // 90 days for refresh token
     };
 }
 
 /**
- * Obtiene las opciones para limpiar cookies
- * @param {string} env - Entorno
- * @returns {Object} Opciones para clearCookie
+ * Gets options for clearing cookies
+ * @param {string} env - Environment
+ * @returns {Object} Options for clearCookie
  */
 function getClearCookieOptions(env = process.env.NODE_ENV) {
     const isProduction = env === 'production';
@@ -48,11 +48,11 @@ function getClearCookieOptions(env = process.env.NODE_ENV) {
 }
 
 /**
- * Configura las cookies de autenticación en la respuesta
- * @param {Object} res - Objeto response de Express
- * @param {string} accessToken - Token de acceso
- * @param {string} refreshToken - Token de refresh
- * @param {string} env - Entorno
+ * Sets authentication cookies on the response
+ * @param {Object} res - Express response object
+ * @param {string} accessToken - Access token
+ * @param {string} refreshToken - Refresh token
+ * @param {string} env - Environment
  */
 function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_ENV) {
     const cookieOptions = getCookieOptions(env);
@@ -63,9 +63,9 @@ function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_E
 }
 
 /**
- * Limpia las cookies de autenticación
- * @param {Object} res - Objeto response de Express
- * @param {string} env - Entorno
+ * Clears authentication cookies
+ * @param {Object} res - Express response object
+ * @param {string} env - Environment
  */
 function clearAuthCookies(res, env = process.env.NODE_ENV) {
     const clearOptions = getClearCookieOptions(env);

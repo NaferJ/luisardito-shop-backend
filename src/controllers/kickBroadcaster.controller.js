@@ -1,24 +1,25 @@
 const { KickBroadcasterToken, KickEventSubscription } = require('../models');
 const tokenRefreshService = require('../services/tokenRefresh.service');
 const config = require('../../config');
+const logger = require('../utils/logger');
 
 /**
- * Verifica el estado de conexión del broadcaster
+ * Checks the broadcaster connection status
  */
 exports.getConnectionStatus = async (req, res) => {
     try {
-        // Obtener el broadcaster principal de la configuración
+        // Get the main broadcaster from configuration
         const mainBroadcasterId = config.kick.broadcasterId;
 
         if (!mainBroadcasterId) {
             return res.json({
                 connected: false,
-                message: 'No hay broadcaster principal configurado'
+                message: 'No main broadcaster configured'
             });
         }
 
-        // Verificar suscripciones activas (puede usar App Token o User Token)
-        console.log(`[Broadcaster Status] Buscando suscripciones para broadcaster ${mainBroadcasterId}`);
+        // Check active subscriptions (can use App Token or User Token)
+        logger.info(`[Broadcaster Status] Looking for subscriptions for broadcaster ${mainBroadcasterId}`);
 
         const subscriptions = await KickEventSubscription.findAll({
             where: {
@@ -27,13 +28,13 @@ exports.getConnectionStatus = async (req, res) => {
             }
         });
 
-        console.log(`[Broadcaster Status] Suscripciones encontradas: ${subscriptions.length}`);
+        logger.info(`[Broadcaster Status] Subscriptions found: ${subscriptions.length}`);
 
-        // Si hay suscripciones activas, el sistema está conectado (App Token o User Token)
+        // If there are active subscriptions, the system is connected (App Token or User Token)
         if (subscriptions.length > 0) {
-            console.log(`[Broadcaster Status] Eventos:`, subscriptions.map(s => s.event_type));
+            logger.debug(`[Broadcaster Status] Events:`, subscriptions.map(s => s.event_type));
 
-            // Verificar si es sistema permanente (App Token) o temporal (User Token)
+            // Check if it's a permanent system (App Token) or temporary (User Token)
             const appTokenSubscriptions = subscriptions.filter(s => s.app_id === 'APP_TOKEN');
             const isPermanent = appTokenSubscriptions.length > 0;
 
@@ -47,8 +48,8 @@ exports.getConnectionStatus = async (req, res) => {
                     last_updated: new Date()
                 },
                 token: {
-                    type: isPermanent ? 'App Token (Permanente)' : 'User Token (Temporal)',
-                    expires_at: isPermanent ? null : 'Variable según user token',
+                    type: isPermanent ? 'App Token (Permanent)' : 'User Token (Temporary)',
+                    expires_at: isPermanent ? null : 'Varies by user token',
                     is_expired: false,
                     requires_maintenance: !isPermanent
                 },
@@ -67,7 +68,7 @@ exports.getConnectionStatus = async (req, res) => {
             });
         }
 
-        // Si no hay suscripciones, verificar tokens de usuario como fallback
+        // If no subscriptions, check user tokens as fallback
         const broadcasterToken = await KickBroadcasterToken.findOne({
             where: { is_active: true },
             order: [['created_at', 'DESC']]
@@ -77,11 +78,11 @@ exports.getConnectionStatus = async (req, res) => {
             return res.json({
                 connected: false,
                 system_type: 'DISCONNECTED',
-                message: 'No hay tokens activos ni suscripciones disponibles'
+                message: 'No active tokens or subscriptions available'
             });
         }
 
-        // Verificar si el token expiró
+        // Check if the token expired
         const now = new Date();
         const isTokenExpired = broadcasterToken.token_expires_at && broadcasterToken.token_expires_at < now;
 
@@ -95,7 +96,7 @@ exports.getConnectionStatus = async (req, res) => {
                 last_updated: broadcasterToken.updated_at
             },
             token: {
-                type: 'User Token (Temporal)',
+                type: 'User Token (Temporary)',
                 expires_at: broadcasterToken.token_expires_at,
                 is_expired: isTokenExpired,
                 has_refresh_token: !!broadcasterToken.refresh_token,
@@ -113,13 +114,13 @@ exports.getConnectionStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Broadcaster] Error obteniendo estado:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Broadcaster] Error fetching status:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Desconecta el broadcaster (desactiva el token)
+ * Disconnects the broadcaster (deactivates the token)
  */
 exports.disconnect = async (req, res) => {
     try {
@@ -131,14 +132,14 @@ exports.disconnect = async (req, res) => {
         });
 
         if (!broadcasterToken) {
-            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+            return res.status(404).json({ error: 'No broadcaster connected' });
         }
 
         await broadcasterToken.update({
             is_active: false
         });
 
-        // Desactivar las suscripciones del broadcaster principal
+        // Deactivate subscriptions for the main broadcaster
         if (mainBroadcasterId) {
             await KickEventSubscription.update(
                 { status: 'inactive' },
@@ -152,23 +153,23 @@ exports.disconnect = async (req, res) => {
         }
 
         return res.json({
-            message: 'Broadcaster desconectado exitosamente',
+            message: 'Broadcaster disconnected successfully',
             broadcaster: 'Luisardito',
             token_provider: broadcasterToken.kick_username
         });
 
     } catch (error) {
-        console.error('[Kick Broadcaster] Error desconectando:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Broadcaster] Error disconnecting:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Obtiene el token activo del broadcaster (solo para uso interno/admin)
+ * Gets the active broadcaster token (internal/admin use only)
  */
 exports.getActiveToken = async (req, res) => {
     try {
-        // TODO: Agregar verificación de permisos de admin
+        // TODO: Add admin permission check
 
         const broadcasterToken = await KickBroadcasterToken.findOne({
             where: { is_active: true },
@@ -176,10 +177,10 @@ exports.getActiveToken = async (req, res) => {
         });
 
         if (!broadcasterToken) {
-            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+            return res.status(404).json({ error: 'No broadcaster connected' });
         }
 
-        // No exponer el token completo por seguridad
+        // Do not expose the full token for security
         return res.json({
             kick_user_id: broadcasterToken.kick_user_id,
             kick_username: broadcasterToken.kick_username,
@@ -191,13 +192,13 @@ exports.getActiveToken = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[Kick Broadcaster] Error obteniendo token:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Broadcaster] Error fetching token:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Refresca manualmente el token del broadcaster activo
+ * Manually refreshes the active broadcaster token
  */
 exports.refreshToken = async (req, res) => {
     try {
@@ -207,48 +208,48 @@ exports.refreshToken = async (req, res) => {
         });
 
         if (!broadcasterToken) {
-            return res.status(404).json({ error: 'No hay broadcaster conectado' });
+            return res.status(404).json({ error: 'No broadcaster connected' });
         }
 
         const result = await tokenRefreshService.forceRefresh(broadcasterToken.kick_user_id);
 
         if (result.success) {
-            // Recargar el token actualizado
+            // Reload the updated token
             await broadcasterToken.reload();
 
             return res.json({
-                message: 'Token refrescado exitosamente',
+                message: 'Token refreshed successfully',
                 broadcaster: broadcasterToken.kick_username,
                 new_expires_at: broadcasterToken.token_expires_at
             });
         } else {
             return res.status(400).json({
-                error: 'No se pudo refrescar el token',
+                error: 'Could not refresh the token',
                 details: result.error
             });
         }
 
     } catch (error) {
-        console.error('[Kick Broadcaster] Error refrescando token:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Broadcaster] Error refreshing token:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Obtiene el estado del servicio de refresh automático
+ * Gets the status of the automatic refresh service
  */
 exports.getRefreshServiceStatus = async (req, res) => {
     try {
         const status = tokenRefreshService.getStatus();
         return res.json(status);
     } catch (error) {
-        console.error('[Kick Broadcaster] Error obteniendo estado del servicio:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        logger.error('[Kick Broadcaster] Error fetching service status:', error.message);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Debug endpoint para verificar configuración
+ * Debug endpoint to verify configuration
  */
 exports.debugConfig = async (req, res) => {
     try {

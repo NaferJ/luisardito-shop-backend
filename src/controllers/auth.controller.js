@@ -14,9 +14,9 @@ const KickBotTokenService = require('../services/kickBotToken.service');
 const logger = require('../utils/logger');
 
 /**
- * Función helper para enriquecer información de usuario con datos de Discord
- * @param {Object} user - Instancia del modelo Usuario
- * @returns {Object} Información enriquecida de Discord
+ * Helper to enrich user info with Discord data
+ * @param {Object} user - Usuario model instance
+ * @returns {Object} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -53,24 +53,24 @@ const {
 } = require('../services/tokenService');
 
 /**
- * Extrae el avatar de Kick
- * @param {Object} kickUser - Datos del usuario de Kick
- * @returns {string|null} - URL del avatar de Kick o null si no existe
+ * Extracts the Kick avatar
+ * @param {Object} kickUser - Kick user data
+ * @returns {string|null} - Kick avatar URL or null if absent
  */
 async function processKickAvatar(kickUser) {
     try {
         const kickAvatarUrl = extractAvatarUrl(kickUser);
 
         if (!kickAvatarUrl) {
-            logger.info(`[Auth] No se encontró avatar en datos de Kick`);
+            logger.info(`[Auth] No avatar found in Kick data`);
             return null;
         }
 
-        logger.info(`[Auth] ✅ Avatar de Kick obtenido:`, kickAvatarUrl);
+        logger.info(`[Auth] Kick avatar obtained:`, kickAvatarUrl);
         return kickAvatarUrl;
 
     } catch (error) {
-        logger.warn(`[Auth] Error extrayendo avatar, continuando sin él:`, error.message);
+        logger.warn(`[Auth] Error extracting avatar, continuing without it:`, error.message);
         return null;
     }
 }
@@ -80,7 +80,7 @@ exports.registerLocal = async (req, res) => {
         let { nickname, email, password } = req.body;
 
         if (!nickname || !email || !password) {
-            return res.status(400).json({ error: 'Todos los campos son obligatorios' });
+            return res.status(400).json({ error: 'All fields are required' });
         }
 
         nickname = nickname.trim().toLowerCase();
@@ -88,35 +88,35 @@ exports.registerLocal = async (req, res) => {
 
         const developers = ['naferjml@gmail.com'];
         if (!developers.includes(email)) {
-            return res.status(403).json({ error: 'Registro manual solo para desarrolladores' });
+            return res.status(403).json({ error: 'Manual registration is for developers only' });
         }
 
-        // Verificar duplicados
+        // Check for duplicates
         const existe = await Usuario.findOne({
             where: { [Op.or]: [{ nickname }, { email }] }
         });
         if (existe) {
-            return res.status(409).json({ error: 'El nickname o email ya están registrados' });
+            return res.status(409).json({ error: 'Nickname or email already registered' });
         }
 
         const hash = await bcrypt.hash(password, 10);
         const user = await Usuario.create({ nickname, email, password_hash: hash });
-        res.status(201).json({ message: 'Usuario creado', userId: user.id });
+        res.status(201).json({ message: 'User created', userId: user.id });
     } catch (err) {
         res.status(400).json({ error: err.message });
     }
 };
 
-// Login local
+// Local login
 exports.loginLocal = async (req, res) => {
     try {
         const { nickname, password } = req.body;
         const user = await Usuario.findOne({ where: { nickname } });
         if (!user || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
-            return res.status(401).json({ error: 'Credenciales inválidas' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
-        // Generar access token y refresh token
+        // Generate access token and refresh token
         const accessToken = generateAccessToken({
             userId: user.id,
             rolId: user.rol_id,
@@ -128,16 +128,16 @@ exports.loginLocal = async (req, res) => {
 
         const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
 
-        // Configurar cookies cross-domain
+        // Set cross-domain cookies
         setAuthCookies(res, accessToken, refreshToken.token);
 
-        // Enriquecer información de usuario con Discord
+        // Enrich user info with Discord data
         const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
 
         res.json({
             accessToken,
             refreshToken: refreshToken.token,
-            expiresIn: 3600, // 1 hora en segundos
+            expiresIn: 3600, // 1 hour in seconds
             user: {
                 id: user.id,
                 nickname: user.nickname,
@@ -152,7 +152,7 @@ exports.loginLocal = async (req, res) => {
     }
 };
 
-// Redirect a Kick OAuth
+// Redirect to Kick OAuth
 exports.redirectKick = (req, res) => {
     try {
         const { code_verifier, code_challenge } = generatePkce();
@@ -180,15 +180,15 @@ exports.redirectKick = (req, res) => {
         });
 
         const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
-        logger.info('[Kick OAuth][redirectKick] URL de redirección final:', url);
+        logger.info('[Kick OAuth][redirectKick] Final redirect URL:', url);
         return res.redirect(url);
     } catch (err) {
         logger.error('[Kick OAuth][redirectKick] Error:', err?.message || err);
-        return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth con Kick' });
+        return res.status(500).json({ error: 'Could not start the Kick OAuth flow' });
     }
 };
 
-// Redirect a Kick OAuth (BOT)
+// Redirect to Kick OAuth (BOT)
 exports.redirectKickBot = (req, res) => {
     try {
         const { code_verifier, code_challenge } = generatePkce();
@@ -214,38 +214,38 @@ exports.redirectKickBot = (req, res) => {
         return res.redirect(url);
     } catch (err) {
         logger.error('[Kick OAuth][redirectKickBot] Error:', err?.message || err);
-        return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth del BOT' });
+        return res.status(500).json({ error: 'Could not start the BOT OAuth flow' });
     }
 };
 
-// Callback de Kick OAuth
+// Kick OAuth callback
 exports.callbackKick = async (req, res) => {
     try {
         const { code, state } = req.query || {};
-        logger.info('[Kick OAuth][callbackKick] Parámetros recibidos:', { code, state });
+        logger.info('[Kick OAuth][callbackKick] Parameters received:', { code, state });
 
         if (!code || !state) {
-            logger.info('[Kick OAuth][callbackKick] Faltan parámetros code/state:', { code, state });
-            return res.status(400).json({ error: 'Faltan parámetros code/state' });
+            logger.info('[Kick OAuth][callbackKick] Missing code/state parameters:', { code, state });
+            return res.status(400).json({ error: 'Missing code/state parameters' });
         }
 
         let decoded;
         try {
             decoded = jwt.verify(String(state), config.jwtSecret);
-            logger.info('[Kick OAuth][callbackKick] State decodificado:', decoded);
+            logger.info('[Kick OAuth][callbackKick] Decoded state:', decoded);
         } catch (e) {
-            logger.info('[Kick OAuth][callbackKick] State inválido o expirado:', e?.message || e);
-            return res.status(400).json({ error: 'state inválido o expirado' });
+            logger.info('[Kick OAuth][callbackKick] Invalid or expired state:', e?.message || e);
+            return res.status(400).json({ error: 'Invalid or expired state' });
         }
 
         const code_verifier = decoded?.cv;
         const finalRedirectUri = decoded?.ruri || config.kick.redirectUri;
-        logger.info('[Kick OAuth][callbackKick] code_verifier recuperado:', code_verifier);
+        logger.info('[Kick OAuth][callbackKick] Recovered code_verifier:', code_verifier);
         logger.info('[Kick OAuth][callbackKick] finalRedirectUri:', finalRedirectUri);
 
         if (!code_verifier || !finalRedirectUri) {
-            logger.info('[Kick OAuth][callbackKick] PKCE o redirect_uri inválidos:', { code_verifier, finalRedirectUri });
-            return res.status(400).json({ error: 'PKCE o redirect_uri inválidos' });
+            logger.info('[Kick OAuth][callbackKick] Invalid PKCE or redirect_uri:', { code_verifier, finalRedirectUri });
+            return res.status(400).json({ error: 'Invalid PKCE or redirect_uri' });
         }
 
         const tokenUrl = config.kick.oauthToken;
@@ -257,8 +257,8 @@ exports.callbackKick = async (req, res) => {
         logger.info('[Kick OAuth][callbackKick] clientSecret:', clientSecret);
 
         if (!clientId || !clientSecret) {
-            logger.error('[Kick OAuth][callbackKick] Falta configuración KICK_CLIENT_ID/KICK_CLIENT_SECRET');
-            return res.status(500).json({ error: 'Configuración del proveedor incompleta' });
+            logger.error('[Kick OAuth][callbackKick] Missing KICK_CLIENT_ID/KICK_CLIENT_SECRET configuration');
+            return res.status(500).json({ error: 'Incomplete provider configuration' });
         }
 
         const params = new URLSearchParams({
@@ -270,42 +270,42 @@ exports.callbackKick = async (req, res) => {
             code_verifier
         });
 
-        logger.info('[Kick OAuth][callbackKick] Parámetros enviados a token endpoint:', params.toString());
+        logger.info('[Kick OAuth][callbackKick] Parameters sent to token endpoint:', params.toString());
 
         const tokenRes = await axios.post(tokenUrl, params.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             timeout: 10000
         });
 
-        logger.info('[Kick OAuth][callbackKick] Respuesta de token endpoint:', tokenRes.data);
+        logger.info('[Kick OAuth][callbackKick] Token endpoint response:', tokenRes.data);
 
         const tokenData = tokenRes.data;
 
         const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
         const userUrl = `${userApiBase}/public/v1/users`;
-        logger.info('[Kick OAuth][callbackKick] URL para obtener perfil de usuario:', userUrl);
+        logger.info('[Kick OAuth][callbackKick] URL to fetch user profile:', userUrl);
 
         const userRes = await axios.get(userUrl, {
             headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
             timeout: 10000
         });
 
-        logger.info('[Kick OAuth][callbackKick] Respuesta de perfil de usuario:', userRes.data);
+        logger.info('[Kick OAuth][callbackKick] User profile response:', userRes.data);
 
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
-        // Primero buscar por user_id_ext (usuario ya vinculado)
+        // First, look up by user_id_ext (already linked user)
         let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
         let isNewUser = false;
 
         if (!usuario) {
-            // Si no existe, buscar por nickname (case-insensitive) o email
+            // If not found, search by nickname (case-insensitive) or email
             const colision = await Usuario.findOne({
                 where: {
                     [Op.or]: [
                         { email: kickUser.email },
                         { nickname: kickUser.name },
-                        // Búsqueda case-insensitive para nickname
+                        // Case-insensitive lookup for nickname
                         sequelize.where(
                             sequelize.fn('LOWER', sequelize.col('nickname')),
                             sequelize.fn('LOWER', kickUser.name)
@@ -315,7 +315,7 @@ exports.callbackKick = async (req, res) => {
             });
 
             if (colision) {
-                logger.info('[Kick OAuth][callbackKick] Colisión detectada, vinculando usuario existente:', {
+                logger.info('[Kick OAuth][callbackKick] Collision detected, linking existing user:', {
                     usuario_id: colision.id,
                     usuario_nickname: colision.nickname,
                     kick_nickname: kickUser.name,
@@ -323,14 +323,14 @@ exports.callbackKick = async (req, res) => {
                     kick_user_id: kickUser.user_id
                 });
 
-                // Vincular el user_id_ext al usuario existente
-                // Obtener avatar de Kick
+                // Link the user_id_ext to the existing user
+                // Get Kick avatar
                 const kickAvatarUrl = await processKickAvatar(kickUser);
 
                 await colision.update({
                     user_id_ext: String(kickUser.user_id),
-                    nickname: kickUser.name, // Actualizar con el nombre exacto de Kick
-                    email: kickUser.email || colision.email, // Actualizar email si viene de Kick
+                    nickname: kickUser.name, // Update with exact Kick name
+                    email: kickUser.email || colision.email, // Update email when provided by Kick
                     kick_data: {
                         avatar_url: kickAvatarUrl || kickUser.profile_picture,
                         username: kickUser.name
@@ -340,26 +340,26 @@ exports.callbackKick = async (req, res) => {
                 usuario = colision;
                 isNewUser = false;
             } else {
-                // Crear nuevo usuario
-                // Primero crear el usuario para obtener el ID
+                // Create new user
+                // Create the user first to obtain the ID
                 const newUserData = {
                     nickname: kickUser.name,
                     email: kickUser.email || `${kickUser.name}@kick.user`,
                     puntos: 1000,
-                    rol_id: 1, // Usuarios nuevos empiezan como "usuario básico"
+                    rol_id: 1, // New users start as "basic user"
                     user_id_ext: String(kickUser.user_id),
                     password_hash: null,
                     kick_data: {
-                        avatar_url: kickUser.profile_picture, // Temporal
+                        avatar_url: kickUser.profile_picture, // Temporary
                         username: kickUser.name
                     }
                 };
 
-                logger.info('[Kick OAuth][callbackKick] Datos a crear usuario:', newUserData);
+                logger.info('[Kick OAuth][callbackKick] Data to create user:', newUserData);
 
                 usuario = await Usuario.create(newUserData);
 
-                // Obtener avatar de Kick después de crear el usuario
+                // Get Kick avatar after creating the user
                 const kickAvatarUrl = await processKickAvatar(kickUser);
 
                 if (kickAvatarUrl) {
@@ -372,7 +372,7 @@ exports.callbackKick = async (req, res) => {
                 }
 
                 isNewUser = true;
-                logger.info('[Kick OAuth][callbackKick] Usuario creado:', usuario.id);
+                logger.info('[Kick OAuth][callbackKick] User created:', usuario.id);
             }
         } else {
             const colision = await Usuario.findOne({
@@ -385,11 +385,11 @@ exports.callbackKick = async (req, res) => {
                 }
             });
             if (colision) {
-                return res.status(409).json({ error: 'El email o nickname ya están en uso por otro usuario.' });
+                return res.status(409).json({ error: 'Email or nickname already in use by another user.' });
             }
 
-            // Log de datos antes de actualizar usuario
-            logger.info('[Kick OAuth][callbackKick] Datos a actualizar usuario:', {
+            // Log data before updating user
+            logger.info('[Kick OAuth][callbackKick] Data to update user:', {
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 kick_data: {
@@ -398,7 +398,7 @@ exports.callbackKick = async (req, res) => {
                 }
             });
 
-            // Obtener avatar de Kick
+            // Get Kick avatar
             const kickAvatarUrl = await processKickAvatar(kickUser);
 
             await usuario.update({
@@ -409,10 +409,10 @@ exports.callbackKick = async (req, res) => {
                     username: kickUser.name
                 }
             });
-            logger.info('[Kick OAuth][callbackKick] Usuario actualizado:', usuario.id);
+            logger.info('[Kick OAuth][callbackKick] User updated:', usuario.id);
         }
 
-        // Guardar token del broadcaster y auto-suscribirse a eventos
+        // Save broadcaster token and auto-subscribe to events
         const kickUserId = String(kickUser.user_id);
         const accessToken = tokenData.access_token;
         const refreshToken = tokenData.refresh_token || null;
@@ -423,14 +423,14 @@ exports.callbackKick = async (req, res) => {
             tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
         }
 
-        // 🎯 DETECCIÓN AUTOMÁTICA: ¿Es el broadcaster principal?
+        // AUTOMATIC DETECTION: Is this the main broadcaster?
         const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
 
         if (isBroadcasterPrincipal) {
-            logger.info('🚀 [BROADCASTER PRINCIPAL] Luisardito autenticado - Configurando webhooks...');
+            logger.info('[MAIN BROADCASTER] Luisardito authenticated - Setting up webhooks...');
         }
 
-        // Guardar o actualizar token
+        // Save or update token
         const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate({
             where: { kick_user_id: kickUserId },
             defaults: {
@@ -454,16 +454,16 @@ exports.callbackKick = async (req, res) => {
             });
         }
 
-        logger.info('[Kick OAuth][callbackKick] Token guardado:', created ? 'nuevo' : 'actualizado');
+        logger.info('[Kick OAuth][callbackKick] Token saved:', created ? 'new' : 'updated');
 
         let autoSubscribeResult = null;
 
-        // SOLO el broadcaster principal debe suscribirse a eventos
+        // ONLY the main broadcaster should subscribe to events
         if (isBroadcasterPrincipal) {
-            logger.info('🚀 [BROADCASTER PRINCIPAL] Configurando suscripciones de webhooks...');
+            logger.info('[MAIN BROADCASTER] Setting up webhook subscriptions...');
 
             try {
-                // Usar SU PROPIO token para suscribirse a eventos de SU canal
+                // Use ITS OWN token to subscribe to ITS OWN channel events
                 autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId, kickUserId);
 
                 await broadcasterToken.update({
@@ -473,12 +473,12 @@ exports.callbackKick = async (req, res) => {
                 });
 
                 if (autoSubscribeResult.success) {
-                    logger.info(`🚀 [BROADCASTER PRINCIPAL] ✅ ${autoSubscribeResult.totalSubscribed} eventos configurados. Sistema listo.`);
+                    logger.info(`[MAIN BROADCASTER] ${autoSubscribeResult.totalSubscribed} events configured. System ready.`);
                 } else {
-                    logger.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error en configuración:', autoSubscribeResult.error);
+                    logger.error('[MAIN BROADCASTER] Configuration error:', autoSubscribeResult.error);
                 }
             } catch (subscribeError) {
-                logger.error('🚀 [BROADCASTER PRINCIPAL] ❌ Error crítico:', subscribeError.message);
+                logger.error('[MAIN BROADCASTER] Critical error:', subscribeError.message);
                 await broadcasterToken.update({
                     auto_subscribed: false,
                     last_subscription_attempt: new Date(),
@@ -486,10 +486,10 @@ exports.callbackKick = async (req, res) => {
                 });
             }
         } else {
-            logger.info('👤 [Usuario Normal] Autenticado, no requiere configuración de webhooks');
+            logger.info('[NORMAL USER] Authenticated, no webhook configuration required');
         }
 
-        // Generar access token y refresh token
+        // Generate access token and refresh token
         const jwtAccessToken = generateAccessToken({
             userId: usuario.id,
             rolId: usuario.rol_id,
@@ -502,20 +502,20 @@ exports.callbackKick = async (req, res) => {
 
         const refreshTokenObj = await createRefreshToken(usuario.id, ipAddress, userAgent);
 
-        logger.info('[Kick OAuth][callbackKick] JWT emitido (access + refresh)');
+        logger.info('[Kick OAuth][callbackKick] JWT issued (access + refresh)');
 
-        // Configurar cookies cross-domain
+        // Set cross-domain cookies
         setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
 
-        // Enriquecer información de usuario con Discord
+        // Enrich user info with Discord data
         const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
 
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
         const callbackData = {
-            token: jwtAccessToken, // Retrocompatibilidad
+            token: jwtAccessToken, // Backward compatibility
             accessToken: jwtAccessToken,
             refreshToken: refreshTokenObj.token,
-            expiresIn: 3600, // 1 hora en segundos
+            expiresIn: 3600, // 1 hour in seconds
             usuario: {
                 id: usuario.id,
                 nickname: usuario.nickname,
@@ -545,17 +545,17 @@ exports.callbackKick = async (req, res) => {
         const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
         const redirectUrl = `${frontendUrl}/auth/callback?data=${encodeURIComponent(encodedData)}`;
 
-        logger.info('[Kick OAuth][callbackKick] Redirigiendo al frontend:', redirectUrl);
+        logger.info('[Kick OAuth][callbackKick] Redirecting to frontend:', redirectUrl);
 
         return res.redirect(redirectUrl);
 
     } catch (error) {
-        logger.error('[Kick OAuth][callbackKick] Error general:', error?.message || error);
+        logger.error('[Kick OAuth][callbackKick] General error:', error?.message || error);
 
-        // Mostrar detalle de errores de validación de Sequelize si existen
+        // Show Sequelize validation error details if present
         if (error.errors) {
-            logger.error('[Kick OAuth][callbackKick] Detalle de errores de validación:', error.errors);
-            // Responder con el mensaje de validación si es colisión de unicidad
+            logger.error('[Kick OAuth][callbackKick] Validation error details:', error.errors);
+            // Respond with the validation message if it is a uniqueness collision
             const uniqueError = error.errors.find(e => e.type === 'unique violation');
             if (uniqueError) {
                 return res.status(409).json({ error: uniqueError.message, campo: uniqueError.path, valor: uniqueError.value });
@@ -565,41 +565,41 @@ exports.callbackKick = async (req, res) => {
         if (error.response) {
             logger.info('[Kick OAuth][callbackKick] error.response.data:', error.response.data);
             return res.status(error.response.status).json({
-                error: 'Error al comunicarse con Kick',
+                error: 'Error communicating with Kick',
                 provider_status: error.response.status,
                 details: error.response.data
             });
         }
 
         return res.status(502).json({
-            error: 'Fallo de red con el proveedor',
+            error: 'Provider network failure',
             detalle: error.errors || error.message || error
         });
     }
 };
 
-// Callback de Kick OAuth (BOT)
+// Kick OAuth callback (BOT)
 exports.callbackKickBot = async (req, res) => {
     try {
         const { code, state } = req.query || {};
-        logger.info('[Kick OAuth][callbackKickBot] Parámetros recibidos:', { code, state });
+        logger.info('[Kick OAuth][callbackKickBot] Parameters received:', { code, state });
 
         if (!code || !state) {
-            logger.info('[Kick OAuth][callbackKickBot] Faltan parámetros code/state');
-            return res.status(400).json({ error: 'Faltan parámetros code/state' });
+            logger.info('[Kick OAuth][callbackKickBot] Missing code/state parameters');
+            return res.status(400).json({ error: 'Missing code/state parameters' });
         }
 
-        // Validar el estado
+        // Validate the state
         let decodedState;
         try {
             decodedState = jwt.verify(state, config.jwtSecret);
-            logger.info('[Kick OAuth][callbackKickBot] Estado decodificado:', decodedState);
+            logger.info('[Kick OAuth][callbackKickBot] Decoded state:', decodedState);
         } catch (err) {
-            logger.error('[Kick OAuth][callbackKickBot] Error al decodificar el estado:', err);
-            return res.status(400).json({ error: 'Estado inválido o expirado' });
+            logger.error('[Kick OAuth][callbackKickBot] Error decoding state:', err);
+            return res.status(400).json({ error: 'Invalid or expired state' });
         }
 
-        // Obtener tokens de acceso
+        // Obtain access tokens
         const tokenResponse = await axios.post(
             config.kick.oauthToken,
             new URLSearchParams({
@@ -620,13 +620,13 @@ exports.callbackKickBot = async (req, res) => {
         const { access_token, refresh_token, expires_in } = tokenResponse.data;
         const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000));
 
-        // Obtener datos del bot
+        // Get bot data
         const botUser = await getKickUserData(access_token);
         if (!botUser || !botUser.id) {
-            throw new Error('No se pudieron obtener los datos del bot desde Kick');
+            throw new Error('Could not fetch bot data from Kick');
         }
 
-        // Guardar token del bot
+        // Save bot token
         await KickBotTokenService.saveBotToken({
             kick_user_id: String(botUser.id),
             kick_username: String(botUser.username || `bot-${botUser.id}`),
@@ -636,65 +636,65 @@ exports.callbackKickBot = async (req, res) => {
             scopes: ['user:read', 'chat:write', 'channel:read', 'channel:write']
         });
 
-        // También guardar en tokens.json para auto-refresh
+        // Also save to tokens.json for auto-refresh
         try {
             const fs = require('fs').promises;
             const path = require('path');
             const tokensFile = path.join(__dirname, '../../tokens/tokens.json');
             const fullPath = path.resolve(tokensFile);
-            logger.info('[Kick OAuth][callbackKickBot] 📁 Guardando tokens en:', fullPath);
+            logger.info('[Kick OAuth][callbackKickBot] Saving tokens to:', fullPath);
             const tokensForFile = {
                 accessToken: access_token,
                 refreshToken: refresh_token,
                 expiresAt: Date.now() + (expires_in * 1000),
-                refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 año aprox
+                refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // ~1 year
                 username: String(botUser.username || `bot-${botUser.id}`)
             };
             await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
-            logger.info('[Kick OAuth][callbackKickBot] ✅ Tokens guardados en tokens.json');
+            logger.info('[Kick OAuth][callbackKickBot] Tokens saved to tokens.json');
         } catch (error) {
-            logger.error('[Kick OAuth][callbackKickBot] ❌ Error guardando tokens.json:', error.message);
+            logger.error('[Kick OAuth][callbackKickBot] Error saving tokens.json:', error.message);
         }
 
-        // Redirigir al frontend
+        // Redirect to frontend
         const frontendUrl = config.frontendUrl || 'http://localhost:5173';
-        const message = encodeURIComponent('Bot conectado correctamente');
+        const message = encodeURIComponent('Bot connected successfully');
         return res.redirect(`${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`);
     } catch (err) {
         logger.error('[Kick OAuth][callbackKickBot] Error:', err);
         return res.status(500).json({ 
-            error: 'Error en el callback de autenticación del bot',
+            error: 'Error in the bot authentication callback',
             details: err.message 
         });
     }
 };
 
 /**
- * Endpoint para refrescar el access token usando el refresh token
+ * Endpoint to refresh the access token using the refresh token
  */
 exports.refreshToken = async (req, res) => {
     try {
         const { refreshToken } = req.body;
 
         if (!refreshToken) {
-            return res.status(400).json({ error: 'refreshToken requerido' });
+            return res.status(400).json({ error: 'refreshToken required' });
         }
 
-        // Validar el refresh token
+        // Validate the refresh token
         const tokenRecord = await validateRefreshToken(refreshToken);
 
         if (!tokenRecord) {
-            return res.status(401).json({ error: 'Refresh token inválido o expirado' });
+            return res.status(401).json({ error: 'Invalid or expired refresh token' });
         }
 
-        // Obtener datos del usuario
+        // Get user data
         const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
 
         if (!usuario) {
-            return res.status(404).json({ error: 'Usuario no encontrado' });
+            return res.status(404).json({ error: 'User not found' });
         }
 
-        // Rotar el refresh token (mayor seguridad)
+        // Rotate the refresh token (higher security)
         const ipAddress = req.ip || req.connection.remoteAddress;
         const userAgent = req.headers['user-agent'];
 
@@ -704,7 +704,7 @@ exports.refreshToken = async (req, res) => {
             userAgent
         );
 
-        // Generar nuevo access token
+        // Generate new access token
         const newAccessToken = generateAccessToken({
             userId: usuario.id,
             rolId: usuario.rol_id,
@@ -712,18 +712,18 @@ exports.refreshToken = async (req, res) => {
             kick_id: usuario.user_id_ext
         });
 
-        logger.info(`[Auth][refreshToken] Token renovado para usuario ${usuario.nickname}`);
+        logger.info(`[Auth][refreshToken] Token renewed for user ${usuario.nickname}`);
 
-        // Configurar cookies con los nuevos tokens
+        // Set cookies with the new tokens
         setAuthCookies(res, newAccessToken, newRefreshToken.token);
 
-        // Enriquecer información de usuario con Discord
+        // Enrich user info with Discord data
         const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
 
         return res.json({
             accessToken: newAccessToken,
             refreshToken: newRefreshToken.token,
-            expiresIn: 3600, // 1 hora en segundos
+            expiresIn: 3600, // 1 hour in seconds
             user: {
                 id: usuario.id,
                 nickname: usuario.nickname,
@@ -736,84 +736,84 @@ exports.refreshToken = async (req, res) => {
 
     } catch (error) {
         logger.error('[Auth][refreshToken] Error:', error.message);
-        return res.status(500).json({ error: 'Error al refrescar token' });
+        return res.status(500).json({ error: 'Error refreshing token' });
     }
 };
 
 /**
- * Endpoint para cerrar sesión (revocar refresh token)
+ * Endpoint to log out (revoke refresh token)
  */
 exports.logout = async (req, res) => {
     try {
         const { refreshToken } = req.body;
 
         if (!refreshToken) {
-            return res.status(400).json({ error: 'refreshToken requerido' });
+            return res.status(400).json({ error: 'refreshToken required' });
         }
 
-        // Revocar el refresh token
+        // Revoke the refresh token
         const revoked = await revokeRefreshToken(refreshToken);
 
         if (!revoked) {
-            return res.status(404).json({ error: 'Refresh token no encontrado' });
+            return res.status(404).json({ error: 'Refresh token not found' });
         }
 
-        // Limpiar cookies cross-domain
+        // Clear cross-domain cookies
         clearAuthCookies(res);
 
-        logger.info('[Auth][logout] Sesión cerrada exitosamente');
+        logger.info('[Auth][logout] Session closed successfully');
 
-        return res.json({ message: 'Sesión cerrada exitosamente' });
+        return res.json({ message: 'Session closed successfully' });
 
     } catch (error) {
         logger.error('[Auth][logout] Error:', error.message);
-        return res.status(500).json({ error: 'Error al cerrar sesión' });
+        return res.status(500).json({ error: 'Error closing session' });
     }
 };
 
 /**
- * Endpoint para cerrar todas las sesiones de un usuario
+ * Endpoint to close all sessions for a user
  */
 exports.logoutAll = async (req, res) => {
     try {
-        // Obtener userId del token actual (asume middleware de autenticación)
+        // Get userId from the current token (assumes auth middleware)
         const { userId } = req.user || req.body;
 
         if (!userId) {
-            return res.status(400).json({ error: 'userId requerido' });
+            return res.status(400).json({ error: 'userId required' });
         }
 
-        // Revocar todos los refresh tokens del usuario
+        // Revoke all refresh tokens for the user
         const revokedCount = await revokeAllUserTokens(userId);
 
-        // Limpiar cookies cross-domain
+        // Clear cross-domain cookies
         clearAuthCookies(res);
 
-        logger.info(`[Auth][logoutAll] ${revokedCount} sesiones cerradas para usuario ${userId}`);
+        logger.info(`[Auth][logoutAll] ${revokedCount} sessions closed for user ${userId}`);
 
         return res.json({
-            message: `${revokedCount} sesión(es) cerrada(s) exitosamente`,
+            message: `${revokedCount} session(s) closed successfully`,
             revokedCount
         });
 
     } catch (error) {
         logger.error('[Auth][logoutAll] Error:', error.message);
-        return res.status(500).json({ error: 'Error al cerrar sesiones' });
+        return res.status(500).json({ error: 'Error closing sessions' });
     }
 };
 
-// Recibir tokens desde el frontend (token exchange realizado en el navegador)
+// Receive tokens from the frontend (token exchange done in the browser)
 exports.storeTokens = async (req, res) => {
     try {
         const { accessToken, refreshToken, expiresIn } = req.body || {};
         if (!accessToken) {
-            return res.status(400).json({ error: 'accessToken requerido' });
+            return res.status(400).json({ error: 'accessToken required' });
         }
 
         const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
         const userUrl = `${userApiBase}/public/v1/users`;
 
-        // Obtener datos de usuario con el access token recibido
+        // Get user data with the received access token
         const userRes = await axios.get(userUrl, {
             headers: {
                 'Authorization': `Bearer ${accessToken}`
@@ -823,27 +823,27 @@ exports.storeTokens = async (req, res) => {
 
         const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
 
-        // Upsert de usuario local
+        // Upsert local user
         let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
         let isNewUser = false;
         if (!usuario) {
-            // Crear usuario nuevo
+            // Create new user
             const newUserData = {
                 nickname: kickUser.name,
                 email: kickUser.email || `${kickUser.name}@kick.user`,
                 puntos: 1000,
-                rol_id: 1, // Usuarios nuevos empiezan como "usuario básico"
+                rol_id: 1, // New users start as "basic user"
                 user_id_ext: String(kickUser.user_id),
                 password_hash: null,
                 kick_data: {
-                    avatar_url: kickUser.profile_picture, // Temporal
+                    avatar_url: kickUser.profile_picture, // Temporary
                     username: kickUser.name
                 }
             };
 
             usuario = await Usuario.create(newUserData);
 
-            // Obtener avatar de Kick después de crear el usuario
+            // Get Kick avatar after creating the user
             const kickAvatarUrl = await processKickAvatar(kickUser);
 
             if (kickAvatarUrl) {
@@ -857,7 +857,7 @@ exports.storeTokens = async (req, res) => {
 
             isNewUser = true;
         } else {
-            // Obtener avatar de Kick
+            // Get Kick avatar
             const kickAvatarUrl = await processKickAvatar(kickUser);
 
             await usuario.update({
@@ -870,7 +870,7 @@ exports.storeTokens = async (req, res) => {
             });
         }
 
-        // Emitir nuestro JWT
+        // Issue our JWT
         const token = jwt.sign({
             userId: usuario.id,
             rolId: usuario.rol_id,
@@ -878,10 +878,10 @@ exports.storeTokens = async (req, res) => {
             kick_id: kickUser.user_id
         }, config.jwtSecret, { expiresIn: '30d' });
 
-        // Configurar cookies (aunque este endpoint se usa menos, por compatibilidad)
+        // Set cookies (although this endpoint is used less, for compatibility)
         setAuthCookies(res, token, 'no-refresh-token-provided');
 
-        // Enriquecer información de usuario con Discord
+        // Enrich user info with Discord data
         const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
 
         return res.json({
@@ -906,16 +906,16 @@ exports.storeTokens = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('Error en storeTokens:', error?.message || error);
+        logger.error('Error in storeTokens:', error?.message || error);
         if (error.response) {
-            return res.status(400).json({ error: 'Error al obtener perfil de Kick', details: error.response.data });
+            return res.status(400).json({ error: 'Error fetching Kick profile', details: error.response.data });
         }
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Endpoint para verificar el estado de las cookies (debugging)
+ * Endpoint to check cookie status (debugging)
  */
 exports.cookieStatus = async (req, res) => {
     try {
@@ -925,8 +925,8 @@ exports.cookieStatus = async (req, res) => {
 
         return res.json({
             hasCookies: !!cookies,
-            authToken: authToken ? 'presente' : 'ausente',
-            refreshToken: refreshToken ? 'presente' : 'ausente',
+            authToken: authToken ? 'present' : 'absent',
+            refreshToken: refreshToken ? 'present' : 'absent',
             environment: process.env.NODE_ENV,
             domain: process.env.NODE_ENV === 'production' ? '.luisardito.com' : 'localhost',
             userAgent: req.headers['user-agent'],
@@ -935,30 +935,30 @@ exports.cookieStatus = async (req, res) => {
         });
     } catch (error) {
         logger.error('[Auth][cookieStatus] Error:', error.message);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 // ==========================================
-// 🎮 OAUTH DE DISCORD
+// DISCORD OAUTH
 // ==========================================
 
 /**
- * Inicia el flujo OAuth de Discord
+ * Starts the Discord OAuth flow
  */
 exports.redirectDiscord = (req, res) => {
     try {
-        logger.info('[Discord OAuth][redirectDiscord] Iniciando flujo OAuth de Discord');
+        logger.info('[Discord OAuth][redirectDiscord] Starting Discord OAuth flow');
 
-        // Verificar que el usuario esté autenticado
+        // Verify the user is authenticated
         const userId = req.user?.id;
         if (!userId) {
-            logger.warn('[Discord OAuth][redirectDiscord] Usuario no autenticado');
-            return res.status(401).json({ error: 'Usuario no autenticado' });
+            logger.warn('[Discord OAuth][redirectDiscord] User not authenticated');
+            return res.status(401).json({ error: 'User not authenticated' });
         }
 
         const { code_verifier, code_challenge } = generatePkce();
-        logger.info('[Discord OAuth][redirectDiscord] code_verifier generado');
+        logger.info('[Discord OAuth][redirectDiscord] code_verifier generated');
 
         const statePayload = {
             cv: code_verifier,
@@ -968,7 +968,7 @@ exports.redirectDiscord = (req, res) => {
         };
         const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
 
-        logger.info('[Discord OAuth][redirectDiscord] state creado para userId:', userId);
+        logger.info('[Discord OAuth][redirectDiscord] state created for userId:', userId);
 
         const params = new URLSearchParams({
             response_type: 'code',
@@ -981,67 +981,67 @@ exports.redirectDiscord = (req, res) => {
         });
 
         const url = `${config.discord.oauthAuthorize}?${params.toString()}`;
-        logger.info('[Discord OAuth][redirectDiscord] URL de redirección:', url);
+        logger.info('[Discord OAuth][redirectDiscord] Redirect URL:', url);
 
         return res.redirect(url);
     } catch (err) {
         logger.error('[Discord OAuth][redirectDiscord] Error:', err?.message || err);
-        return res.status(500).json({ error: 'No se pudo iniciar el flujo OAuth con Discord' });
+        return res.status(500).json({ error: 'Could not start the Discord OAuth flow' });
     }
 };
 
 /**
- * Callback del OAuth de Discord
+ * Discord OAuth callback
  */
 exports.callbackDiscord = async (req, res) => {
     try {
         const { code, state } = req.query || {};
-        logger.info('[Discord OAuth][callbackDiscord] Parámetros recibidos:', { code, state });
+        logger.info('[Discord OAuth][callbackDiscord] Parameters received:', { code, state });
 
         if (!code || !state) {
-            logger.warn('[Discord OAuth][callbackDiscord] Faltan parámetros code/state');
-            return res.status(400).json({ error: 'Faltan parámetros code/state' });
+            logger.warn('[Discord OAuth][callbackDiscord] Missing code/state parameters');
+            return res.status(400).json({ error: 'Missing code/state parameters' });
         }
 
         let decoded;
         try {
             decoded = jwt.verify(String(state), config.jwtSecret);
-            logger.info('[Discord OAuth][callbackDiscord] State decodificado:', decoded);
+            logger.info('[Discord OAuth][callbackDiscord] Decoded state:', decoded);
         } catch (e) {
-            logger.error('[Discord OAuth][callbackDiscord] State inválido o expirado:', e?.message || e);
-            return res.status(400).json({ error: 'State inválido o expirado' });
+            logger.error('[Discord OAuth][callbackDiscord] Invalid or expired state:', e?.message || e);
+            return res.status(400).json({ error: 'Invalid or expired state' });
         }
 
         const code_verifier = decoded?.cv;
         const finalRedirectUri = decoded?.ruri || config.discord.redirectUri;
         const userId = decoded?.userId;
 
-        logger.info('[Discord OAuth][callbackDiscord] Datos extraídos:', {
+        logger.info('[Discord OAuth][callbackDiscord] Extracted data:', {
             code_verifier: !!code_verifier,
             finalRedirectUri,
             userId
         });
 
         if (!code_verifier || !finalRedirectUri || !userId) {
-            logger.error('[Discord OAuth][callbackDiscord] Datos inválidos en state');
-            return res.status(400).json({ error: 'Datos inválidos en state' });
+            logger.error('[Discord OAuth][callbackDiscord] Invalid data in state');
+            return res.status(400).json({ error: 'Invalid data in state' });
         }
 
-        // Verificar que el usuario existe
+        // Verify the user exists
         const usuario = await Usuario.findByPk(userId);
         if (!usuario) {
-            logger.error('[Discord OAuth][callbackDiscord] Usuario no encontrado:', userId);
-            return res.status(404).json({ error: 'Usuario no encontrado' });
+            logger.error('[Discord OAuth][callbackDiscord] User not found:', userId);
+            return res.status(404).json({ error: 'User not found' });
         }
 
-        // Intercambiar código por tokens
+        // Exchange code for tokens
         const tokenUrl = config.discord.oauthToken;
         const clientId = config.discord.clientId;
         const clientSecret = config.discord.clientSecret;
 
         if (!clientId || !clientSecret) {
-            logger.error('[Discord OAuth][callbackDiscord] Falta configuración DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET');
-            return res.status(500).json({ error: 'Configuración del proveedor incompleta' });
+            logger.error('[Discord OAuth][callbackDiscord] Missing DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET configuration');
+            return res.status(500).json({ error: 'Incomplete provider configuration' });
         }
 
         const params = new URLSearchParams({
@@ -1053,7 +1053,7 @@ exports.callbackDiscord = async (req, res) => {
             code_verifier
         });
 
-        logger.info('[Discord OAuth][callbackDiscord] Intercambiando código por tokens...');
+        logger.info('[Discord OAuth][callbackDiscord] Exchanging code for tokens...');
 
         const tokenRes = await axios.post(tokenUrl, params.toString(), {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1061,9 +1061,9 @@ exports.callbackDiscord = async (req, res) => {
         });
 
         const tokenData = tokenRes.data;
-        logger.info('[Discord OAuth][callbackDiscord] Tokens obtenidos exitosamente');
+        logger.info('[Discord OAuth][callbackDiscord] Tokens obtained successfully');
 
-        // Obtener información del usuario de Discord
+        // Get Discord user info
         const userUrl = `${config.discord.apiBaseUrl}/users/@me`;
         const userRes = await axios.get(userUrl, {
             headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
@@ -1071,21 +1071,21 @@ exports.callbackDiscord = async (req, res) => {
         });
 
         const discordUser = userRes.data;
-        logger.info('[Discord OAuth][callbackDiscord] Usuario de Discord obtenido:', {
+        logger.info('[Discord OAuth][callbackDiscord] Discord user obtained:', {
             id: discordUser.id,
             username: discordUser.username,
             discriminator: discordUser.discriminator
         });
 
-        // Verificar si ya existe una vinculación
+        // Check if a link already exists
         const existingLink = await DiscordUserLink.findOne({
             where: { discord_user_id: discordUser.id }
         });
 
         if (existingLink) {
             if (existingLink.tienda_user_id === userId) {
-                logger.info('[Discord OAuth][callbackDiscord] Usuario ya vinculado, actualizando tokens');
-                // Actualizar tokens
+                logger.info('[Discord OAuth][callbackDiscord] User already linked, updating tokens');
+                // Update tokens
                 await existingLink.update({
                     discord_username: discordUser.username,
                     discord_discriminator: discordUser.discriminator,
@@ -1095,12 +1095,12 @@ exports.callbackDiscord = async (req, res) => {
                     token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null
                 });
             } else {
-                logger.warn('[Discord OAuth][callbackDiscord] Discord ID ya vinculado a otro usuario');
-                return res.status(409).json({ error: 'Esta cuenta de Discord ya está vinculada a otro usuario' });
+                logger.warn('[Discord OAuth][callbackDiscord] Discord ID already linked to another user');
+                return res.status(409).json({ error: 'This Discord account is already linked to another user' });
             }
         } else {
-            // Crear nueva vinculación
-            logger.info('[Discord OAuth][callbackDiscord] Creando nueva vinculación');
+            // Create new link
+            logger.info('[Discord OAuth][callbackDiscord] Creating new link');
             await DiscordUserLink.create({
                 discord_user_id: discordUser.id,
                 discord_username: discordUser.username,
@@ -1114,16 +1114,16 @@ exports.callbackDiscord = async (req, res) => {
             });
         }
 
-        // Actualizar discord_username en el usuario si no lo tiene
+        // Update discord_username on the user if missing
         if (!usuario.discord_username) {
             await usuario.update({
                 discord_username: `${discordUser.username}#${discordUser.discriminator}`
             });
         }
 
-        logger.info('[Discord OAuth][callbackDiscord] Vinculación completada exitosamente');
+        logger.info('[Discord OAuth][callbackDiscord] Linking completed successfully');
 
-        // Redirigir al frontend con éxito
+        // Redirect to frontend with success
         const frontendUrl = config.frontendUrl || 'https://luisardito.com';
         return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
 
@@ -1135,7 +1135,7 @@ exports.callbackDiscord = async (req, res) => {
 };
 
 /**
- * Vinculación manual de Discord (por código temporal)
+ * Manual Discord linking (via temporary code)
  */
 exports.linkDiscordManual = async (req, res) => {
     try {
@@ -1143,63 +1143,63 @@ exports.linkDiscordManual = async (req, res) => {
         const userId = req.user?.id;
 
         if (!userId) {
-            return res.status(401).json({ error: 'Usuario no autenticado' });
+            return res.status(401).json({ error: 'User not authenticated' });
         }
 
         if (!code) {
-            return res.status(400).json({ error: 'Código requerido' });
+            return res.status(400).json({ error: 'Code required' });
         }
 
-        // Aquí implementaríamos la lógica de códigos temporales
-        // Por ahora, devolver que no está implementado
-        logger.info('[Discord OAuth][linkDiscordManual] Método no implementado aún');
-        return res.status(501).json({ error: 'Método no implementado' });
+        // Here we would implement the temporary code logic
+        // For now, return that it is not implemented
+        logger.info('[Discord OAuth][linkDiscordManual] Method not implemented yet');
+        return res.status(501).json({ error: 'Method not implemented' });
 
     } catch (error) {
         logger.error('[Discord OAuth][linkDiscordManual] Error:', error);
-        return res.status(500).json({ error: 'Error interno del servidor' });
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };
 
 /**
- * Desvincular cuenta de Discord
+ * Unlink Discord account
  */
 exports.unlinkDiscord = async (req, res) => {
     try {
         const userId = req.user?.id;
 
         if (!userId) {
-            return res.status(401).json({ error: 'Usuario no autenticado' });
+            return res.status(401).json({ error: 'User not authenticated' });
         }
 
-        logger.info('[Discord OAuth][unlinkDiscord] Desvinculando Discord para usuario:', userId);
+        logger.info('[Discord OAuth][unlinkDiscord] Unlinking Discord for user:', userId);
 
-        // Buscar y eliminar la vinculación de Discord
+        // Find and delete the Discord link
         const discordLink = await DiscordUserLink.findOne({
             where: { tienda_user_id: userId }
         });
 
         if (!discordLink) {
-            logger.warn('[Discord OAuth][unlinkDiscord] No se encontró vinculación de Discord para usuario:', userId);
-            return res.status(404).json({ error: 'No hay cuenta de Discord vinculada' });
+            logger.warn('[Discord OAuth][unlinkDiscord] No Discord link found for user:', userId);
+            return res.status(404).json({ error: 'No linked Discord account' });
         }
 
-        // Eliminar la vinculación
+        // Delete the link
         await discordLink.destroy();
 
-        // Limpiar discord_username del usuario si existe
+        // Clear discord_username on the user if present
         const usuario = await Usuario.findByPk(userId);
         if (usuario && usuario.discord_username) {
             await usuario.update({ discord_username: null });
         }
 
-        logger.info('[Discord OAuth][unlinkDiscord] Discord desvinculado exitosamente para usuario:', userId);
+        logger.info('[Discord OAuth][unlinkDiscord] Discord unlinked successfully for user:', userId);
 
-        // Enriquecer información de usuario con Discord (ahora debería ser null)
+        // Enrich user info with Discord data (should now be null)
         const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
 
         return res.json({
-            message: 'Cuenta de Discord desvinculada exitosamente',
+            message: 'Discord account unlinked successfully',
             user: {
                 id: usuario.id,
                 nickname: usuario.nickname,
@@ -1212,6 +1212,6 @@ exports.unlinkDiscord = async (req, res) => {
 
     } catch (error) {
         logger.error('[Discord OAuth][unlinkDiscord] Error:', error);
-        return res.status(500).json({ error: 'Error al desvincular cuenta de Discord' });
+        return res.status(500).json({ error: 'Error unlinking Discord account' });
     }
 };

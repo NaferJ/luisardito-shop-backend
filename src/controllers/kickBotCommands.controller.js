@@ -3,7 +3,7 @@ const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 
 /**
- * 📋 Obtener todos los comandos (con paginación y filtros)
+ * Get all commands (with pagination and filters)
  * GET /api/kick-admin/bot-commands
  */
 exports.getAllCommands = async (req, res) => {
@@ -19,7 +19,7 @@ exports.getAllCommands = async (req, res) => {
         const offset = (page - 1) * limit;
         const where = {};
 
-        // Filtros
+        // Filters
         if (enabled !== undefined) {
             where.enabled = enabled === 'true';
         }
@@ -42,7 +42,7 @@ exports.getAllCommands = async (req, res) => {
             order: [['created_at', 'DESC']]
         });
 
-        logger.info(`📋 [BOT-COMMANDS] Lista de comandos solicitada: ${rows.length} comandos`);
+        logger.info(`[BOT-COMMANDS] Command list requested: ${rows.length} commands`);
 
         res.json({
             ok: true,
@@ -55,17 +55,17 @@ exports.getAllCommands = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error obteniendo comandos:', error);
+        logger.error('[BOT-COMMANDS] Error fetching commands:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al obtener los comandos',
+            message: 'Error fetching commands',
             error: error.message
         });
     }
 };
 
 /**
- * 📋 Obtener todos los comandos públicos (solo lectura, sin filtros sensibles)
+ * Get all public commands (read-only, no sensitive filters)
  * GET /api/kick-admin/bot-commands/public
  */
 exports.getPublicCommands = async (req, res) => {
@@ -81,7 +81,7 @@ exports.getPublicCommands = async (req, res) => {
         const offset = (page - 1) * limit;
         const where = {};
 
-        // Filtros
+        // Filters
         if (enabled !== undefined) {
             where.enabled = enabled === 'true';
         }
@@ -104,7 +104,7 @@ exports.getPublicCommands = async (req, res) => {
             order: [['created_at', 'DESC']]
         });
 
-        logger.info(`📋 [BOT-COMMANDS] Lista pública de comandos solicitada: ${rows.length} comandos`);
+        logger.info(`[BOT-COMMANDS] Public command list requested: ${rows.length} commands`);
 
         res.json({
             ok: true,
@@ -117,17 +117,17 @@ exports.getPublicCommands = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error obteniendo comandos públicos:', error);
+        logger.error('[BOT-COMMANDS] Error fetching public commands:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al obtener los comandos',
+            message: 'Error fetching commands',
             error: error.message
         });
     }
 };
 
 /**
- * 🔍 Obtener un comando específico por ID
+ * Get a specific command by ID
  * GET /api/kick-admin/bot-commands/:id
  */
 exports.getCommandById = async (req, res) => {
@@ -139,28 +139,28 @@ exports.getCommandById = async (req, res) => {
         if (!command) {
             return res.status(404).json({
                 ok: false,
-                message: 'Comando no encontrado'
+                message: 'Command not found'
             });
         }
 
-        logger.info(`🔍 [BOT-COMMANDS] Comando obtenido: !${command.command}`);
+        logger.info(`[BOT-COMMANDS] Command fetched: !${command.command}`);
 
         res.json({
             ok: true,
             data: command
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error obteniendo comando:', error);
+        logger.error('[BOT-COMMANDS] Error fetching command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al obtener el comando',
+            message: 'Error fetching command',
             error: error.message
         });
     }
 };
 
 /**
- * ➕ Crear un nuevo comando
+ * Create a new command
  * POST /api/kick-admin/bot-commands
  */
 exports.createCommand = async (req, res) => {
@@ -179,15 +179,15 @@ exports.createCommand = async (req, res) => {
             auto_send_interval_seconds = 0
         } = req.body;
 
-        // Validaciones
+        // Validations
         if (!command || !response_message) {
             return res.status(400).json({
                 ok: false,
-                message: 'Los campos "command" y "response_message" son obligatorios'
+                message: 'The fields "command" and "response_message" are required'
             });
         }
 
-        // Validar que el comando no exista
+        // Validate that the command does not already exist
         const existingCommand = await KickBotCommand.findOne({
             where: { command: command.toLowerCase() }
         });
@@ -195,11 +195,11 @@ exports.createCommand = async (req, res) => {
         if (existingCommand) {
             return res.status(409).json({
                 ok: false,
-                message: `El comando "!${command}" ya existe`
+                message: `The command "!${command}" already exists`
             });
         }
 
-        // Validar aliases únicos
+        // Validate unique aliases
         if (aliases && aliases.length > 0) {
             const existingAliases = await KickBotCommand.findAll({
                 where: {
@@ -212,12 +212,12 @@ exports.createCommand = async (req, res) => {
             if (existingAliases.length > 0) {
                 return res.status(409).json({
                     ok: false,
-                    message: `Uno de los aliases ya existe como comando: ${existingAliases.map(c => c.command).join(', ')}`
+                    message: `One of the aliases already exists as a command: ${existingAliases.map(c => c.command).join(', ')}`
                 });
             }
         }
 
-        // Crear el comando
+        // Create the command
         const newCommand = await KickBotCommand.create({
             command: command.toLowerCase(),
             aliases: aliases || [],
@@ -234,25 +234,25 @@ exports.createCommand = async (req, res) => {
             last_used_at: null
         });
 
-        logger.info(`✅ [BOT-COMMANDS] Comando creado: !${newCommand.command}`);
+        logger.info(`[BOT-COMMANDS] Command created: !${newCommand.command}`);
 
         res.status(201).json({
             ok: true,
-            message: 'Comando creado exitosamente',
+            message: 'Command created successfully',
             data: newCommand
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error creando comando:', error);
+        logger.error('[BOT-COMMANDS] Error creating command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al crear el comando',
+            message: 'Error creating command',
             error: error.message
         });
     }
 };
 
 /**
- * ✏️ Actualizar un comando existente
+ * Update an existing command
  * PUT /api/kick-admin/bot-commands/:id
  */
 exports.updateCommand = async (req, res) => {
@@ -277,11 +277,11 @@ exports.updateCommand = async (req, res) => {
         if (!existingCommand) {
             return res.status(404).json({
                 ok: false,
-                message: 'Comando no encontrado'
+                message: 'Command not found'
             });
         }
 
-        // Si se está cambiando el nombre del comando, validar que no exista
+        // If renaming the command, validate that the new name does not exist
         if (command && command.toLowerCase() !== existingCommand.command) {
             const duplicateCommand = await KickBotCommand.findOne({
                 where: {
@@ -293,12 +293,12 @@ exports.updateCommand = async (req, res) => {
             if (duplicateCommand) {
                 return res.status(409).json({
                     ok: false,
-                    message: `El comando "!${command}" ya existe`
+                    message: `The command "!${command}" already exists`
                 });
             }
         }
 
-        // Actualizar campos
+        // Update fields
         if (command !== undefined) existingCommand.command = command.toLowerCase();
         if (aliases !== undefined) existingCommand.aliases = aliases;
         if (response_message !== undefined) existingCommand.response_message = response_message;
@@ -313,25 +313,25 @@ exports.updateCommand = async (req, res) => {
 
         await existingCommand.save();
 
-        logger.info(`✏️ [BOT-COMMANDS] Comando actualizado: !${existingCommand.command}`);
+        logger.info(`[BOT-COMMANDS] Command updated: !${existingCommand.command}`);
 
         res.json({
             ok: true,
-            message: 'Comando actualizado exitosamente',
+            message: 'Command updated successfully',
             data: existingCommand
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error actualizando comando:', error);
+        logger.error('[BOT-COMMANDS] Error updating command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al actualizar el comando',
+            message: 'Error updating command',
             error: error.message
         });
     }
 };
 
 /**
- * 🗑️ Eliminar un comando
+ * Delete a command
  * DELETE /api/kick-admin/bot-commands/:id
  */
 exports.deleteCommand = async (req, res) => {
@@ -343,31 +343,31 @@ exports.deleteCommand = async (req, res) => {
         if (!command) {
             return res.status(404).json({
                 ok: false,
-                message: 'Comando no encontrado'
+                message: 'Command not found'
             });
         }
 
         const commandName = command.command;
         await command.destroy();
 
-        logger.info(`🗑️ [BOT-COMMANDS] Comando eliminado: !${commandName}`);
+        logger.info(`[BOT-COMMANDS] Command deleted: !${commandName}`);
 
         res.json({
             ok: true,
-            message: 'Comando eliminado exitosamente'
+            message: 'Command deleted successfully'
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error eliminando comando:', error);
+        logger.error('[BOT-COMMANDS] Error deleting command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al eliminar el comando',
+            message: 'Error deleting command',
             error: error.message
         });
     }
 };
 
 /**
- * 🔄 Alternar estado (enabled/disabled) de un comando
+ * Toggle command status (enabled/disabled)
  * PATCH /api/kick-admin/bot-commands/:id/toggle
  */
 exports.toggleCommandStatus = async (req, res) => {
@@ -379,33 +379,33 @@ exports.toggleCommandStatus = async (req, res) => {
         if (!command) {
             return res.status(404).json({
                 ok: false,
-                message: 'Comando no encontrado'
+                message: 'Command not found'
             });
         }
 
         command.enabled = !command.enabled;
         await command.save();
 
-        const status = command.enabled ? 'habilitado' : 'deshabilitado';
-        logger.info(`🔄 [BOT-COMMANDS] Comando ${status}: !${command.command}`);
+        const status = command.enabled ? 'enabled' : 'disabled';
+        logger.info(`[BOT-COMMANDS] Command ${status}: !${command.command}`);
 
         res.json({
             ok: true,
-            message: `Comando ${status} exitosamente`,
+            message: `Command ${status} successfully`,
             data: command
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error alternando estado del comando:', error);
+        logger.error('[BOT-COMMANDS] Error toggling command status:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al cambiar el estado del comando',
+            message: 'Error toggling command status',
             error: error.message
         });
     }
 };
 
 /**
- * 📊 Obtener estadísticas de uso de comandos
+ * Get command usage statistics
  * GET /api/kick-admin/bot-commands/stats
  */
 exports.getCommandsStats = async (req, res) => {
@@ -432,7 +432,7 @@ exports.getCommandsStats = async (req, res) => {
             attributes: ['id', 'command', 'usage_count', 'last_used_at']
         });
 
-        logger.info('📊 [BOT-COMMANDS] Estadísticas solicitadas');
+        logger.info('[BOT-COMMANDS] Stats requested');
 
         res.json({
             ok: true,
@@ -449,17 +449,17 @@ exports.getCommandsStats = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error obteniendo estadísticas:', error);
+        logger.error('[BOT-COMMANDS] Error fetching stats:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al obtener las estadísticas',
+            message: 'Error fetching stats',
             error: error.message
         });
     }
 };
 
 /**
- * 🔄 Duplicar un comando existente
+ * Duplicate an existing command
  * POST /api/kick-admin/bot-commands/:id/duplicate
  */
 exports.duplicateCommand = async (req, res) => {
@@ -471,11 +471,11 @@ exports.duplicateCommand = async (req, res) => {
         if (!originalCommand) {
             return res.status(404).json({
                 ok: false,
-                message: 'Comando no encontrado'
+                message: 'Command not found'
             });
         }
 
-        // Generar nuevo nombre único
+        // Generate a unique name
         let newCommandName = `${originalCommand.command}_copy`;
         let counter = 1;
 
@@ -488,37 +488,37 @@ exports.duplicateCommand = async (req, res) => {
             command: newCommandName,
             aliases: [],
             response_message: originalCommand.response_message,
-            description: `Copia de: ${originalCommand.description || originalCommand.command}`,
+            description: `Copy of: ${originalCommand.description || originalCommand.command}`,
             command_type: originalCommand.command_type,
             dynamic_handler: originalCommand.dynamic_handler,
-            enabled: false, // Por defecto deshabilitado
+            enabled: false, // Disabled by default
             requires_permission: originalCommand.requires_permission,
             permission_level: originalCommand.permission_level,
             cooldown_seconds: originalCommand.cooldown_seconds,
-            auto_send_interval_seconds: 0, // Por defecto no enviar automáticamente
+            auto_send_interval_seconds: 0, // Do not auto-send by default
             usage_count: 0,
             last_used_at: null
         });
 
-        logger.info(`🔄 [BOT-COMMANDS] Comando duplicado: !${originalCommand.command} -> !${newCommandName}`);
+        logger.info(`[BOT-COMMANDS] Command duplicated: !${originalCommand.command} -> !${newCommandName}`);
 
         res.status(201).json({
             ok: true,
-            message: 'Comando duplicado exitosamente',
+            message: 'Command duplicated successfully',
             data: duplicatedCommand
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error duplicando comando:', error);
+        logger.error('[BOT-COMMANDS] Error duplicating command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al duplicar el comando',
+            message: 'Error duplicating command',
             error: error.message
         });
     }
 };
 
 /**
- * 🧪 Probar un comando (sin guardarlo)
+ * Test a command (without saving it)
  * POST /api/kick-admin/bot-commands/test
  */
 exports.testCommand = async (req, res) => {
@@ -528,11 +528,11 @@ exports.testCommand = async (req, res) => {
         if (!response_message) {
             return res.status(400).json({
                 ok: false,
-                message: 'El campo "response_message" es obligatorio'
+                message: 'The field "response_message" is required'
             });
         }
 
-        // Simular variables
+        // Simulate variables
         const processedMessage = response_message
             .replace(/{username}/g, test_username)
             .replace(/{channel}/g, 'luisardito')
@@ -540,7 +540,7 @@ exports.testCommand = async (req, res) => {
             .replace(/{target_user}/g, test_username)
             .replace(/{points}/g, '1000');
 
-        logger.info('🧪 [BOT-COMMANDS] Comando de prueba ejecutado');
+        logger.info('[BOT-COMMANDS] Test command executed');
 
         res.json({
             ok: true,
@@ -557,10 +557,10 @@ exports.testCommand = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('[BOT-COMMANDS] Error probando comando:', error);
+        logger.error('[BOT-COMMANDS] Error testing command:', error);
         res.status(500).json({
             ok: false,
-            message: 'Error al probar el comando',
+            message: 'Error testing command',
             error: error.message
         });
     }

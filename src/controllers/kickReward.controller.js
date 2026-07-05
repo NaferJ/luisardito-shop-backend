@@ -3,7 +3,7 @@ const KickRewardService = require('../services/kickReward.service');
 const logger = require('../utils/logger');
 
 /**
- * 📋 Obtener todas las recompensas
+ * Get all rewards
  * GET /api/admin/kick-rewards
  */
 exports.getAllRewards = async (req, res) => {
@@ -18,16 +18,16 @@ exports.getAllRewards = async (req, res) => {
             rewards
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error obteniendo recompensas:', error.message);
+        logger.error('[Kick Rewards Admin] Error fetching rewards:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error obteniendo recompensas'
+            error: 'Error fetching rewards'
         });
     }
 };
 
 /**
- * 🔍 Obtener una recompensa por ID
+ * Get a reward by ID
  * GET /api/admin/kick-rewards/:id
  */
 exports.getRewardById = async (req, res) => {
@@ -39,7 +39,7 @@ exports.getRewardById = async (req, res) => {
         if (!reward) {
             return res.status(404).json({
                 success: false,
-                error: 'Recompensa no encontrada'
+                error: 'Reward not found'
             });
         }
 
@@ -48,41 +48,41 @@ exports.getRewardById = async (req, res) => {
             reward
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error obteniendo recompensa:', error.message);
+        logger.error('[Kick Rewards Admin] Error fetching reward:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error obteniendo recompensa'
+            error: 'Error fetching reward'
         });
     }
 };
 
 /**
- * 🔄 Sincronizar recompensas desde Kick
+ * Sync rewards from Kick
  * POST /api/admin/kick-rewards/sync
  */
 exports.syncRewards = async (req, res) => {
     try {
-        logger.info('🔄 [Kick Rewards Admin] Iniciando sincronización...');
+        logger.info('[Kick Rewards Admin] Starting sync...');
 
         const result = await KickRewardService.syncRewardsFromKick();
 
         res.json({
             success: true,
-            message: 'Recompensas sincronizadas exitosamente',
+            message: 'Rewards synced successfully',
             ...result
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error sincronizando:', error.message);
+        logger.error('[Kick Rewards Admin] Error syncing:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error sincronizando recompensas',
+            error: 'Error syncing rewards',
             details: error.message
         });
     }
 };
 
 /**
- * ✨ Crear nueva recompensa en Kick
+ * Create a new reward in Kick
  * POST /api/admin/kick-rewards
  */
 exports.createReward = async (req, res) => {
@@ -99,36 +99,36 @@ exports.createReward = async (req, res) => {
             auto_accept
         } = req.body;
 
-        // Validaciones
+        // Validations
         if (!title || !cost || puntos_a_otorgar === undefined) {
             return res.status(400).json({
                 success: false,
-                error: 'Faltan campos requeridos: title, cost, puntos_a_otorgar'
+                error: 'Missing required fields: title, cost, puntos_a_otorgar'
             });
         }
 
         if (cost < 1) {
             return res.status(400).json({
                 success: false,
-                error: 'El costo debe ser mínimo 1'
+                error: 'Cost must be at least 1'
             });
         }
 
         if (title.length > 50) {
             return res.status(400).json({
                 success: false,
-                error: 'El título no puede exceder 50 caracteres'
+                error: 'Title cannot exceed 50 characters'
             });
         }
 
         if (description && description.length > 200) {
             return res.status(400).json({
                 success: false,
-                error: 'La descripción no puede exceder 200 caracteres'
+                error: 'Description cannot exceed 200 characters'
             });
         }
 
-        logger.info('✨ [Kick Rewards Admin] Creando recompensa:', title);
+        logger.info('[Kick Rewards Admin] Creating reward:', title);
 
         const result = await KickRewardService.createRewardInKick({
             title,
@@ -144,21 +144,21 @@ exports.createReward = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: 'Recompensa creada exitosamente en Kick',
+            message: 'Reward created successfully in Kick',
             reward: result.reward
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error creando recompensa:', error.message);
+        logger.error('[Kick Rewards Admin] Error creating reward:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error creando recompensa',
+            error: 'Error creating reward',
             details: error.message
         });
     }
 };
 
 /**
- * ✏️ Actualizar recompensa
+ * Update reward
  * PATCH /api/admin/kick-rewards/:id
  */
 exports.updateReward = async (req, res) => {
@@ -166,41 +166,41 @@ exports.updateReward = async (req, res) => {
         const { id } = req.params;
         const updateData = req.body;
 
-        // Buscar recompensa local
+        // Find local reward
         const reward = await KickReward.findByPk(id);
 
         if (!reward) {
             return res.status(404).json({
                 success: false,
-                error: 'Recompensa no encontrada'
+                error: 'Reward not found'
             });
         }
 
-        // Validaciones
+        // Validations
         if (updateData.title && updateData.title.length > 50) {
             return res.status(400).json({
                 success: false,
-                error: 'El título no puede exceder 50 caracteres'
+                error: 'Title cannot exceed 50 characters'
             });
         }
 
         if (updateData.description && updateData.description.length > 200) {
             return res.status(400).json({
                 success: false,
-                error: 'La descripción no puede exceder 200 caracteres'
+                error: 'Description cannot exceed 200 characters'
             });
         }
 
         if (updateData.cost !== undefined && updateData.cost < 1) {
             return res.status(400).json({
                 success: false,
-                error: 'El costo debe ser mínimo 1'
+                error: 'Cost must be at least 1'
             });
         }
 
-        logger.info('✏️ [Kick Rewards Admin] Actualizando recompensa:', reward.title);
+        logger.info('[Kick Rewards Admin] Updating reward:', reward.title);
 
-        // Actualizar en Kick
+        // Update in Kick
         const result = await KickRewardService.updateRewardInKick(
             reward.kick_reward_id,
             updateData
@@ -208,58 +208,58 @@ exports.updateReward = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Recompensa actualizada exitosamente',
+            message: 'Reward updated successfully',
             reward: result.reward
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error actualizando recompensa:', error.message);
+        logger.error('[Kick Rewards Admin] Error updating reward:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error actualizando recompensa',
+            error: 'Error updating reward',
             details: error.message
         });
     }
 };
 
 /**
- * 🗑️ Eliminar recompensa
+ * Delete reward
  * DELETE /api/admin/kick-rewards/:id
  */
 exports.deleteReward = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Buscar recompensa local
+        // Find local reward
         const reward = await KickReward.findByPk(id);
 
         if (!reward) {
             return res.status(404).json({
                 success: false,
-                error: 'Recompensa no encontrada'
+                error: 'Reward not found'
             });
         }
 
-        logger.info('🗑️ [Kick Rewards Admin] Eliminando recompensa:', reward.title);
+        logger.info('[Kick Rewards Admin] Deleting reward:', reward.title);
 
-        // Eliminar en Kick
+        // Delete in Kick
         await KickRewardService.deleteRewardInKick(reward.kick_reward_id);
 
         res.json({
             success: true,
-            message: 'Recompensa eliminada exitosamente'
+            message: 'Reward deleted successfully'
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error eliminando recompensa:', error.message);
+        logger.error('[Kick Rewards Admin] Error deleting reward:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error eliminando recompensa',
+            error: 'Error deleting reward',
             details: error.message
         });
     }
 };
 
 /**
- * 📊 Obtener estadísticas de recompensas
+ * Get reward statistics
  * GET /api/admin/kick-rewards/stats
  */
 exports.getRewardsStats = async (req, res) => {
@@ -286,16 +286,16 @@ exports.getRewardsStats = async (req, res) => {
             stats
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error obteniendo estadísticas:', error.message);
+        logger.error('[Kick Rewards Admin] Error fetching stats:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error obteniendo estadísticas'
+            error: 'Error fetching stats'
         });
     }
 };
 
 /**
- * 🔄 Actualizar solo puntos a otorgar (local)
+ * Update only points to award (local)
  * PATCH /api/admin/kick-rewards/:id/points
  */
 exports.updateRewardPoints = async (req, res) => {
@@ -306,7 +306,7 @@ exports.updateRewardPoints = async (req, res) => {
         if (puntos_a_otorgar === undefined) {
             return res.status(400).json({
                 success: false,
-                error: 'Falta el campo puntos_a_otorgar'
+                error: 'Missing field puntos_a_otorgar'
             });
         }
 
@@ -315,7 +315,7 @@ exports.updateRewardPoints = async (req, res) => {
         if (!reward) {
             return res.status(404).json({
                 success: false,
-                error: 'Recompensa no encontrada'
+                error: 'Reward not found'
             });
         }
 
@@ -327,19 +327,19 @@ exports.updateRewardPoints = async (req, res) => {
         await reward.update(updateData);
 
         logger.info(
-            `✏️ [Kick Rewards Admin] Puntos actualizados para "${reward.title}": ${puntos_a_otorgar}`
+            `[Kick Rewards Admin] Points updated for "${reward.title}": ${puntos_a_otorgar}`
         );
 
         res.json({
             success: true,
-            message: 'Puntos actualizados exitosamente',
+            message: 'Points updated successfully',
             reward
         });
     } catch (error) {
-        logger.error('❌ [Kick Rewards Admin] Error actualizando puntos:', error.message);
+        logger.error('[Kick Rewards Admin] Error updating points:', error.message);
         res.status(500).json({
             success: false,
-            error: 'Error actualizando puntos'
+            error: 'Error updating points'
         });
     }
 };

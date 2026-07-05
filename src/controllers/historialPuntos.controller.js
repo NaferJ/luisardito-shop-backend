@@ -6,11 +6,11 @@ exports.listar = async (req, res) => {
     try {
         const { usuarioId } = req.params;
 
-        // Usuario normal sólo ve su propio historial
-        // Roles 1-2 (usuario, suscriptor) solo pueden ver su propio historial
-        // Roles 3+ (streamer, developer, moderador) pueden ver cualquier historial
+        // Regular users only see their own history
+        // Roles 1-2 (user, subscriber) can only see their own history
+        // Roles 3+ (streamer, developer, moderator) can see any history
         if (req.user.rol_id <= 2 && req.user.id !== +usuarioId) {
-            return res.status(403).json({ error: 'Sin permiso para ver este historial' });
+            return res.status(403).json({ error: 'No permission to view this history' });
         }
 
         const { include_all = 'false' } = req.query;
@@ -19,23 +19,23 @@ exports.listar = async (req, res) => {
 
         let whereClause = { usuario_id: usuarioId };
 
-        // Si no es admin o no solicita ver todo, filtrar eventos
+        // If not admin or not requesting all, filter events
         if (!showAllEvents) {
-            // Filtro simplificado: mostrar todo excepto mensajes de chat automáticos
+            // Simplified filter: show everything except automatic chat messages
             whereClause = {
                 usuario_id: usuarioId,
                 [Op.or]: [
-                    // Mostrar todos los eventos sin kick_event_data (canjes, ajustes manuales, etc.)
+                    // Show all events without kick_event_data (redemptions, manual adjustments, etc.)
                     { kick_event_data: null },
-                    // Mostrar eventos importantes, excluir chat automático
+                    // Show important events, exclude automatic chat
                     {
                         [Op.and]: [
                             { kick_event_data: { [Op.ne]: null } },
                             {
                                 [Op.or]: [
-                                    // MySQL JSON syntax para excluir chat messages
+                                    // MySQL JSON syntax to exclude chat messages
                                     sequelize.literal(`JSON_EXTRACT(kick_event_data, '$.event_type') != 'chat.message.sent'`),
-                                    // Si no tiene event_type, mostrar
+                                    // If it has no event_type, show it
                                     sequelize.literal(`JSON_EXTRACT(kick_event_data, '$.event_type') IS NULL`)
                                 ]
                             }
@@ -57,14 +57,14 @@ exports.listar = async (req, res) => {
 };
 
 /**
- * Listar historial completo (incluyendo eventos de chat) - Solo para administradores
+ * List full history (including chat events) - Admins only
  */
 exports.listarCompleto = async (req, res) => {
     try {
         const { usuarioId } = req.params;
 
-        // El middleware de permisos ya valida que tenga el permiso 'editar_puntos'
-        // No necesitamos validación adicional aquí
+        // The permission middleware already validates the 'editar_puntos' permission
+        // No additional validation needed here
 
         const registros = await HistorialPunto.findAll({
             where: { usuario_id: usuarioId },
