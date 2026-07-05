@@ -23,7 +23,11 @@
     "dev:setup": "docker-compose up db -d && npm run migrate && npm run seed",
     "dev:reset": "docker-compose down -v && docker-compose up db -d && sleep 10 && npm run migrate && npm run seed",
     "sync:migrations": "powershell -ExecutionPolicy Bypass -File scripts/sync-migrations.ps1",
-    "reauth-bot": "node scripts/reauth-bot.js"
+    "reauth-bot": "node scripts/reauth-bot.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "keywords": [],
   "author": "",
@@ -47,6 +51,11 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.7.0",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.9.4"
   }
 }
