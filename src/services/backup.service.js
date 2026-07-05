@@ -147,7 +147,7 @@ class BackupService {
         } catch (error) {
             logger.error('[Backup] Detailed error:', error.message);
             if (error.stderr) logger.error('[Backup] stderr:', error.stderr);
-            throw new Error(`Error creating MySQL dump: ${error.message}`);
+            throw new Error(`Error creating MySQL dump: ${error.message}`, { cause: error });
         }
     }
 
@@ -170,7 +170,7 @@ class BackupService {
             logger.info('Backup compressed');
         } catch (error) {
             logger.error('[Backup] Error compressing:', error);
-            throw new Error(`Error compressing backup: ${error.message}`);
+            throw new Error(`Error compressing backup: ${error.message}`, { cause: error });
         }
     }
 
@@ -225,7 +225,7 @@ class BackupService {
             try {
                 await execAsync(`cd "${repoPath}" && git pull origin main --no-edit`);
                 await execAsync(`cd "${repoPath}" && git push origin main`);
-            } catch (syncError) {
+            } catch (_syncError) {
                 // If there are conflicts, force push (backups don't need to preserve history)
                 logger.warn('[Backup] Conflict detected, forcing push...');
                 await execAsync(`cd "${repoPath}" && git push --force origin main`);
@@ -290,7 +290,7 @@ class BackupService {
                 // Try to clone first (if the repo has content)
                 await execAsync(`git clone "${authUrl}" "${repoPath}"`);
                 logger.info('Repository cloned successfully');
-            } catch (cloneError) {
+            } catch (_cloneError) {
                 // If clone fails, initialize a new repo
                 logger.info('Empty repository, initializing new repo...');
 
@@ -303,7 +303,7 @@ class BackupService {
                 // Try to add remote, if it fails use set-url
                 try {
                     await execAsync(`cd "${repoPath}" && git remote add origin "${authUrl}"`);
-                } catch (remoteError) {
+                } catch (_remoteError) {
                     // Remote already exists, update it
                     await execAsync(`cd "${repoPath}" && git remote set-url origin "${authUrl}"`);
                 }
@@ -363,7 +363,7 @@ class BackupService {
                     await execAsync(`cd "${repoPath}" && git commit -m "chore: configure Git LFS for backups"`);
                     await execAsync(`cd "${repoPath}" && git push origin main`);
                     logger.info('Git LFS configured and .gitattributes committed');
-                } catch (commitError) {
+                } catch (_commitError) {
                     // If commit fails, probably because there are no changes or the repo is empty
                     logger.info('Git LFS configured locally');
                 }

@@ -331,7 +331,7 @@ class LeaderboardService {
       const previous = lastSnapshotMap[current.usuario_id];
 
       let position_change = 0;
-      let change_indicator = "neutral"; // 'up', 'down', 'neutral', 'new'
+      let change_indicator;
 
       if (!previous) {
         // New user in the ranking

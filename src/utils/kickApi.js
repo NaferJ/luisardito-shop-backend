@@ -148,7 +148,7 @@ async function getKickUserData(userIdOrToken) {
                 status: publicApiError.response?.status,
                 data: publicApiError.response?.data
             });
-        throw new Error('Could not fetch Kick user data');
+        throw new Error('Could not fetch Kick user data', { cause: publicApiError });
         }
 
     } catch (error) {

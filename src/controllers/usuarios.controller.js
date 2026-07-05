@@ -1,6 +1,5 @@
 const {
   Usuario,
-  Canje,
   HistorialPunto,
   sequelize,
   KickUserTracking,
@@ -9,8 +8,6 @@ const {
 } = require("../models");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
 const logger = require("../utils/logger");
-const axios = require("axios");
-const { KickBroadcasterToken } = require("../models");
 
 /**
  * Helper function to enrich user info with Discord data
@@ -652,7 +649,7 @@ exports.syncKickInfo = async (req, res) => {
         actualizado: updatedUser.actualizado,
       },
       changes: {
-        avatar_updated: cloudinaryAvatarUrl !== user.kick_data?.avatar_url,
+        avatar_updated: kickAvatarUrl !== user.kick_data?.avatar_url,
         username_updated:
           (kickUserData.name || kickUserData.username) !== user.nickname,
       },
@@ -755,7 +752,7 @@ exports.actualizarPuntos = async (req, res) => {
  */
 exports.debugPermisos = async (req, res) => {
   try {
-    const { Rol, Permiso, RolPermiso } = require("../models");
+    const { Rol, Permiso } = require("../models");
 
     // Get complete user info
     const userWithRole = await Usuario.findByPk(req.user.id, {

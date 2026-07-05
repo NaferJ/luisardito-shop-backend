@@ -1,6 +1,7 @@
 const { Producto, Promocion, sequelize } = require('../models');
 const { Op } = require('sequelize');
 const promocionService = require('../services/promocion.service');
+const logger = require('../utils/logger');
 
 // List all (with price sort; default DESC). For public, usually only published.
 exports.listar = async (req, res) => {
@@ -9,8 +10,6 @@ exports.listar = async (req, res) => {
     if (!req.user || req.user.rol_id <= 2) {
         // Non-logged-in or basic users (role 1-2) only see published products
         where.estado = 'publicado';
-    } else {
-
     }
 
     // Sort support: ?sort=price_desc | price_asc | precio_desc | precio_asc

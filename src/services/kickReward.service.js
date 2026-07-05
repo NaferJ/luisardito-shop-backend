@@ -31,8 +31,6 @@ async function getRewardByKickId(kickRewardId) {
  */
 async function getRewardStats() {
     try {
-        const { Op } = require('sequelize');
-        
         const [totalRewards, enabledRewards, totalRedemptions] = await Promise.all([
             KickReward.count(),
             KickReward.count({ where: { is_enabled: true } }),

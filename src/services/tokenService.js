@@ -170,7 +170,7 @@ async function cleanupExpiredTokens() {
 function verifyAccessToken(token) {
     try {
         return jwt.verify(token, config.jwtSecret);
-    } catch (error) {
+    } catch (_error) {
         return null;
     }
 }

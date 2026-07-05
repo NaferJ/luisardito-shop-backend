@@ -115,7 +115,7 @@ class KickBotService {
     async renewAccessToken(tokenRecord) {
         try {
             logger.info(`[KickBot] Renewing token for ${tokenRecord.kick_username}...`);
-            const updatedRecord = await this.refreshToken(tokenRecord);
+            await this.refreshToken(tokenRecord);
             return true;
         } catch (error) {
             logger.error(`[KickBot] Error renewing token for ${tokenRecord.kick_username}:`, error.message);
@@ -202,7 +202,7 @@ class KickBotService {
                     return await this.refreshAccessToken();
                 }
             }
-        } catch (fileError) {
+        } catch (_fileError) {
             logger.warn('[KickBot] tokens.json file not available or invalid');
         }
 

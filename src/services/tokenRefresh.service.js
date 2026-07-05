@@ -1,4 +1,4 @@
-const { ensureValidToken, refreshAccessToken } = require('./kickAutoSubscribe.service');
+const { refreshAccessToken } = require('./kickAutoSubscribe.service');
 const { KickBroadcasterToken } = require('../models');
 const logger = require('../utils/logger');
 

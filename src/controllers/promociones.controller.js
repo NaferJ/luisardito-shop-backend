@@ -1,6 +1,7 @@
 const { Promocion, PromocionProducto, UsoPromocion, Producto, sequelize } = require('../models');
 const promocionService = require('../services/promocion.service');
 const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 
 /**
  * List all promotions with filters

@@ -2,7 +2,6 @@ const { verifyWebhookSignature } = require("../utils/kickWebhook.util");
 const {
   KickWebhookEvent,
   KickPointsConfig,
-  KickChatCooldown,
   KickUserTracking,
   Usuario,
   HistorialPunto,
@@ -13,7 +12,7 @@ const {
 const BotrixMigrationService = require("../services/botrixMigration.service");
 const VipService = require("../services/vip.service");
 const NotificacionService = require("../services/notificacion.service");
-const { Op, Transaction } = require("sequelize");
+const { Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
 const { syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
@@ -53,8 +52,8 @@ exports.debugRedisCooldowns = async (req, res) => {
       redis_status: redis.status,
       timestamp: new Date().toISOString(),
     });
-    logger.error("[Debug Redis] Error:", error);
   } catch (error) {
+    logger.error("[Debug Redis] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -504,7 +503,7 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 /**
  * Handle channel reward redemptions
  */
-async function handleRewardRedemption(payload, metadata) {
+async function handleRewardRedemption(payload, _metadata) {
   try {
     const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
@@ -650,7 +649,7 @@ async function handleRewardRedemption(payload, metadata) {
 /**
  * Handle chat messages
  */
-async function handleChatMessage(payload, metadata) {
+async function handleChatMessage(payload, _metadata) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -1066,7 +1065,7 @@ async function handleChatMessage(payload, metadata) {
 /**
  * Handle new followers
  */
-async function handleChannelFollowed(payload, metadata) {
+async function handleChannelFollowed(payload, _metadata) {
   try {
     const follower = payload.follower;
     const kickUserId = String(follower.user_id);
@@ -1183,7 +1182,7 @@ async function handleChannelFollowed(payload, metadata) {
 /**
  * Handle new subscriptions
  */
-async function handleNewSubscription(payload, metadata) {
+async function handleNewSubscription(payload, _metadata) {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -1285,7 +1284,7 @@ async function handleNewSubscription(payload, metadata) {
 /**
  * Handle subscription renewals
  */
-async function handleSubscriptionRenewal(payload, metadata) {
+async function handleSubscriptionRenewal(payload, _metadata) {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -1368,7 +1367,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
 /**
  * Handle subscription gifts
  */
-async function handleSubscriptionGifts(payload, metadata) {
+async function handleSubscriptionGifts(payload, _metadata) {
   try {
     const gifter = payload.gifter;
     const giftees = payload.giftees || [];
@@ -1658,7 +1657,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
  * Only updates stream info (title, category, etc.)
  * Must NOT change stream:is_live state
  */
-async function handleLivestreamMetadataUpdated(payload, metadata) {
+async function handleLivestreamMetadataUpdated(payload, _metadata) {
   try {
     const redis = getRedisClient();
 
@@ -1702,7 +1701,7 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
 /**
  * Handle moderation bans
  */
-async function handleModerationBanned(payload, metadata) {
+async function handleModerationBanned(payload, _metadata) {
   logger.info("[Kick Webhook][Moderation Banned]", {
     broadcaster: payload.broadcaster.username,
     moderator: payload.moderator.username,
@@ -1718,7 +1717,7 @@ async function handleModerationBanned(payload, metadata) {
  * Handle kicks gifts (kicks.gifted)
  * Awards points equivalent to the amount of kicks gifted
  */
-async function handleKicksGifted(payload, metadata) {
+async function handleKicksGifted(payload, _metadata) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -2964,7 +2963,7 @@ exports.debugStreamStatus = async (req, res) => {
     if (currentInfo) {
       try {
         streamInfo = JSON.parse(currentInfo);
-      } catch (e) {
+      } catch (_e) {
         logger.warn("[Stream Status] Error parsing stream:current_info");
       }
     }

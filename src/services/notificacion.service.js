@@ -1,5 +1,4 @@
-const { Notificacion, Usuario } = require('../models');
-const { Op } = require('sequelize');
+const { Notificacion } = require('../models');
 const logger = require('../utils/logger');
 
 class NotificacionService {

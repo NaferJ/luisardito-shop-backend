@@ -10,7 +10,7 @@ class BotrixMigrationService {
      */
     static async processChatMessage(chatMessage) {
         try {
-            const { sender, content, broadcaster } = chatMessage;
+            const { sender, content } = chatMessage;
 
             // Verify the message comes from BotRix
             if (sender.username !== 'BotRix') {
@@ -177,7 +177,7 @@ class BotrixMigrationService {
      */
     static async processWatchtimeMessage(chatMessage) {
         try {
-            const { sender, content, broadcaster } = chatMessage;
+            const { sender, content } = chatMessage;
 
             // Verify the message comes from BotRix
             if (sender.username !== 'BotRix') {
@@ -300,7 +300,6 @@ class BotrixMigrationService {
                 }, { transaction });
             } else {
                 // Update existing watchtime
-                const previousWatchtime = userWatchtime.total_watchtime_minutes;
                 userWatchtime.total_watchtime_minutes += totalWatchtimeMinutes;
                 await userWatchtime.save({ transaction });
             }

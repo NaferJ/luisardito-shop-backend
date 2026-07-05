@@ -1,5 +1,6 @@
 const { DataTypes } = require('sequelize');
 const { sequelize } = require('./database');
+const logger = require('../utils/logger');
 
 const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
     id: {
@@ -36,7 +37,7 @@ const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
         type: DataTypes.BOOLEAN,
         allowNull: false,
         defaultValue: true,
-        comment: 'Habilita/deshabilita la migración de watchtime desde Botrix'
+        comment: 'Enables/disables watchtime migration from Botrix'
     }
 }, {
     tableName: 'botrix_migration_config',
@@ -45,13 +46,13 @@ const BotrixMigrationConfig = sequelize.define('BotrixMigrationConfig', {
     updatedAt: 'updated_at'
 });
 
-// Métodos estáticos simplificados para funcionar con la estructura actual
+// Simplified static methods to work with the current structure
 BotrixMigrationConfig.getConfig = async function() {
     try {
         const config = await this.findByPk(1);
 
         if (!config) {
-            // Crear configuración por defecto si no existe
+            // Create default config if it does not exist
             const defaultConfig = await this.create({
                 migration_enabled: true,
                 vip_points_enabled: false,
@@ -65,8 +66,8 @@ BotrixMigrationConfig.getConfig = async function() {
 
         return config.toJSON();
     } catch (error) {
-        console.error('Error obteniendo configuración:', error);
-        // Retornar valores por defecto en caso de error
+        logger.error('Error getting config:', error);
+        // Return default values on error
         return {
             migration_enabled: true,
             vip_points_enabled: false,
@@ -83,7 +84,7 @@ BotrixMigrationConfig.setConfig = async function(key, value) {
         let config = await this.findByPk(1);
 
         if (!config) {
-            // Crear configuración si no existe
+            // Create config if it does not exist
             const updateData = {
                 migration_enabled: true,
                 vip_points_enabled: false,
@@ -95,13 +96,13 @@ BotrixMigrationConfig.setConfig = async function(key, value) {
             updateData[key] = value;
             config = await this.create(updateData);
         } else {
-            // Actualizar configuración existente
+            // Update existing config
             await config.update({ [key]: value });
         }
 
         return config;
     } catch (error) {
-        console.error('Error actualizando configuración:', error);
+        logger.error('Error updating config:', error);
         throw error;
     }
 };

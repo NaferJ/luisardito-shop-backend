@@ -148,7 +148,6 @@ const start = async () => {
       const isDocker =
         process.env.NODE_ENV === "development" &&
         process.env.CHOKIDAR_USEPOLLING === "true";
-      const displayPort = isDocker ? "3001 (mapped from :3000)" : config.port;
 
       if (isDocker) {
         logger.info(`Server listening on:`);

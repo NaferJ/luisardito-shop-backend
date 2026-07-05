@@ -1,4 +1,4 @@
-const { Promocion, PromocionProducto, UsoPromocion, Producto, Usuario, sequelize } = require('../models');
+const { Promocion, UsoPromocion, Producto, Usuario, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
 class PromocionService {

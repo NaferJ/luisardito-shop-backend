@@ -1,5 +1,4 @@
 const { KickBotCommand, Usuario, DiscordUserLink, UserWatchtime } = require('../models');
-const { Op } = require('sequelize');
 const sequelize = require('sequelize');
 const logger = require('../utils/logger');
 const formatWatchtime = require('../utils/formatWatchtime');
@@ -8,7 +7,7 @@ const formatWatchtime = require('../utils/formatWatchtime');
 let EmbedBuilder;
 try {
     EmbedBuilder = require('discord.js').EmbedBuilder;
-} catch (error) {
+} catch (_error) {
     // discord.js is not available (e.g. in Kick environment)
     EmbedBuilder = null;
 }
@@ -166,7 +165,7 @@ class KickBotCommandHandlerService {
      * Special handler for the !puntos command
      * Looks up a user's points in the database
      */
-    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
+    async puntosHandler(command, content, username, channelName, usuario = null, platform = 'kick', _discordUserId = null, messageContext = null, displayName = null) {
         try {
             const args = this.extractArgs(content);
 
@@ -261,7 +260,7 @@ class KickBotCommandHandlerService {
      * Special handler for the !watchtime command
      * Looks up a user's watchtime in the database
      */
-    async watchtimeHandler(command, content, username, channelName, usuario = null, platform = 'kick', discordUserId = null, messageContext = null, displayName = null) {
+    async watchtimeHandler(command, content, username, channelName, usuario = null, platform = 'kick', _discordUserId = null, messageContext = null, displayName = null) {
         try {
             const args = this.extractArgs(content);
 
@@ -374,7 +373,7 @@ class KickBotCommandHandlerService {
      * Checks if a user has the required permission to execute a command
      * (Currently returns true, but permission logic can be implemented here)
      */
-    async checkPermission(command, username) {
+    async checkPermission(command, _username) {
         if (!command.requires_permission) {
             return true;
         }
@@ -502,7 +501,6 @@ class KickBotCommandHandlerService {
      * Gets the banner URL for the embed
      */
     getBannerUrl() {
-        const config = require('../../config');
 
         // In production, use external URL if configured
         if (process.env.NODE_ENV === 'production' && process.env.DISCORD_BANNER_URL) {

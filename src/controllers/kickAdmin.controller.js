@@ -1,6 +1,5 @@
 const { Usuario, Canje, Producto, BotrixMigrationConfig, KickBotToken, sequelize, KickUserTracking, DiscordUserLink } = require('../models');
 const BotrixMigrationService = require('../services/botrixMigration.service');
-const VipService = require('../services/vip.service');
 const KickBotService = require('../services/kickBot.service');
 const { Op } = require('sequelize');
 const logger = require('../utils/logger');
@@ -429,7 +428,7 @@ exports.grantVipFromCanje = async (req, res) => {
 exports.grantVipManually = async (req, res) => {
     try {
         const { usuarioId } = req.params;
-        const { duration_days, reason } = req.body;
+        const { duration_days } = req.body;
 
         // Find the user
         const usuario = await Usuario.findByPk(usuarioId);

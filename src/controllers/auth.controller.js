@@ -1,7 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const axios  = require('axios');
-const https  = require('https');
 const config = require('../../config');
 const { Usuario, KickBroadcasterToken, sequelize, DiscordUserLink } = require('../models');
 const { generatePkce } = require('../utils/pkce.util');
@@ -805,7 +804,7 @@ exports.logoutAll = async (req, res) => {
 // Receive tokens from the frontend (token exchange done in the browser)
 exports.storeTokens = async (req, res) => {
     try {
-        const { accessToken, refreshToken, expiresIn } = req.body || {};
+        const { accessToken } = req.body || {};
         if (!accessToken) {
             return res.status(400).json({ error: 'accessToken required' });
         }

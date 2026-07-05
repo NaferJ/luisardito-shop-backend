@@ -1,86 +1,87 @@
 const jwt = require('jsonwebtoken');
 const config = require('../../config');
 const { Usuario, Rol } = require('../models');
+const logger = require('../utils/logger');
 
 /**
- * Middleware de autenticación ESTRICTA
+ * Strict authentication middleware
  *
- * Requiere que el usuario esté autenticado obligatoriamente.
- * Si no hay token o es inválido, bloquea la petición con 401.
+ * Requires the user to be authenticated mandatorily.
+ * If there is no token or it is invalid, blocks the request with 401.
  *
- * Uso:
- *   router.get('/ruta-protegida', authRequired, permiso('ver'), controller)
+ * Usage:
+ *   router.get('/protected-route', authRequired, permiso('ver'), controller)
  *
- * Diferencia con auth.middleware.js:
- *   - auth.middleware: Permite pasar sin autenticación (req.user = null)
- *   - authRequired.middleware: Bloquea si no hay autenticación (401)
+ * Difference with auth.middleware.js:
+ *   - auth.middleware: Allows passthrough without authentication (req.user = null)
+ *   - authRequired.middleware: Blocks if not authenticated (401)
  *
  * @returns {Function} Middleware function
  */
 module.exports = async (req, res, next) => {
     try {
-        // ✅ 1. Buscar token en COOKIES primero
+        // 1. Check token in COOKIES first
         let token = req.cookies?.auth_token;
 
-        // ✅ 2. Fallback a Authorization header
+        // 2. Fallback to Authorization header
         if (!token && req.headers?.authorization?.startsWith('Bearer ')) {
             token = req.headers.authorization.split(' ')[1];
         }
 
-        // ❌ Sin token → BLOQUEAR
+        // No token -> BLOCK
         if (!token) {
             return res.status(401).json({
-                error: 'Token no proporcionado',
-                message: 'Debes incluir un token de autenticación',
+                error: 'Token not provided',
+                message: 'You must include an authentication token',
                 code: 'TOKEN_MISSING'
             });
         }
 
-        // Verificar token
+        // Verify token
         const payload = jwt.verify(token, config.jwtSecret);
 
-        // Obtener usuario de la base de datos
+        // Get user from the database
         const user = await Usuario.findByPk(payload.userId, { include: Rol });
 
-        // ❌ Usuario no encontrado → BLOQUEAR
+        // User not found -> BLOCK
         if (!user) {
             return res.status(401).json({
-                error: 'Usuario no encontrado',
-                message: 'El token no corresponde a un usuario válido',
+                error: 'User not found',
+                message: 'The token does not correspond to a valid user',
                 code: 'USER_NOT_FOUND'
             });
         }
 
-        // ✅ Usuario autenticado correctamente
+        // User authenticated successfully
         req.user = user;
-        console.log('[Auth Required] ✅ Usuario autenticado:', user.nickname || user.id);
+        logger.info('[Auth Required] User authenticated:', user.nickname || user.id);
         next();
 
     } catch (error) {
-        // ❌ Token expirado → BLOQUEAR con mensaje específico
+        // Token expired -> BLOCK with specific message
         if (error.name === 'TokenExpiredError') {
             return res.status(401).json({
-                error: 'Token expirado',
-                message: 'Tu sesión ha expirado, por favor inicia sesión nuevamente',
+                error: 'Token expired',
+                message: 'Your session has expired, please log in again',
                 code: 'TOKEN_EXPIRED',
                 expiredAt: error.expiredAt
             });
         }
 
-        // ❌ Token inválido → BLOQUEAR
+        // Token invalid -> BLOCK
         if (error.name === 'JsonWebTokenError') {
             return res.status(401).json({
-                error: 'Token inválido',
-                message: 'El token de autenticación no es válido',
+                error: 'Token invalid',
+                message: 'The authentication token is not valid',
                 code: 'TOKEN_INVALID'
             });
         }
 
-        // ❌ Error general → BLOQUEAR
-        console.error('[Auth Required] Error:', error.message);
+        // General error -> BLOCK
+        logger.error('[Auth Required] Error:', error.message);
         return res.status(401).json({
-            error: 'Error de autenticación',
-            message: 'No se pudo validar tu autenticación',
+            error: 'Authentication error',
+            message: 'Could not validate your authentication',
             code: 'AUTH_ERROR'
         });
     }

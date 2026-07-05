@@ -1,5 +1,4 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { Routes } = require('discord-api-types/v9');
+const { Client, GatewayIntentBits } = require('discord.js');
 const config = require('../../config');
 const logger = require('../utils/logger');
 const KickBotCommandHandlerService = require('./kickBotCommandHandler.service');

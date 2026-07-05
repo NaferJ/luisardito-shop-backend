@@ -1,32 +1,33 @@
 const { Permiso, RolPermiso } = require('../models');
+const logger = require('../utils/logger');
 
 /**
- * Middleware de verificación de permisos
+ * Permission verification middleware
  *
- * Verifica que el usuario autenticado tenga el permiso específico.
- * DEBE usarse después de authRequired.middleware.js
+ * Verifies that the authenticated user has the specific permission.
+ * MUST be used after authRequired.middleware.js
  *
- * Uso:
- *   router.get('/ruta', authRequired, permiso('ver_usuarios'), controller)
+ * Usage:
+ *   router.get('/route', authRequired, permiso('ver_usuarios'), controller)
  *
- * @param {string} verboPermiso - Nombre del permiso requerido
+ * @param {string} verboPermiso - Name of the required permission
  * @returns {Function} Middleware function
  */
 module.exports = function(verboPermiso) {
     return async (req, res, next) => {
         try {
-            // ✅ Defensa adicional: Validar que req.user exista
-            // Esto NO debería pasar si se usa authRequired antes, pero es buena práctica
+            // Additional defense: Validate that req.user exists
+            // This should NOT happen if authRequired is used before, but it is good practice
             if (!req.user) {
-                console.error('[Permisos Middleware] ERROR: req.user es null. ¿Olvidaste usar authRequired antes de permiso()?');
+                logger.error('[Permisos Middleware] ERROR: req.user is null. Did you forget to use authRequired before permiso()?');
                 return res.status(500).json({
-                    error: 'Error de configuración',
-                    message: 'El middleware de permisos requiere authRequired previo',
+                    error: 'Configuration error',
+                    message: 'The permission middleware requires authRequired beforehand',
                     code: 'MIDDLEWARE_MISCONFIGURATION'
                 });
             }
 
-            // Buscar permisos del rol del usuario
+            // Find permissions for the user's role
             const permisos = await Permiso.findAll({
                 include: {
                     model: RolPermiso,
@@ -34,31 +35,31 @@ module.exports = function(verboPermiso) {
                 }
             });
 
-            // Extraer nombres de permisos
+            // Extract permission names
             const nombresPermisos = permisos.map(p => p.nombre);
 
-            // ✅ Usuario tiene el permiso → Continuar
+            // User has the permission -> Continue
             if (nombresPermisos.includes(verboPermiso)) {
-                console.log(`[Permisos] ✅ Usuario ${req.user.nickname} tiene permiso: ${verboPermiso}`);
+                logger.info(`[Permisos] User ${req.user.nickname} has permission: ${verboPermiso}`);
                 return next();
             }
 
-            // ❌ Usuario NO tiene el permiso → Bloquear con 403
-            console.log(`[Permisos] ❌ Usuario ${req.user.nickname} sin permiso: ${verboPermiso}`);
+            // User does NOT have the permission -> Block with 403
+            logger.info(`[Permisos] User ${req.user.nickname} lacks permission: ${verboPermiso}`);
             return res.status(403).json({
-                error: 'Permiso denegado',
-                message: `No tienes el permiso necesario: ${verboPermiso}`,
+                error: 'Permission denied',
+                message: `You do not have the required permission: ${verboPermiso}`,
                 code: 'PERMISSION_DENIED',
                 requiredPermission: verboPermiso,
                 userPermissions: nombresPermisos
             });
 
         } catch (error) {
-            // Error al consultar permisos
-            console.error('[Permisos Middleware] Error consultando permisos:', error.message);
+            // Error querying permissions
+            logger.error('[Permisos Middleware] Error querying permissions:', error.message);
             return res.status(500).json({
-                error: 'Error interno',
-                message: 'No se pudieron verificar los permisos',
+                error: 'Internal error',
+                message: 'Could not verify permissions',
                 code: 'PERMISSION_CHECK_ERROR'
             });
         }

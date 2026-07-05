@@ -1,9 +1,9 @@
 /**
- * Middleware para webhooks - Optimizado para producción
+ * Webhook middleware - Optimized for production
  */
 
 const logWebhookRequest = (req, res, next) => {
-    // Solo log para webhooks reales de Kick
+    // Only log for real Kick webhooks
     const hasKickHeaders = Object.keys(req.headers).some(key =>
         key.toLowerCase().startsWith('kick-event')
     );
@@ -17,11 +17,11 @@ const logWebhookRequest = (req, res, next) => {
         });
 
         if (Object.keys(kickHeaders).length > 0) {
-            // console.log('🎯 [KICK HEADERS]', kickHeaders);
+            // logger.debug('[KICK HEADERS]', kickHeaders);
         }
 
         if (req.body && Object.keys(req.body).length > 0) {
-            // console.log('🎯 [PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
+            // logger.debug('[PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
         }
     }
 

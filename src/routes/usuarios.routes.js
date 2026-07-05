@@ -1,41 +1,40 @@
 const router = require('express').Router();
 const usuariosCtrl = require('../controllers/usuarios.controller');
 const canjesCtrl = require('../controllers/canjes.controller');
-const auth = require('../middleware/auth.middleware');
 const authRequired = require('../middleware/authRequired.middleware');
 const permiso = require('../middleware/permisos.middleware');
 
-// ✅ Rutas protegidas - Requieren autenticación estricta
+// Protected routes - Require strict authentication
 
-// Obtener perfil del usuario logueado
+// Get profile of the logged-in user
 router.get('/me', authRequired, usuariosCtrl.me);
 
-// Actualizar perfil del usuario logueado
+// Update profile of the logged-in user
 router.put('/me', authRequired, usuariosCtrl.updateMe);
 
-// Sincronizar información de Kick (avatar, username, etc.)
+// Sync Kick info (avatar, username, etc.)
 router.post('/sync-kick-info', authRequired, usuariosCtrl.syncKickInfo);
 
-// ✅ Rutas protegidas con permisos específicos
+// Protected routes with specific permissions
 
-// Listar todos los usuarios (admin)
+// List all users (admin)
 router.get('/', authRequired, permiso('ver_usuarios'), usuariosCtrl.listarUsuarios);
 
-// Canjes de un usuario específico (admin/gestión)
+// Canjes for a specific user (admin/management)
 router.get('/:usuarioId/canjes', authRequired, permiso('gestionar_canjes'), canjesCtrl.listarPorUsuario);
 
-// Actualizar puntos de un usuario específico (admin)
+// Update points for a specific user (admin)
 router.put('/:id/puntos', authRequired, permiso('editar_puntos'), usuariosCtrl.actualizarPuntos);
 
-// ✅ Rutas públicas (debug/testing - considerar proteger en producción)
+// Public routes (debug/testing - consider protecting in production)
 
-// Debug: Verificar estructura de roles y permisos
+// Debug: Check roles and permissions structure
 router.get('/debug/roles-permisos', usuariosCtrl.debugRolesPermisos);
 
-// Debug: Verificar usuario específico por ID
+// Debug: Check specific user by ID
 router.get('/debug/:usuarioId', usuariosCtrl.debugUsuario);
 
-// Hotfix: Actualizar rol de usuario específico (temporal - considerar proteger)
+// Hotfix: Update role for a specific user (temporary - consider protecting)
 router.put('/hotfix/:usuarioId/rol/:nuevoRolId', usuariosCtrl.hotfixActualizarRol);
 
 module.exports = router;
