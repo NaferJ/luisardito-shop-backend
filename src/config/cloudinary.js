@@ -10,10 +10,10 @@ try {
         api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    logger.info('[Cloudinary] ✅ Configurado correctamente');
+    logger.info('[Cloudinary] Configured successfully');
 
 } catch (error) {
-    logger.warn('[Cloudinary] ⚠️ No disponible:', error.message);
+    logger.warn('[Cloudinary] Not available:', error.message);
     cloudinary = null;
 }
 
