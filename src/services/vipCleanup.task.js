@@ -1,34 +1,40 @@
-const cron = require('node-cron');
-const VipService = require('../services/vip.service');
-const logger = require('../utils/logger');
+const cron = require("node-cron");
+const VipService = require("../services/vip.service");
+const logger = require("../utils/logger");
 
 class VipCleanupTask {
-    static start() {
-        // Ejecutar todos los días a las 3:00 AM
-        cron.schedule('0 3 * * *', async () => {
-            try {
-                logger.info('🧹 [VIP CLEANUP] Iniciando limpieza de VIPs expirados...');
-                const result = await VipService.cleanupExpiredVips();
-                logger.info(`🧹 [VIP CLEANUP] Completado: ${result.cleaned_count} VIPs expirados removidos`);
-            } catch (error) {
-                logger.error('🧹 [VIP CLEANUP] Error en limpieza automática:', error);
-            }
-        });
+  static start() {
+    // Run every day at 3:00 AM
+    cron.schedule("0 3 * * *", async () => {
+      try {
+        logger.info("[VIP CLEANUP] Starting expired VIP cleanup...");
+        const result = await VipService.cleanupExpiredVips();
+        logger.info(
+          `[VIP CLEANUP] Completed: ${result.cleaned_count} expired VIPs removed`
+        );
+      } catch (error) {
+        logger.error("[VIP CLEANUP] Error in automatic cleanup:", error);
+      }
+    });
 
-        logger.info('🧹 [VIP CLEANUP] Tarea automática programada (todos los días a las 3:00 AM)');
-    }
+    logger.info(
+      "[VIP CLEANUP] Automatic task scheduled (every day at 3:00 AM)"
+    );
+  }
 
-    static async runManually() {
-        try {
-            logger.info('🧹 [VIP CLEANUP] Ejecutando limpieza manual...');
-            const result = await VipService.cleanupExpiredVips();
-            logger.info(`🧹 [VIP CLEANUP] Manual completado: ${result.cleaned_count} VIPs expirados removidos`);
-            return result;
-        } catch (error) {
-            logger.error('🧹 [VIP CLEANUP] Error en limpieza manual:', error);
-            throw error;
-        }
+  static async runManually() {
+    try {
+      logger.info("[VIP CLEANUP] Running manual cleanup...");
+      const result = await VipService.cleanupExpiredVips();
+      logger.info(
+        `[VIP CLEANUP] Manual completed: ${result.cleaned_count} expired VIPs removed`
+      );
+      return result;
+    } catch (error) {
+      logger.error("[VIP CLEANUP] Error in manual cleanup:", error);
+      throw error;
     }
+  }
 }
 
 module.exports = VipCleanupTask;

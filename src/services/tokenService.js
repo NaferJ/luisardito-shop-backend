@@ -1,189 +1,199 @@
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const config = require('../../config');
-const { RefreshToken } = require('../models');
-const { Op } = require('sequelize');
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const config = require("../../config");
+const { RefreshToken } = require("../models");
+const { Op } = require("sequelize");
 
 /**
- * Duración de los tokens
+ * Token durations
  *
- * Para tienda de puntos de lealtad (usuarios públicos):
- * - Access token: 30 días (usuarios no pierden sesión)
- * - Refresh token: 90 días (permite renovar acceso)
+ * For loyalty points store (public users):
+ * - Access token: 30 days (users do not lose session)
+ * - Refresh token: 90 days (allows renewing access)
  */
 const TOKEN_EXPIRATION = {
-    ACCESS_TOKEN: '30d',     // 30 días (antes era 1h)
-    REFRESH_TOKEN: 90        // 90 días
+  ACCESS_TOKEN: "30d", // 30 days (was 1h)
+  REFRESH_TOKEN: 90, // 90 days
 };
 
 /**
- * Genera un access token JWT
- * @param {Object} payload - Datos del usuario
+ * Generates a JWT access token
+ * @param {Object} payload - User data
  * @returns {string} Access token
  */
 function generateAccessToken(payload) {
-    return jwt.sign(payload, config.jwtSecret, {
-        expiresIn: TOKEN_EXPIRATION.ACCESS_TOKEN
-    });
+  return jwt.sign(payload, config.jwtSecret, {
+    expiresIn: TOKEN_EXPIRATION.ACCESS_TOKEN,
+  });
 }
 
 /**
- * Genera un refresh token único
+ * Generates a unique refresh token
  * @returns {string} Refresh token
  */
 function generateRefreshTokenString() {
-    return crypto.randomBytes(64).toString('hex');
+  return crypto.randomBytes(64).toString("hex");
 }
 
 /**
- * Crea y guarda un refresh token en la BD
- * @param {number} usuarioId - ID del usuario
- * @param {string} ipAddress - IP del cliente
- * @param {string} userAgent - User agent del navegador
- * @returns {Promise<Object>} Refresh token creado
+ * Creates and saves a refresh token in the DB
+ * @param {number} usuarioId - User ID
+ * @param {string} ipAddress - Client IP
+ * @param {string} userAgent - Browser user agent
+ * @returns {Promise<Object>} Created refresh token
  */
-async function createRefreshToken(usuarioId, ipAddress = null, userAgent = null) {
-    const token = generateRefreshTokenString();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + TOKEN_EXPIRATION.REFRESH_TOKEN);
+async function createRefreshToken(
+  usuarioId,
+  ipAddress = null,
+  userAgent = null
+) {
+  const token = generateRefreshTokenString();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + TOKEN_EXPIRATION.REFRESH_TOKEN);
 
-    const refreshToken = await RefreshToken.create({
-        usuario_id: usuarioId,
-        token,
-        expires_at: expiresAt,
-        ip_address: ipAddress,
-        user_agent: userAgent
-    });
+  const refreshToken = await RefreshToken.create({
+    usuario_id: usuarioId,
+    token,
+    expires_at: expiresAt,
+    ip_address: ipAddress,
+    user_agent: userAgent,
+  });
 
-    return refreshToken;
+  return refreshToken;
 }
 
 /**
- * Valida un refresh token
- * @param {string} token - Refresh token a validar
- * @returns {Promise<Object|null>} Refresh token si es válido, null si no
+ * Validates a refresh token
+ * @param {string} token - Refresh token to validate
+ * @returns {Promise<Object|null>} Refresh token if valid, null otherwise
  */
 async function validateRefreshToken(token) {
-    const refreshToken = await RefreshToken.findOne({
-        where: {
-            token,
-            is_revoked: false,
-            expires_at: { [Op.gt]: new Date() }
-        }
-    });
+  const refreshToken = await RefreshToken.findOne({
+    where: {
+      token,
+      is_revoked: false,
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
 
-    return refreshToken;
+  return refreshToken;
 }
 
 /**
- * Revoca un refresh token
- * @param {string} token - Token a revocar
- * @returns {Promise<boolean>} true si se revocó, false si no existía
+ * Revokes a refresh token
+ * @param {string} token - Token to revoke
+ * @returns {Promise<boolean>} true if revoked, false if it did not exist
  */
 async function revokeRefreshToken(token) {
-    const refreshToken = await RefreshToken.findOne({ where: { token } });
+  const refreshToken = await RefreshToken.findOne({ where: { token } });
 
-    if (!refreshToken) {
-        return false;
-    }
+  if (!refreshToken) {
+    return false;
+  }
 
-    await refreshToken.update({
-        is_revoked: true,
-        revoked_at: new Date()
-    });
+  await refreshToken.update({
+    is_revoked: true,
+    revoked_at: new Date(),
+  });
 
-    return true;
+  return true;
 }
 
 /**
- * Revoca todos los refresh tokens de un usuario
- * @param {number} usuarioId - ID del usuario
- * @returns {Promise<number>} Cantidad de tokens revocados
+ * Revokes all refresh tokens for a user
+ * @param {number} usuarioId - User ID
+ * @returns {Promise<number>} Number of revoked tokens
  */
 async function revokeAllUserTokens(usuarioId) {
-    const result = await RefreshToken.update(
-        {
-            is_revoked: true,
-            revoked_at: new Date()
-        },
-        {
-            where: {
-                usuario_id: usuarioId,
-                is_revoked: false
-            }
-        }
-    );
-
-    return result[0]; // Cantidad de filas actualizadas
-}
-
-/**
- * Rota un refresh token (revoca el viejo y crea uno nuevo)
- * @param {string} oldToken - Token a rotar
- * @param {string} ipAddress - IP del cliente
- * @param {string} userAgent - User agent
- * @returns {Promise<Object>} Nuevo refresh token
- */
-async function rotateRefreshToken(oldToken, ipAddress = null, userAgent = null) {
-    const oldRefreshToken = await RefreshToken.findOne({ where: { token: oldToken } });
-
-    if (!oldRefreshToken) {
-        throw new Error('Refresh token no encontrado');
+  const result = await RefreshToken.update(
+    {
+      is_revoked: true,
+      revoked_at: new Date(),
+    },
+    {
+      where: {
+        usuario_id: usuarioId,
+        is_revoked: false,
+      },
     }
+  );
 
-    // Crear nuevo token
-    const newRefreshToken = await createRefreshToken(
-        oldRefreshToken.usuario_id,
-        ipAddress,
-        userAgent
-    );
-
-    // Revocar el viejo y vincular al nuevo
-    await oldRefreshToken.update({
-        is_revoked: true,
-        revoked_at: new Date(),
-        replaced_by_token: newRefreshToken.token
-    });
-
-    return newRefreshToken;
+  return result[0]; // Number of updated rows
 }
 
 /**
- * Limpia tokens expirados (ejecutar periódicamente)
- * @returns {Promise<number>} Cantidad de tokens eliminados
+ * Rotates a refresh token (revokes the old one and creates a new one)
+ * @param {string} oldToken - Token to rotate
+ * @param {string} ipAddress - Client IP
+ * @param {string} userAgent - User agent
+ * @returns {Promise<Object>} New refresh token
+ */
+async function rotateRefreshToken(
+  oldToken,
+  ipAddress = null,
+  userAgent = null
+) {
+  const oldRefreshToken = await RefreshToken.findOne({
+    where: { token: oldToken },
+  });
+
+  if (!oldRefreshToken) {
+    throw new Error("Refresh token not found");
+  }
+
+  // Create new token
+  const newRefreshToken = await createRefreshToken(
+    oldRefreshToken.usuario_id,
+    ipAddress,
+    userAgent
+  );
+
+  // Revoke the old one and link to the new one
+  await oldRefreshToken.update({
+    is_revoked: true,
+    revoked_at: new Date(),
+    replaced_by_token: newRefreshToken.token,
+  });
+
+  return newRefreshToken;
+}
+
+/**
+ * Cleans up expired tokens (run periodically)
+ * @returns {Promise<number>} Number of deleted tokens
  */
 async function cleanupExpiredTokens() {
-    const result = await RefreshToken.destroy({
-        where: {
-            expires_at: { [Op.lt]: new Date() }
-        }
-    });
+  const result = await RefreshToken.destroy({
+    where: {
+      expires_at: { [Op.lt]: new Date() },
+    },
+  });
 
-    return result;
+  return result;
 }
 
 /**
- * Verifica un access token JWT
+ * Verifies a JWT access token
  * @param {string} token - Access token
- * @returns {Object|null} Payload si es válido, null si no
+ * @returns {Object|null} Payload if valid, null otherwise
  */
 function verifyAccessToken(token) {
-    try {
-        return jwt.verify(token, config.jwtSecret);
-    } catch (error) {
-        return null;
-    }
+  try {
+    return jwt.verify(token, config.jwtSecret);
+  } catch (_error) {
+    return null;
+  }
 }
 
 module.exports = {
-    TOKEN_EXPIRATION,
-    generateAccessToken,
-    generateRefreshTokenString,
-    createRefreshToken,
-    validateRefreshToken,
-    revokeRefreshToken,
-    revokeAllUserTokens,
-    rotateRefreshToken,
-    cleanupExpiredTokens,
-    verifyAccessToken
+  TOKEN_EXPIRATION,
+  generateAccessToken,
+  generateRefreshTokenString,
+  createRefreshToken,
+  validateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserTokens,
+  rotateRefreshToken,
+  cleanupExpiredTokens,
+  verifyAccessToken,
 };

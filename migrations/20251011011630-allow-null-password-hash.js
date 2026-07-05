@@ -1,18 +1,18 @@
-'use strict';
+"use strict";
 
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
-  async up (queryInterface, Sequelize) {
-    await queryInterface.changeColumn('usuarios', 'password_hash', {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.changeColumn("usuarios", "password_hash", {
       type: Sequelize.STRING,
-      allowNull: true
+      allowNull: true,
     });
   },
 
-  async down (queryInterface, Sequelize) {
-    await queryInterface.changeColumn('usuarios', 'password_hash', {
+  async down(queryInterface, Sequelize) {
+    await queryInterface.changeColumn("usuarios", "password_hash", {
       type: Sequelize.STRING,
-      allowNull: false
+      allowNull: false,
     });
-  }
+  },
 };

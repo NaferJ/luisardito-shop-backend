@@ -1,216 +1,217 @@
-const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
-const { Routes } = require('discord-api-types/v9');
-const config = require('../../config');
-const logger = require('../utils/logger');
-const KickBotCommandHandlerService = require('./kickBotCommandHandler.service');
+const { Client, GatewayIntentBits } = require("discord.js");
+const config = require("../../config");
+const logger = require("../utils/logger");
+const KickBotCommandHandlerService = require("./kickBotCommandHandler.service");
 
 /**
- * Servicio para el bot de Discord
- * Usa la misma lógica de comandos que el bot de Kick
+ * Discord bot service
+ * Uses the same command logic as the Kick bot
  */
 class DiscordBotService {
-    constructor() {
-        this.client = null;
-        this.commandHandler = KickBotCommandHandlerService;
-        this.isReady = false;
+  constructor() {
+    this.client = null;
+    this.commandHandler = KickBotCommandHandlerService;
+    this.isReady = false;
+  }
+
+  /**
+   * Initialize and connect the Discord bot
+   */
+  async initialize() {
+    try {
+      logger.info("[Discord Bot] Initializing Discord bot...");
+
+      // Check configuration
+      if (!config.discord?.botToken) {
+        logger.warn(
+          "[Discord Bot] DISCORD_BOT_TOKEN not configured, bot disabled"
+        );
+        return false;
+      }
+
+      // Create Discord client
+      this.client = new Client({
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent,
+        ],
+      });
+
+      // Event: Bot ready
+      this.client.once("ready", () => {
+        logger.info(`[Discord Bot] Bot connected as ${this.client.user.tag}`);
+        this.isReady = true;
+      });
+
+      // Event: Message received
+      this.client.on("messageCreate", async (message) => {
+        await this.handleMessage(message);
+      });
+
+      // Event: Error
+      this.client.on("error", (error) => {
+        logger.error("[Discord Bot] Error:", error);
+      });
+
+      // Connect the bot
+      await this.client.login(config.discord.botToken);
+      logger.info("[Discord Bot] Bot initialized successfully");
+
+      return true;
+    } catch (error) {
+      logger.error("[Discord Bot] Error initializing bot:", error);
+      return false;
     }
+  }
 
-    /**
-     * Inicializar y conectar el bot de Discord
-     */
-    async initialize() {
-        try {
-            logger.info('[Discord Bot] 🚀 Inicializando bot de Discord...');
+  /**
+   * Handle Discord chat messages
+   */
+  async handleMessage(message) {
+    try {
+      // Ignore messages from the bot itself
+      if (message.author.bot) return;
 
-            // Verificar configuración
-            if (!config.discord?.botToken) {
-                logger.warn('[Discord Bot] ⚠️ DISCORD_BOT_TOKEN no configurado, bot desactivado');
-                return false;
-            }
+      // Only process in the configured guild (if specified)
+      if (
+        config.discord?.guildId &&
+        message.guild?.id !== config.discord.guildId
+      ) {
+        return;
+      }
 
-            // Crear cliente de Discord
-            this.client = new Client({
-                intents: [
-                    GatewayIntentBits.Guilds,
-                    GatewayIntentBits.GuildMessages,
-                    GatewayIntentBits.MessageContent,
-                ],
-            });
+      const content = message.content.trim();
+      const username = message.author.username;
+      const channelName = message.guild?.name || "Discord";
 
-            // Evento: Bot listo
-            this.client.once('ready', () => {
-                logger.info(`[Discord Bot] ✅ Bot conectado como ${this.client.user.tag}`);
-                this.isReady = true;
-            });
+      logger.info(`[Discord Bot] Message from ${username}: ${content}`);
 
-            // Evento: Mensaje recibido
-            this.client.on('messageCreate', async (message) => {
-                await this.handleMessage(message);
-            });
+      // Process commands (same system as Kick)
+      if (content.startsWith("!")) {
+        const commandProcessed = await this.commandHandler.processMessage(
+          content,
+          username,
+          channelName,
+          this, // Pass this as bot service
+          message, // Pass the message as context
+          "discord", // Indicate it comes from Discord
+          message.author.id // Pass the Discord user ID
+        );
 
-            // Evento: Error
-            this.client.on('error', (error) => {
-                logger.error('[Discord Bot] ❌ Error:', error);
-            });
-
-            // Conectar el bot
-            await this.client.login(config.discord.botToken);
-            logger.info('[Discord Bot] 🎉 Bot inicializado exitosamente');
-
-            return true;
-        } catch (error) {
-            logger.error('[Discord Bot] ❌ Error inicializando bot:', error);
-            return false;
+        if (commandProcessed) {
+          logger.info(`[Discord Bot] Command processed for ${username}`);
         }
+      }
+    } catch (error) {
+      logger.error("[Discord Bot] Error handling message:", error);
     }
+  }
 
-    /**
-     * Manejar mensajes del chat de Discord
-     */
-    async handleMessage(message) {
-        try {
-            // Ignorar mensajes del bot mismo
-            if (message.author.bot) return;
+  /**
+   * Send message to the current channel
+   * @param {string|object} content - Message content (string or embed object)
+   * @param {object} message - Discord message object (optional)
+   */
+  async sendMessage(content, message = null) {
+    try {
+      if (!this.isReady) {
+        logger.warn("[Discord Bot] Bot is not ready to send messages");
+        return { ok: false, error: "Bot not ready" };
+      }
 
-            // Solo procesar en el servidor configurado (si está especificado)
-            if (config.discord?.guildId && message.guild?.id !== config.discord.guildId) {
-                return;
-            }
-
-            const content = message.content.trim();
-            const username = message.author.username;
-            const channelName = message.guild?.name || 'Discord';
-
-            logger.info(`[Discord Bot] 📨 Mensaje de ${username}: ${content}`);
-
-            // Procesar comandos (mismo sistema que Kick)
-            if (content.startsWith('!')) {
-                const commandProcessed = await this.commandHandler.processMessage(
-                    content,
-                    username,
-                    channelName,
-                    this, // Pasar this como bot service
-                    message, // Pasar el mensaje como contexto
-                    'discord', // Indicar que viene de Discord
-                    message.author.id // Pasar el Discord user ID
-                );
-
-                if (commandProcessed) {
-                    logger.info(`[Discord Bot] ✅ Comando procesado para ${username}`);
-                }
-            }
-        } catch (error) {
-            logger.error('[Discord Bot] ❌ Error manejando mensaje:', error);
+      // If we have a context message, reply in that channel
+      if (message) {
+        if (typeof content === "string") {
+          await message.reply(content);
+        } else if (content && typeof content === "object") {
+          // Check if it is an object with embeds (multiple embeds)
+          if (content.embeds) {
+            await message.reply({ embeds: content.embeds });
+          }
+          // Check if it is an individual embed (backwards compatibility)
+          else if (content.data) {
+            await message.reply({ embeds: [content] });
+          } else {
+            await message.reply(String(content));
+          }
+        } else {
+          await message.reply(String(content));
         }
+        logger.info(`[Discord Bot] Message sent as reply`);
+        return { ok: true };
+      }
+
+      // If no context, look for a default channel
+      // This requires more configuration, for now just reply
+      logger.warn("[Discord Bot] No message context to send reply");
+      return { ok: false, error: "No message context" };
+    } catch (error) {
+      logger.error("[Discord Bot] Error sending message:", error);
+      return { ok: false, error: error.message };
     }
+  }
 
-    /**
-     * Enviar mensaje al canal actual
-     * @param {string|object} content - Contenido del mensaje (string o embed object)
-     * @param {object} message - Objeto de mensaje de Discord (opcional)
-     */
-    async sendMessage(content, message = null) {
-        try {
-            if (!this.isReady) {
-                logger.warn('[Discord Bot] ⚠️ Bot no está listo para enviar mensajes');
-                return { ok: false, error: 'Bot not ready' };
-            }
+  /**
+   * Send message to a specific channel
+   * @param {string} channelId - Channel ID
+   * @param {string|object} content - Message content (string or embed object)
+   */
+  async sendMessageToChannel(channelId, content) {
+    try {
+      if (!this.isReady) {
+        return { ok: false, error: "Bot not ready" };
+      }
 
-            // Si tenemos un mensaje de contexto, responder en ese canal
-            if (message) {
-                if (typeof content === 'string') {
-                    await message.reply(content);
-                } else if (content && typeof content === 'object') {
-                    // Verificar si es un objeto con embeds (múltiples embeds)
-                    if (content.embeds) {
-                        await message.reply({ embeds: content.embeds });
-                    }
-                    // Verificar si es un embed individual (compatibilidad hacia atrás)
-                    else if (content.data) {
-                        await message.reply({ embeds: [content] });
-                    }
-                    else {
-                        await message.reply(String(content));
-                    }
-                } else {
-                    await message.reply(String(content));
-                }
-                logger.info(`[Discord Bot] 📤 Mensaje enviado como respuesta`);
-                return { ok: true };
-            }
-
-            // Si no hay contexto, buscar un canal por defecto
-            // Esto requiere más configuración, por ahora solo responder
-            logger.warn('[Discord Bot] ⚠️ No hay contexto de mensaje para enviar respuesta');
-            return { ok: false, error: 'No message context' };
-
-        } catch (error) {
-            logger.error('[Discord Bot] ❌ Error enviando mensaje:', error);
-            return { ok: false, error: error.message };
+      const channel = await this.client.channels.fetch(channelId);
+      if (channel && channel.isTextBased()) {
+        if (typeof content === "string") {
+          await channel.send(content);
+        } else if (content && typeof content === "object") {
+          // Check if it is an object with embeds (multiple embeds)
+          if (content.embeds) {
+            await channel.send({ embeds: content.embeds });
+          }
+          // Check if it is an individual embed (backwards compatibility)
+          else if (content.data) {
+            await channel.send({ embeds: [content] });
+          } else {
+            await channel.send(String(content));
+          }
+        } else {
+          await channel.send(String(content));
         }
+        logger.info(`[Discord Bot] Message sent to channel ${channelId}`);
+        return { ok: true };
+      } else {
+        return { ok: false, error: "Invalid channel" };
+      }
+    } catch (error) {
+      logger.error("[Discord Bot] Error sending message to channel:", error);
+      return { ok: false, error: error.message };
     }
+  }
 
-    /**
-     * Enviar mensaje a un canal específico
-     * @param {string} channelId - ID del canal
-     * @param {string|object} content - Contenido del mensaje (string o embed object)
-     */
-    async sendMessageToChannel(channelId, content) {
-        try {
-            if (!this.isReady) {
-                return { ok: false, error: 'Bot not ready' };
-            }
-
-            const channel = await this.client.channels.fetch(channelId);
-            if (channel && channel.isTextBased()) {
-                if (typeof content === 'string') {
-                    await channel.send(content);
-                } else if (content && typeof content === 'object') {
-                    // Verificar si es un objeto con embeds (múltiples embeds)
-                    if (content.embeds) {
-                        await channel.send({ embeds: content.embeds });
-                    }
-                    // Verificar si es un embed individual (compatibilidad hacia atrás)
-                    else if (content.data) {
-                        await channel.send({ embeds: [content] });
-                    }
-                    else {
-                        await channel.send(String(content));
-                    }
-                } else {
-                    await channel.send(String(content));
-                }
-                logger.info(`[Discord Bot] 📤 Mensaje enviado a canal ${channelId}`);
-                return { ok: true };
-            } else {
-                return { ok: false, error: 'Invalid channel' };
-            }
-        } catch (error) {
-            logger.error('[Discord Bot] ❌ Error enviando mensaje a canal:', error);
-            return { ok: false, error: error.message };
-        }
+  /**
+   * Disconnect the bot
+   */
+  async disconnect() {
+    if (this.client) {
+      await this.client.destroy();
+      this.isReady = false;
+      logger.info("[Discord Bot] Bot disconnected");
     }
+  }
 
-    /**
-     * Desconectar el bot
-     */
-    async disconnect() {
-        if (this.client) {
-            await this.client.destroy();
-            this.isReady = false;
-            logger.info('[Discord Bot] 👋 Bot desconectado');
-        }
-    }
-
-    /**
-     * Verificar si el bot está listo
-     */
-    isBotReady() {
-        return this.isReady;
-    }
+  /**
+   * Check if the bot is ready
+   */
+  isBotReady() {
+    return this.isReady;
+  }
 }
 
-// Exportar tanto la clase como una instancia singleton
+// Export both the class and a singleton instance
 const instance = new DiscordBotService();
 module.exports = instance;
 module.exports.DiscordBotService = DiscordBotService;

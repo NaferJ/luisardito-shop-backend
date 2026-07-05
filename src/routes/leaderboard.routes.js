@@ -1,60 +1,69 @@
-const router = require('express').Router();
-const leaderboardCtrl = require('../controllers/leaderboard.controller');
-const auth = require('../middleware/auth.middleware');
-const authRequired = require('../middleware/authRequired.middleware');
-const permiso = require('../middleware/permisos.middleware');
+const router = require("express").Router();
+const leaderboardCtrl = require("../controllers/leaderboard.controller");
+const authRequired = require("../middleware/authRequired.middleware");
+const permiso = require("../middleware/permisos.middleware");
 
-// ✅ Rutas públicas - No requieren autenticación
+// Public routes - No authentication required
 
 /**
  * GET /api/leaderboard
- * Obtiene el leaderboard completo con indicadores de cambio de posición
+ * Gets the complete leaderboard with position change indicators
  * Query params: limit, offset, userId
  */
-router.get('/', leaderboardCtrl.getLeaderboard);
+router.get("/", leaderboardCtrl.getLeaderboard);
 
 /**
  * GET /api/leaderboard/top10
- * Obtiene el top 10 del leaderboard (endpoint optimizado)
+ * Gets the top 10 leaderboard (optimized endpoint)
  */
-router.get('/top10', leaderboardCtrl.getTop10);
+router.get("/top10", leaderboardCtrl.getTop10);
 
 /**
  * GET /api/leaderboard/stats
- * Obtiene estadísticas generales del leaderboard
+ * Gets general leaderboard statistics
  */
-router.get('/stats', leaderboardCtrl.getStats);
+router.get("/stats", leaderboardCtrl.getStats);
 
 /**
  * GET /api/leaderboard/user/:userId/history
- * Obtiene el historial de posiciones de un usuario específico
+ * Gets position history for a specific user
  * Query params: days (default: 7)
  */
-router.get('/user/:userId/history', leaderboardCtrl.getUserHistory);
+router.get("/user/:userId/history", leaderboardCtrl.getUserHistory);
 
-// ✅ Rutas protegidas - Requieren autenticación
+// Protected routes - Require authentication
 
 /**
  * GET /api/leaderboard/me
- * Obtiene la posición del usuario autenticado
+ * Gets the authenticated user's position
  */
-router.get('/me', authRequired, leaderboardCtrl.getMyPosition);
+router.get("/me", authRequired, leaderboardCtrl.getMyPosition);
 
-// ✅ Rutas de administración - Requieren permisos específicos
+// Admin routes - Require specific permissions
 
 /**
  * POST /api/leaderboard/snapshot
- * Crea un snapshot manual del leaderboard actual
- * Requiere permisos de administrador
+ * Creates a manual snapshot of the current leaderboard
+ * Requires admin permissions
  */
-router.post('/snapshot', authRequired, permiso('gestionar_usuarios'), leaderboardCtrl.createSnapshot);
+router.post(
+  "/snapshot",
+  authRequired,
+  permiso("gestionar_usuarios"),
+  leaderboardCtrl.createSnapshot
+);
 
 /**
  * DELETE /api/leaderboard/snapshots/old
- * Limpia snapshots antiguos del leaderboard
+ * Cleans old leaderboard snapshots
  * Query params: days (default: 30)
- * Requiere permisos de administrador
+ * Requires admin permissions
  */
-router.delete('/snapshots/old', authRequired, permiso('gestionar_usuarios'), leaderboardCtrl.cleanOldSnapshots);
+router.delete(
+  "/snapshots/old",
+  authRequired,
+  permiso("gestionar_usuarios"),
+  leaderboardCtrl.cleanOldSnapshots
+);
 
 module.exports = router;

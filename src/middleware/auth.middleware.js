@@ -1,40 +1,43 @@
-const jwt = require('jsonwebtoken');
-const config = require('../../config');
-const { Usuario, Rol } = require('../models');
+const jwt = require("jsonwebtoken");
+const config = require("../../config");
+const { Usuario, Rol } = require("../models");
+const logger = require("../utils/logger");
 
 module.exports = async (req, res, next) => {
   try {
-    // ✅ 1. Buscar en COOKIES primero
+    // 1. Check COOKIES first
     let token = req.cookies?.auth_token;
-    
-    // ✅ 2. Fallback a Authorization header
-    if (!token && req.headers?.authorization?.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
+
+    // 2. Fallback to Authorization header
+    if (!token && req.headers?.authorization?.startsWith("Bearer ")) {
+      token = req.headers.authorization.split(" ")[1];
     }
-    
-    // ✅ 3. Si no hay token, permitir pasar (no es error)
+
+    // 3. If no token, allow passthrough (not an error)
     if (!token) {
       req.user = null;
       return next();
     }
-    
-    // Verificar token y obtener usuario
+
+    // Verify token and get user
     const payload = jwt.verify(token, config.jwtSecret);
     const user = await Usuario.findByPk(payload.userId, { include: Rol });
-    
+
     if (!user) {
       req.user = null;
       return next();
     }
-    
-    // Usuario autenticado correctamente
+
+    // User authenticated successfully
     req.user = user;
-    console.log('[Auth Middleware] ✅ Usuario autenticado:', user.nickname || user.id);
+    logger.info(
+      "[Auth Middleware] User authenticated:",
+      user.nickname || user.id
+    );
     next();
-    
   } catch (error) {
-    // ✅ 4. Si falla la verificación, permitir pasar (no es error)
-    console.error('[Auth Middleware] Error:', error.message);
+    // 4. If verification fails, allow passthrough (not an error)
+    logger.error("[Auth Middleware] Error:", error.message);
     req.user = null;
     next();
   }

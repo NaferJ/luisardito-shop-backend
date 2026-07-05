@@ -1,52 +1,51 @@
 /**
- * Sistema de logging centralizado con control por variable de entorno
- * Los logs de debug pueden desactivarse en producción sin afectar errores críticos
+ * Centralized logging system with environment variable control
+ * Debug logs can be disabled in production without affecting critical errors
  */
 
-const isDevelopment = process.env.NODE_ENV !== 'production';
-const isDebugEnabled = process.env.DEBUG_LOGS === 'true';
+const isDevelopment = process.env.NODE_ENV !== "production";
+const isDebugEnabled = process.env.DEBUG_LOGS === "true";
 
-// Determinar si deben mostrarse los logs de debug
+// Determine if debug logs should be shown
 const shouldLog = isDevelopment || isDebugEnabled;
 
 /**
- * Logger principal con diferentes niveles
+ * Main logger with different levels
  */
 const logger = {
-    /**
-     * Logs informativos - pueden desactivarse en producción
-     */
-    info: (...args) => {
-        if (shouldLog) {
-            console.log(...args);
-        }
-    },
-
-    /**
-     * Logs de advertencia - pueden desactivarse en producción
-     */
-    warn: (...args) => {
-        if (shouldLog) {
-            console.warn(...args);
-        }
-    },
-
-    /**
-     * Logs de error - SIEMPRE se registran (críticos)
-     */
-    error: (...args) => {
-        console.error(...args);
-    },
-
-    /**
-     * Logs de debug - solo en desarrollo o cuando DEBUG_LOGS=true
-     */
-    debug: (...args) => {
-        if (shouldLog) {
-            console.log('[DEBUG]', ...args);
-        }
+  /**
+   * Info logs - can be disabled in production
+   */
+  info: (...args) => {
+    if (shouldLog) {
+      console.log(...args);
     }
+  },
+
+  /**
+   * Warning logs - can be disabled in production
+   */
+  warn: (...args) => {
+    if (shouldLog) {
+      console.warn(...args);
+    }
+  },
+
+  /**
+   * Error logs - ALWAYS logged (critical)
+   */
+  error: (...args) => {
+    console.error(...args);
+  },
+
+  /**
+   * Debug logs - only in development or when DEBUG_LOGS=true
+   */
+  debug: (...args) => {
+    if (shouldLog) {
+      console.log("[DEBUG]", ...args);
+    }
+  },
 };
 
 module.exports = logger;
-

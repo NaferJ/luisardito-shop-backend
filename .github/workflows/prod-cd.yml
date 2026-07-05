@@ -80,11 +80,11 @@ jobs:
             echo "DB_NAME=${{ secrets.PROD_DB_NAME }}" >> "$ENV_PATH"
             echo "DB_SSL=${{ secrets.PROD_DB_SSL }}" >> "$ENV_PATH"
             echo "DB_SSL_REJECT_UNAUTHORIZED=${{ secrets.PROD_DB_SSL_REJECT_UNAUTHORIZED }}" >> "$ENV_PATH"
-            
+
             # Docker Database & Cache credentials
             echo "MYSQL_ROOT_PASSWORD=${{ secrets.PROD_MYSQL_ROOT_PASSWORD }}" >> "$ENV_PATH"
             echo "MYSQL_PASSWORD=${{ secrets.PROD_DB_PASS }}" >> "$ENV_PATH"
-            
+
             echo "JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_ID=${{ secrets.PROD_KICK_CLIENT_ID }}" >> "$ENV_PATH"
             echo "KICK_CLIENT_SECRET=${{ secrets.PROD_KICK_CLIENT_SECRET }}" >> "$ENV_PATH"
@@ -144,7 +144,7 @@ jobs:
             echo "DISCORD_CLIENT_SECRET=${{ secrets.DISCORD_CLIENT_SECRET }}" >> "$ENV_PATH"
             echo "DISCORD_GUILD_ID=${{ secrets.DISCORD_GUILD_ID }}" >> "$ENV_PATH"
             echo "DISCORD_REDIRECT_URI=https://api.luisardito.com/api/auth/discord/callback" >> "$ENV_PATH"
-            
+
             echo "SEED_DEFAULT_PASSWORD=${{ secrets.SEED_DEFAULT_PASSWORD }}" >> "$ENV_PATH"
 
             # Kick Webhook signature verification

@@ -1,13 +1,15 @@
-'use strict';
+"use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
     // 1. Agregar permiso ver_historial_puntos al rol 2 (suscriptor)
-    await queryInterface.bulkInsert('rol_permisos', [
-      { id: 39, rol_id: 2, permiso_id: 9 }
-    ], { ignoreDuplicates: true });
+    await queryInterface.bulkInsert(
+      "rol_permisos",
+      [{ id: 39, rol_id: 2, permiso_id: 9 }],
+      { ignoreDuplicates: true }
+    );
 
-    console.log('✅ Permiso ver_historial_puntos agregado al rol suscriptor');
+    console.log("✅ Permiso ver_historial_puntos agregado al rol suscriptor");
 
     // 2. Opcional: Cambiar usuarios existentes con rol 2 a rol 1
     // (Comentado por seguridad - revisar caso por caso)
@@ -26,7 +28,7 @@ module.exports = {
 
   async down(queryInterface, Sequelize) {
     // Revertir cambios
-    await queryInterface.bulkDelete('rol_permisos', { id: 39 }, {});
-    console.log('✅ Permiso ver_historial_puntos removido del rol suscriptor');
-  }
+    await queryInterface.bulkDelete("rol_permisos", { id: 39 }, {});
+    console.log("✅ Permiso ver_historial_puntos removido del rol suscriptor");
+  },
 };

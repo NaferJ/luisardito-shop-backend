@@ -1,57 +1,57 @@
-const { KickBotCommand } = require('../models');
-const logger = require('../utils/logger');
-const { Op } = require('sequelize');
+const { KickBotCommand } = require("../models");
+const logger = require("../utils/logger");
+const { Op } = require("sequelize");
 
 /**
  * ==========================================
- * SISTEMA DE COMANDOS PARA MODERADORES
+ * MODERATOR COMMAND SYSTEM
  * ==========================================
  *
- * Permite a los moderadores gestionar comandos del bot directamente desde el chat de Kick
- * sin necesidad de acceder a la interfaz administrativa.
+ * Allows moderators to manage bot commands directly from the Kick chat
+ * without needing to access the admin interface.
  *
- * Comandos disponibles:
- * - !addcmd <nombre> <respuesta> [--aliases alias1,alias2] [--cooldown 3] [--desc "descripción"]
- * - !editcmd <nombre> [--response "nueva respuesta"] [--aliases alias1,alias2] [--cooldown 5] [--desc "nueva desc"]
- * - !delcmd <nombre>
- * - !cmdinfo <nombre>
+ * Available commands:
+ * - !addcmd <name> <response> [--aliases alias1,alias2] [--cooldown 3] [--desc "description"]
+ * - !editcmd <name> [--response "new response"] [--aliases alias1,alias2] [--cooldown 5] [--desc "new desc"]
+ * - !delcmd <name>
+ * - !cmdinfo <name>
  */
 
-// Lista de comandos protegidos que NO pueden ser eliminados
+// List of protected commands that CANNOT be deleted
 const PROTECTED_COMMANDS = [
-  'comandos',
-  'puntos',
-  'top',
-  'tienda',
-  'shop',
-  'leaderboard',
-  'rank',
-  'ranking'
+  "comandos",
+  "puntos",
+  "top",
+  "tienda",
+  "shop",
+  "leaderboard",
+  "rank",
+  "ranking",
 ];
 
 /**
- * Verifica si el usuario tiene permisos de moderador o broadcaster
- * @param {object} sender - Objeto sender del webhook de Kick
- * @param {object} broadcaster - Objeto broadcaster del webhook de Kick
+ * Checks if the user has moderator or broadcaster permissions
+ * @param {object} sender - Sender object from Kick webhook
+ * @param {object} broadcaster - Broadcaster object from Kick webhook
  * @returns {boolean}
  */
 function isModerator(sender, broadcaster) {
-  // El broadcaster siempre tiene permisos
+  // The broadcaster always has permissions
   if (sender.user_id === broadcaster.user_id) {
     return true;
   }
 
-  // Verificar si tiene badge de moderador
+  // Check if user has moderator badge
   const badges = sender.identity?.badges || [];
-  return badges.some(badge =>
-    badge.type === 'moderator' || badge.type === 'broadcaster'
+  return badges.some(
+    (badge) => badge.type === "moderator" || badge.type === "broadcaster"
   );
 }
 
 /**
- * Parsea un mensaje de comando de moderador y extrae los parámetros
- * @param {string} content - Contenido del mensaje completo
- * @returns {object|null} - { command, name, flags } o null si no es un comando válido
+ * Parses a moderator command message and extracts parameters
+ * @param {string} content - Full message content
+ * @returns {object|null} - { command, name, flags } or null if not a valid command
  */
 function parseModeratorCommand(content) {
   const trimmed = content.trim();
@@ -59,16 +59,21 @@ function parseModeratorCommand(content) {
 
   const command = parts[0]?.toLowerCase();
 
-  // Verificar si es un comando de moderador válido
-  const validCommands = ['!addcmd', '!editcmd', '!delcmd', '!cmdinfo'];
+  // Check if it is a valid moderator command
+  const validCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
   if (!validCommands.includes(command)) {
     return null;
   }
 
-  const name = parts[1]?.toLowerCase().replace(/^!/, '');
+  const name = parts[1]?.toLowerCase().replace(/^!/, "");
 
   if (!name) {
-    return { command, name: null, flags: {}, error: 'Debes especificar el nombre del comando' };
+    return {
+      command,
+      name: null,
+      flags: {},
+      error: "You must specify the command name",
+    };
   }
 
   const flags = {};
@@ -78,15 +83,15 @@ function parseModeratorCommand(content) {
   while (i < parts.length) {
     const part = parts[i];
 
-    if (part.startsWith('--')) {
+    if (part.startsWith("--")) {
       const flagName = part.substring(2);
       i++;
 
-      // Manejar valores entre comillas
-      let flagValue = '';
+      // Handle quoted values
+      let flagValue = "";
       if (i < parts.length) {
         if (parts[i].startsWith('"')) {
-          // Valor entre comillas
+          // Quoted value
           const quotedParts = [];
           while (i < parts.length) {
             quotedParts.push(parts[i]);
@@ -96,57 +101,60 @@ function parseModeratorCommand(content) {
             }
             i++;
           }
-          flagValue = quotedParts.join(' ').replace(/^"|"$/g, '');
+          flagValue = quotedParts.join(" ").replace(/^"|"$/g, "");
         } else {
-          // Valor simple
+          // Simple value
           flagValue = parts[i];
           i++;
         }
       }
 
-      if (flagName === 'aliases') {
-        flags.aliases = flagValue.split(',').map(a => a.trim().toLowerCase().replace(/^!/, '')).filter(a => a);
-      } else if (flagName === 'cooldown') {
+      if (flagName === "aliases") {
+        flags.aliases = flagValue
+          .split(",")
+          .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
+          .filter((a) => a);
+      } else if (flagName === "cooldown") {
         flags.cooldown = parseInt(flagValue) || 3;
-      } else if (flagName === 'desc') {
+      } else if (flagName === "desc") {
         flags.desc = flagValue;
-      } else if (flagName === 'response') {
+      } else if (flagName === "response") {
         flags.response = flagValue;
       }
     } else {
-      // Parte de la respuesta
+      // Response part
       responseWords.push(part);
       i++;
     }
   }
 
-  // Si hay palabras de respuesta sueltas (sin --response), asignarlas como respuesta
+  // If there are loose response words (without --response), assign them as the response
   if (responseWords.length > 0 && !flags.response) {
-    flags.response = responseWords.join(' ');
+    flags.response = responseWords.join(" ");
   }
 
   return { command, name, flags };
 }
 
 /**
- * Procesa un comando de moderador y ejecuta la acción correspondiente
- * @param {object} payload - Payload completo del webhook de Kick (chat.message.sent)
+ * Processes a moderator command and executes the corresponding action
+ * @param {object} payload - Full Kick webhook payload (chat.message.sent)
  * @returns {object} - { success, message, processed }
  */
 async function processModeratorCommand(payload) {
   try {
     const { content, sender, broadcaster } = payload;
 
-    // Verificar permisos
+    // Check permissions
     if (!isModerator(sender, broadcaster)) {
       return {
         success: false,
         processed: false,
-        message: null // No responder para no hacer spam
+        message: null, // Do not respond to avoid spam
       };
     }
 
-    // Parsear comando
+    // Parse command
     const parsed = parseModeratorCommand(content);
 
     if (!parsed) {
@@ -157,166 +165,166 @@ async function processModeratorCommand(payload) {
       return {
         success: false,
         processed: true,
-        message: parsed.error
+        message: parsed.error,
       };
     }
 
     const { command, name, flags } = parsed;
 
-    logger.info(`[MOD-CMD] ${sender.username} ejecutó: ${command} ${name}`);
+    logger.info(`[MOD-CMD] ${sender.username} executed: ${command} ${name}`);
 
-    // Ejecutar comando según el tipo
+    // Execute command based on type
     switch (command) {
-      case '!addcmd':
+      case "!addcmd":
         return await handleAddCommand(name, flags, sender);
 
-      case '!editcmd':
+      case "!editcmd":
         return await handleEditCommand(name, flags, sender);
 
-      case '!delcmd':
+      case "!delcmd":
         return await handleDeleteCommand(name, sender, broadcaster);
 
-      case '!cmdinfo':
+      case "!cmdinfo":
         return await handleCommandInfo(name);
 
       default:
         return { success: false, processed: false, message: null };
     }
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error procesando comando de moderador:', error);
+    logger.error("[MOD-CMD] Error processing moderator command:", error);
     return {
       success: false,
       processed: true,
-      message: 'No se pudo procesar el comando'
+      message: "Could not process the command",
     };
   }
 }
 
 /**
- * Maneja el comando !addcmd
+ * Handles the !addcmd command
  */
 async function handleAddCommand(name, flags, sender) {
   try {
-    // Validar que tenga respuesta
+    // Validate that it has a response
     if (!flags.response) {
       return {
         success: false,
         processed: true,
-        message: `Debes especificar una respuesta para el comando. Ejemplo: !addcmd ${name} Hola {username}`
+        message: `You must specify a response for the command. Example: !addcmd ${name} Hello {username}`,
       };
     }
 
-    // Verificar que el comando no exista
+    // Check that the command does not already exist
     const existing = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (existing) {
       return {
         success: false,
         processed: true,
-        message: `El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`
+        message: `Command "!${name}" already exists. Use !editcmd to modify it.`,
       };
     }
 
-    // Validar que los aliases no existan como comandos
+    // Validate that aliases do not already exist as commands
     if (flags.aliases && flags.aliases.length > 0) {
       const existingAliases = await KickBotCommand.findAll({
         where: {
-          [Op.or]: flags.aliases.map(alias => ({ command: alias }))
-        }
+          [Op.or]: flags.aliases.map((alias) => ({ command: alias })),
+        },
       });
 
       if (existingAliases.length > 0) {
-        const conflictingNames = existingAliases.map(c => c.command).join(', ');
+        const conflictingNames = existingAliases
+          .map((c) => c.command)
+          .join(", ");
         return {
           success: false,
           processed: true,
-          message: `Los siguientes aliases ya existen como comandos: ${conflictingNames}`
+          message: `The following aliases already exist as commands: ${conflictingNames}`,
         };
       }
     }
 
-    // Crear el comando
+    // Create the command
     const newCommand = await KickBotCommand.create({
       command: name,
       aliases: flags.aliases || [],
       response_message: flags.response,
-      description: flags.desc || `Comando creado por @${sender.username}`,
-      command_type: 'simple',
+      description: flags.desc || `Command created by @${sender.username}`,
+      command_type: "simple",
       enabled: true,
       requires_permission: false,
-      permission_level: 'viewer',
+      permission_level: "viewer",
       cooldown_seconds: flags.cooldown || 3,
       auto_send_interval_seconds: 0,
-      usage_count: 0
+      usage_count: 0,
     });
 
-    logger.info(`[MOD-CMD] Comando !${name} creado por ${sender.username}`);
+    logger.info(`[MOD-CMD] Command !${name} created by ${sender.username}`);
 
-    // Construir mensaje de confirmación
-    let confirmMsg = `Comando "!${name}" creado exitosamente`;
+    // Build confirmation message
+    let confirmMsg = `Command "!${name}" created successfully`;
     if (flags.aliases && flags.aliases.length > 0) {
-      confirmMsg += ` (Aliases: ${flags.aliases.join(', ')})`;
+      confirmMsg += ` (Aliases: ${flags.aliases.join(", ")})`;
     }
 
     return {
       success: true,
       processed: true,
       message: confirmMsg,
-      data: newCommand
+      data: newCommand,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error en handleAddCommand:', error);
+    logger.error("[MOD-CMD] Error in handleAddCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'No se pudo crear el comando'
+      message: "Could not create the command",
     };
   }
 }
 
 /**
- * Maneja el comando !editcmd
+ * Handles the !editcmd command
  */
 async function handleEditCommand(name, flags, sender) {
   try {
-    // Buscar el comando
+    // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `El comando "!${name}" no existe. Usa !addcmd para crearlo.`
+        message: `Command "!${name}" does not exist. Use !addcmd to create it.`,
       };
     }
 
-    // Validar que al menos se envíe un campo para actualizar
+    // Validate that at least one field is provided for update
     if (!flags.response && !flags.aliases && !flags.cooldown && !flags.desc) {
       return {
         success: false,
         processed: true,
-        message: `Debes especificar al menos un campo para actualizar. Ejemplo: !editcmd ${name} --response Nueva respuesta`
+        message: `You must specify at least one field to update. Example: !editcmd ${name} --response New response`,
       };
     }
 
-    // Actualizar solo los campos especificados
+    // Update only the specified fields
     const updates = {};
     const changes = [];
 
     if (flags.response) {
       updates.response_message = flags.response;
-      changes.push('respuesta');
+      changes.push("response");
     }
 
     if (flags.aliases) {
       updates.aliases = flags.aliases;
-      changes.push(`aliases (${flags.aliases.join(', ')})`);
+      changes.push(`aliases (${flags.aliases.join(", ")})`);
     }
 
     if (flags.cooldown !== undefined) {
@@ -326,134 +334,135 @@ async function handleEditCommand(name, flags, sender) {
 
     if (flags.desc) {
       updates.description = flags.desc;
-      changes.push('descripción');
+      changes.push("description");
     }
 
-    // Actualizar
+    // Update
     await command.update(updates);
 
-    logger.info(`[MOD-CMD] Comando !${name} editado por ${sender.username}: ${changes.join(', ')}`);
+    logger.info(
+      `[MOD-CMD] Command !${name} edited by ${sender.username}: ${changes.join(", ")}`
+    );
 
     return {
       success: true,
       processed: true,
-      message: `Comando "!${name}" actualizado: ${changes.join(', ')}`,
-      data: command
+      message: `Command "!${name}" updated: ${changes.join(", ")}`,
+      data: command,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error en handleEditCommand:', error);
+    logger.error("[MOD-CMD] Error in handleEditCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'No se pudo editar el comando'
+      message: "Could not edit the command",
     };
   }
 }
 
 /**
- * Maneja el comando !delcmd
+ * Handles the !delcmd command
  */
 async function handleDeleteCommand(name, sender, broadcaster) {
   try {
-    // Verificar si el comando está protegido
+    // Check if the command is protected
     if (PROTECTED_COMMANDS.includes(name)) {
       return {
         success: false,
         processed: true,
-        message: `El comando "!${name}" está protegido y no puede ser eliminado`
+        message: `Command "!${name}" is protected and cannot be deleted`,
       };
     }
 
-    // Solo el broadcaster puede eliminar comandos
+    // Only the broadcaster can delete commands
     if (sender.user_id !== broadcaster.user_id) {
       return {
         success: false,
         processed: true,
-        message: `Solo @${broadcaster.username} puede eliminar comandos`
+        message: `Only @${broadcaster.username} can delete commands`,
       };
     }
 
-    // Buscar el comando
+    // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `El comando "!${name}" no existe`
+        message: `Command "!${name}" does not exist`,
       };
     }
 
-    // Eliminar
+    // Delete
     await command.destroy();
 
-    logger.info(`[MOD-CMD] Comando !${name} eliminado por ${sender.username}`);
+    logger.info(`[MOD-CMD] Command !${name} deleted by ${sender.username}`);
 
     return {
       success: true,
       processed: true,
-      message: `Comando "!${name}" eliminado exitosamente`
+      message: `Command "!${name}" deleted successfully`,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error en handleDeleteCommand:', error);
+    logger.error("[MOD-CMD] Error in handleDeleteCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'No se pudo eliminar el comando'
+      message: "Could not delete the command",
     };
   }
 }
 
 /**
- * Maneja el comando !cmdinfo
+ * Handles the !cmdinfo command
  */
 async function handleCommandInfo(name) {
   try {
-    // Buscar el comando
+    // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `El comando "!${name}" no existe`
+        message: `Command "!${name}" does not exist`,
       };
     }
 
-    // Construir mensaje informativo
-    const aliases = command.aliases && command.aliases.length > 0
-      ? command.aliases.join(', ')
-      : 'ninguno';
+    // Build info message
+    const aliases =
+      command.aliases && command.aliases.length > 0
+        ? command.aliases.join(", ")
+        : "none";
 
-    const estado = command.enabled ? 'Activo' : 'Desactivado';
+    const estado = command.enabled ? "Active" : "Disabled";
 
-    // Mostrar la respuesta COMPLETA sin truncar
-    const message = `Informacion del comando "!${name}" | ` +
-      `Respuesta: ${command.response_message} | ` +
+    // Show the FULL response without truncation
+    const message =
+      `Command info for "!${name}" | ` +
+      `Response: ${command.response_message} | ` +
       `Aliases: ${aliases} | ` +
       `Cooldown: ${command.cooldown_seconds}s | ` +
-      `Estado: ${estado} | ` +
-      `Usos: ${command.usage_count}`;
+      `Status: ${estado} | ` +
+      `Uses: ${command.usage_count}`;
 
     return {
       success: true,
       processed: true,
       message,
-      data: command
+      data: command,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error en handleCommandInfo:', error);
+    logger.error("[MOD-CMD] Error in handleCommandInfo:", error);
     return {
       success: false,
       processed: true,
-      message: 'No se pudo obtener la informacion del comando'
+      message: "Could not get command info",
     };
   }
 }
@@ -461,6 +470,5 @@ async function handleCommandInfo(name) {
 module.exports = {
   processModeratorCommand,
   isModerator,
-  parseModeratorCommand
+  parseModeratorCommand,
 };
-

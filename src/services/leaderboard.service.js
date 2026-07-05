@@ -7,14 +7,14 @@ const logger = require("../utils/logger");
 const { Op } = require("sequelize");
 
 /**
- * Función helper para enriquecer información de usuario con datos de Discord
- * @param {Object} user - Instancia del modelo Usuario
- * @returns {Object} Información enriquecida de Discord
+ * Helper function to enrich user info with Discord data
+ * @param {Object} user - Usuario model instance
+ * @returns {Object} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
   const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id }
+    where: { tienda_user_id: user.id },
   });
 
   if (discordLink) {
@@ -25,49 +25,51 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
-        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-        : discordLink.discord_username
+      display_name:
+        discordLink.discord_discriminator &&
+        discordLink.discord_discriminator !== "0"
+          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+          : discordLink.discord_username,
     };
   }
 
   return {
     discord_info: discordInfo,
-    display_name: discordInfo?.display_name || user.nickname
+    display_name: discordInfo?.display_name || user.nickname,
   };
 }
 
 class LeaderboardService {
   /**
-   * Obtiene el leaderboard actual con indicadores de cambio de posición
-   * @param {Object} options - Opciones de consulta
-   * @param {number} options.limit - Número de usuarios a retornar (default: 100)
-   * @param {number} options.offset - Offset para paginación (default: 0)
-   * @param {number} options.userId - ID de usuario específico para buscar su posición
-   * @returns {Object} Leaderboard con posiciones y cambios
+   * Gets the current leaderboard with position change indicators
+   * @param {Object} options - Query options
+   * @param {number} options.limit - Number of users to return (default: 100)
+   * @param {number} options.offset - Offset for pagination (default: 0)
+   * @param {number} options.userId - Specific user ID to find their position
+   * @returns {Object} Leaderboard with positions and changes
    */
   async getLeaderboard({ limit = 100, offset = 0, userId = null } = {}) {
     try {
-      // 1. Obtener el ranking actual
+      // 1. Get current ranking
       const currentRanking = await this._getCurrentRanking();
 
-      // 2. Obtener el último snapshot para comparar posiciones
+      // 2. Get last snapshot to compare positions
       const lastSnapshot = await this._getLastSnapshot();
 
-      // 3. Combinar datos actuales con históricos para detectar cambios
+      // 3. Combine current data with historical to detect changes
       const leaderboardWithChanges = this._calculatePositionChanges(
         currentRanking,
-        lastSnapshot,
+        lastSnapshot
       );
 
-      // 4. Si se solicita un usuario específico, incluir su posición aunque esté fuera del top
+      // 4. If a specific user is requested, include their position even if outside the top
       let userPosition = null;
       if (userId) {
         userPosition = leaderboardWithChanges.find(
-          (u) => u.usuario_id === userId,
+          (u) => u.usuario_id === userId
         );
         if (!userPosition) {
-          // El usuario está fuera del ranking actual, buscarlo manualmente
+          // User is outside the current ranking, find them manually
           const { UserWatchtime } = require("../models");
 
           const usuario = await Usuario.findByPk(userId, {
@@ -77,15 +79,15 @@ class LeaderboardService {
                 as: "watchtime",
                 attributes: ["total_watchtime_minutes", "message_count"],
                 required: false,
-              }
-            ]
+              },
+            ],
           });
 
           if (usuario) {
             const position =
               currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
 
-            // Obtener estado de suscriptor desde KickUserTracking
+            // Get subscriber status from KickUserTracking
             let isSubscriber = false;
             if (usuario.user_id_ext) {
               const userTracking = await KickUserTracking.findOne({
@@ -103,8 +105,9 @@ class LeaderboardService {
               }
             }
 
-            // Enriquecer con información de Discord
-            const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+            // Enrich with Discord info
+            const { discord_info, display_name } =
+              await enrichUserWithDiscordInfo(usuario);
 
             userPosition = {
               usuario_id: usuario.id,
@@ -112,7 +115,8 @@ class LeaderboardService {
               display_name,
               puntos: usuario.puntos,
               max_puntos: usuario.max_puntos || 0,
-              watchtime_minutes: usuario.watchtime?.total_watchtime_minutes || 0,
+              watchtime_minutes:
+                usuario.watchtime?.total_watchtime_minutes || 0,
               message_count: usuario.watchtime?.message_count || 0,
               position: position || currentRanking.length + 1,
               position_change: 0,
@@ -126,13 +130,13 @@ class LeaderboardService {
         }
       }
 
-      // 5. Aplicar paginación
+      // 5. Apply pagination
       const paginatedData = leaderboardWithChanges.slice(
         offset,
-        offset + limit,
+        offset + limit
       );
 
-      // 6. Obtener información del próximo reset
+      // 6. Get next reset info
       const resetInfo = await this._getNextResetDate();
 
       return {
@@ -150,13 +154,13 @@ class LeaderboardService {
         user_position: userPosition,
       };
     } catch (error) {
-      logger.error("❌ Error al obtener leaderboard:", error);
+      logger.error("Error getting leaderboard:", error);
       throw error;
     }
   }
 
   /**
-   * Obtiene el ranking actual de usuarios ordenado por puntos
+   * Gets the current user ranking sorted by points
    * @private
    */
   async _getCurrentRanking() {
@@ -165,7 +169,7 @@ class LeaderboardService {
     const usuarios = await Usuario.findAll({
       where: {
         puntos: {
-          [Op.gt]: 0, // Solo usuarios con puntos
+          [Op.gt]: 0, // Only users with points
         },
       },
       attributes: [
@@ -185,16 +189,16 @@ class LeaderboardService {
           as: "watchtime",
           attributes: ["total_watchtime_minutes", "message_count"],
           required: false,
-        }
+        },
       ],
       order: [
         ["puntos", "DESC"],
-        ["creado", "ASC"], // En caso de empate, el más antiguo primero
+        ["creado", "ASC"], // On tie, oldest first
       ],
       raw: true,
     });
 
-    // Asignar posiciones y obtener estado de suscriptor desde KickUserTracking
+    // Assign positions and get subscriber status from KickUserTracking
     const usuariosConPosicion = await Promise.all(
       usuarios.map(async (usuario, index) => {
         const isVipActive =
@@ -202,7 +206,7 @@ class LeaderboardService {
           (!usuario.vip_expires_at ||
             new Date(usuario.vip_expires_at) > new Date());
 
-        // Obtener estado de suscriptor desde KickUserTracking
+        // Get subscriber status from KickUserTracking
         let isSubscriber = false;
         if (usuario.user_id_ext) {
           const userTracking = await KickUserTracking.findOne({
@@ -220,10 +224,10 @@ class LeaderboardService {
           }
         }
 
-        // Enriquecer con información de Discord
+        // Enrich with Discord info
         const { discord_info, display_name } = await enrichUserWithDiscordInfo({
           id: usuario.id,
-          nickname: usuario.nickname
+          nickname: usuario.nickname,
         });
 
         return {
@@ -240,14 +244,14 @@ class LeaderboardService {
           kick_data: usuario.kick_data,
           discord_info,
         };
-      }),
+      })
     );
 
     return usuariosConPosicion;
   }
 
   /**
-   * Obtiene el último snapshot guardado
+   * Gets the last saved snapshot
    * @private
    */
   async _getLastSnapshot() {
@@ -265,7 +269,7 @@ class LeaderboardService {
       raw: true,
     });
 
-    // Crear un mapa para acceso rápido
+    // Create a map for quick access
     return snapshots.reduce((acc, snapshot) => {
       acc[snapshot.usuario_id] = {
         position: snapshot.position,
@@ -276,32 +280,34 @@ class LeaderboardService {
   }
 
   /**
-   * Calcula la fecha del próximo reset del leaderboard
-   * El reset ocurre cada LEADERBOARD_SNAPSHOT_INTERVAL_HOURS (336 horas = 14 días)
+   * Calculates the next leaderboard reset date
+   * Reset occurs every LEADERBOARD_SNAPSHOT_INTERVAL_HOURS (336 hours = 14 days)
    * @private
    */
   async _getNextResetDate() {
     try {
-      const RESET_INTERVAL_HOURS = parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336);
+      const RESET_INTERVAL_HOURS = parseInt(
+        process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336
+      );
 
       const lastSnapshotDate = await LeaderboardSnapshot.max("snapshot_date");
 
       if (!lastSnapshotDate) {
-        // Si no hay snapshots, el próximo reset es en 336 horas desde ahora
+        // If no snapshots, next reset is in 336 hours from now
         const nextReset = new Date();
         nextReset.setHours(nextReset.getHours() + RESET_INTERVAL_HOURS);
         return {
           next_reset_date: nextReset,
           days_until_reset: Math.ceil(RESET_INTERVAL_HOURS / 24),
-          hours_until_reset: RESET_INTERVAL_HOURS
+          hours_until_reset: RESET_INTERVAL_HOURS,
         };
       }
 
-      // Calcular próximo reset
+      // Calculate next reset
       const nextReset = new Date(lastSnapshotDate);
       nextReset.setHours(nextReset.getHours() + RESET_INTERVAL_HOURS);
 
-      // Calcular tiempo restante
+      // Calculate remaining time
       const now = new Date();
       const timeDiff = nextReset - now;
       const hoursUntilReset = Math.ceil(timeDiff / (1000 * 60 * 60));
@@ -310,20 +316,20 @@ class LeaderboardService {
       return {
         next_reset_date: nextReset,
         days_until_reset: Math.max(0, daysUntilReset),
-        hours_until_reset: Math.max(0, hoursUntilReset)
+        hours_until_reset: Math.max(0, hoursUntilReset),
       };
     } catch (error) {
-      logger.error("Error calculando próximo reset:", error);
+      logger.error("Error calculating next reset:", error);
       return {
         next_reset_date: null,
         days_until_reset: null,
-        hours_until_reset: null
+        hours_until_reset: null,
       };
     }
   }
 
   /**
-   * Calcula los cambios de posición comparando ranking actual con snapshot anterior
+   * Calculates position changes by comparing current ranking with previous snapshot
    * @private
    */
   _calculatePositionChanges(currentRanking, lastSnapshotMap) {
@@ -331,20 +337,20 @@ class LeaderboardService {
       const previous = lastSnapshotMap[current.usuario_id];
 
       let position_change = 0;
-      let change_indicator = "neutral"; // 'up', 'down', 'neutral', 'new'
+      let change_indicator;
 
       if (!previous) {
-        // Usuario nuevo en el ranking
+        // New user in the ranking
         change_indicator = "new";
       } else {
         position_change = previous.position - current.position;
 
         if (position_change > 0) {
-          change_indicator = "up"; // Subió de posición (número menor = mejor)
+          change_indicator = "up"; // Moved up (lower number = better)
         } else if (position_change < 0) {
-          change_indicator = "down"; // Bajó de posición
+          change_indicator = "down"; // Moved down
         } else {
-          change_indicator = "neutral"; // Mantuvo su posición
+          change_indicator = "neutral"; // No change
         }
       }
 
@@ -359,14 +365,14 @@ class LeaderboardService {
   }
 
   /**
-   * Crea un snapshot del leaderboard actual
-   * Este método debería ejecutarse periódicamente (ej: cada hora, cada día)
+   * Creates a snapshot of the current leaderboard
+   * This method should run periodically (e.g.: every hour, every day)
    */
   async createSnapshot() {
     const transaction = await sequelize.transaction();
 
     try {
-      logger.info("📸 Creando snapshot del leaderboard...");
+      logger.info("Creating leaderboard snapshot...");
 
       const currentRanking = await this._getCurrentRanking();
       const snapshotDate = new Date();
@@ -387,7 +393,7 @@ class LeaderboardService {
       await transaction.commit();
 
       logger.info(
-        `✅ Snapshot creado exitosamente: ${snapshotRecords.length} usuarios registrados`,
+        `Snapshot created successfully: ${snapshotRecords.length} users registered`
       );
 
       return {
@@ -397,14 +403,14 @@ class LeaderboardService {
       };
     } catch (error) {
       await transaction.rollback();
-      logger.error("❌ Error al crear snapshot del leaderboard:", error);
+      logger.error("Error creating leaderboard snapshot:", error);
       throw error;
     }
   }
 
   /**
-   * Limpia snapshots antiguos para mantener la base de datos optimizada
-   * @param {number} daysToKeep - Días de histórico a mantener (default: 30)
+   * Cleans old snapshots to keep the database optimized
+   * @param {number} daysToKeep - Days of history to keep (default: 30)
    */
   async cleanOldSnapshots(daysToKeep = 30) {
     try {
@@ -419,24 +425,22 @@ class LeaderboardService {
         },
       });
 
-      logger.info(
-        `🧹 Limpieza de snapshots: ${deleted} registros antiguos eliminados`,
-      );
+      logger.info(`Snapshot cleanup: ${deleted} old records removed`);
 
       return {
         success: true,
         deleted_count: deleted,
       };
     } catch (error) {
-      logger.error("❌ Error al limpiar snapshots antiguos:", error);
+      logger.error("Error cleaning old snapshots:", error);
       throw error;
     }
   }
 
   /**
-   * Obtiene el historial de posiciones de un usuario específico
-   * @param {number} userId - ID del usuario
-   * @param {number} days - Días de histórico a retornar (default: 7)
+   * Gets position history for a specific user
+   * @param {number} userId - User ID
+   * @param {number} days - Days of history to return (default: 7)
    */
   async getUserPositionHistory(userId, days = 7) {
     try {
@@ -455,7 +459,7 @@ class LeaderboardService {
         raw: true,
       });
 
-      // Agregar posición actual si no hay snapshot reciente
+      // Add current position if there is no recent snapshot
       const lastSnapshotDate =
         history.length > 0
           ? new Date(history[history.length - 1].snapshot_date)
@@ -465,7 +469,7 @@ class LeaderboardService {
         : Infinity;
 
       if (hoursSinceLastSnapshot > 1) {
-        // Si pasó más de 1 hora
+        // If more than 1 hour has passed
         const usuario = await Usuario.findByPk(userId);
         if (usuario) {
           const currentRanking = await this._getCurrentRanking();
@@ -485,16 +489,13 @@ class LeaderboardService {
         history,
       };
     } catch (error) {
-      logger.error(
-        `❌ Error al obtener historial del usuario ${userId}:`,
-        error,
-      );
+      logger.error(`Error getting history for user ${userId}:`, error);
       throw error;
     }
   }
 
   /**
-   * Obtiene estadísticas generales del leaderboard
+   * Gets general leaderboard statistics
    */
   async getLeaderboardStats() {
     try {
@@ -543,7 +544,7 @@ class LeaderboardService {
         },
       };
     } catch (error) {
-      logger.error("❌ Error al obtener estadísticas del leaderboard:", error);
+      logger.error("Error getting leaderboard statistics:", error);
       throw error;
     }
   }

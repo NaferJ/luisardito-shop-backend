@@ -5,7 +5,7 @@ const { sequelize } = require("./src/models");
 const config = require("./config");
 const logger = require("./src/utils/logger");
 
-// Servicios
+// Services
 const tokenRefreshService = require("./src/services/tokenRefresh.service");
 const VipCleanupTask = require("./src/services/vipCleanup.task");
 const botMaintenanceService = require("./src/services/botMaintenance.service");
@@ -15,7 +15,7 @@ const discordBotService = require("./src/services/discordBot.service");
 const kickBotAutoSendService = require("./src/services/kickBotAutoSend.service");
 const dbCleanupTask = require("./src/services/dbCleanup.task");
 
-// Rutas (aún por crear)
+// Routes
 const authRoutes = require("./src/routes/auth.routes");
 const usuariosRoutes = require("./src/routes/usuarios.routes");
 const productosRoutes = require("./src/routes/productos.routes");
@@ -34,38 +34,34 @@ const notificacionesRoutes = require("./src/routes/notificaciones.routes");
 
 const app = express();
 
-// Desactivar header X-Powered-By para no revelar información del framework
-app.disable('x-powered-by');
+// Disable X-Powered-By header to avoid revealing framework info
+app.disable("x-powered-by");
 
 app.get("/", (req, res) => {
-  res.send("🚀 Luisardito Shop Backend en funcionamiento");
+  res.json({ service: "luisardito-shop-backend", status: "ok" });
 });
 
-// Middleware global
+// Global middleware
 app.use(customCors);
-app.use(cookieParser()); // Para leer cookies
+app.use(cookieParser()); // Parse cookies
 app.use(express.json());
 
-// Servir archivos estáticos desde assets
-app.use('/assets', express.static('assets'));
+// Serve static files from assets
+app.use("/assets", express.static("assets"));
 
-// Middleware específico para webhooks con logging optimizado
+// Webhook-specific middleware with optimized logging
 app.use("/api/kick-webhook", (req, res, next) => {
   const hasKickHeaders = Object.keys(req.headers).some((key) =>
-    key.toLowerCase().startsWith("kick-event"),
+    key.toLowerCase().startsWith("kick-event")
   );
 
   if (hasKickHeaders) {
-    logger.info(
-      "🎯 [WEBHOOK] Nueva petición de Kick:",
-      req.method,
-      req.originalUrl,
-    );
+    logger.info("[WEBHOOK] New Kick request:", req.method, req.originalUrl);
   }
   next();
 });
 
-// Rutas principales
+// Main routes
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", usuariosRoutes);
 app.use("/api/productos", productosRoutes);
@@ -79,15 +75,15 @@ app.use("/api/kick-admin", kickAdminRoutes);
 app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/promociones", promocionesRoutes);
-app.use("/api/broadcaster", broadcasterInfoRoutes); // ✅ Ruta pública para info del broadcaster
-app.use("/api/notificaciones", notificacionesRoutes); // ✅ Ruta de notificaciones
+app.use("/api/broadcaster", broadcasterInfoRoutes); // Public route for broadcaster info
+app.use("/api/notificaciones", notificacionesRoutes); // Notifications route
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
 
-// Sincronizar modelos y arrancar servidor con reintentos de conexión a la BD
+// Sync models and start server with DB connection retries
 const start = async () => {
   const retries = Number(process.env.DB_CONNECT_RETRIES || 30);
   const delayMs = Number(process.env.DB_CONNECT_RETRY_DELAY_MS || 2000);
@@ -101,7 +97,7 @@ const start = async () => {
     } catch (err) {
       const code = err?.parent?.code || err?.name || "UNKNOWN_ERROR";
       logger.error(
-        `⚠️  Falló la conexión a la BD (intento ${attempt}/${retries}) [${code}]. Reintentando en ${delayMs}ms...`,
+        `DB connection failed (attempt ${attempt}/${retries}) [${code}]. Retrying in ${delayMs}ms...`
       );
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -109,62 +105,58 @@ const start = async () => {
 
   if (!connected) {
     logger.error(
-      "❌ No fue posible conectar a la base de datos tras múltiples intentos. Saliendo...",
+      "Could not connect to the database after multiple attempts. Exiting..."
     );
     process.exit(1);
   }
 
   try {
     await sequelize.sync();
-    logger.info("✅ Base de datos conectada y modelos sincronizados");
+    logger.info("Database connected and models synchronized");
 
-    // Iniciar el servicio de refresh automático de tokens
+    // Start automatic token refresh service
     tokenRefreshService.start();
 
-    // Iniciar limpieza automática de VIPs expirados
+    // Start expired VIP cleanup
     VipCleanupTask.start();
 
-    // Iniciar mantenimiento automático del bot de Kick
+    // Start Kick bot automatic maintenance
     botMaintenanceService.start();
 
-    // Iniciar snapshots automáticos del leaderboard
+    // Start automatic leaderboard snapshots
     LeaderboardSnapshotTask.start();
 
-    // Iniciar backups automáticos
+    // Start automatic backups
     backupScheduler.start();
 
-    // Iniciar limpieza automática de base de datos (diaria a las 4:30 AM)
+    // Start automatic database cleanup (daily at 4:30 AM)
     dbCleanupTask.start();
 
-    // Iniciar bot de Discord
+    // Start Discord bot
     await discordBotService.initialize();
 
-
-    // Iniciar servicio de auto-envío de comandos
+    // Start auto-send commands service
     kickBotAutoSendService.start();
 
     app.listen(config.port, () => {
-      // Detectar si estamos en Docker para mostrar el puerto correcto
+      // Detect Docker to show the correct port
       const isDocker =
         process.env.NODE_ENV === "development" &&
         process.env.CHOKIDAR_USEPOLLING === "true";
-      const displayPort = isDocker ? "3001 (mapeado desde :3000)" : config.port;
 
       if (isDocker) {
-        logger.info(`🚀 Servidor escuchando en:`);
+        logger.info(`Server listening on:`);
         logger.info(
-          `   • Interno (contenedor): http://localhost:${config.port}`,
+          `   - Internal (container): http://localhost:${config.port}`
         );
-        logger.info(`   • Externo (tu máquina): http://localhost:3001`);
-        logger.info(`   📌 Usa http://localhost:3001 desde tu navegador`);
+        logger.info(`   - External (host machine): http://localhost:3001`);
+        logger.info(`   Use http://localhost:3001 from your browser`);
       } else {
-        logger.info(
-          `🚀 Servidor escuchando en http://localhost:${config.port}`,
-        );
+        logger.info(`Server listening on http://localhost:${config.port}`);
       }
     });
   } catch (err) {
-    logger.error("❌ Error al sincronizar modelos:", err);
+    logger.error("Error synchronizing models:", err);
     process.exit(1);
   }
 };

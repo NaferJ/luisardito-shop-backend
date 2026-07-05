@@ -27,7 +27,7 @@ const KickBotCommand = sequelize.define(
         if (typeof rawValue === "string") {
           try {
             return JSON.parse(rawValue);
-          } catch (e) {
+          } catch (_e) {
             return [];
           }
         }
@@ -106,7 +106,8 @@ const KickBotCommand = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: "Intervalo en segundos para envío automático (0 = no enviar automáticamente)",
+      comment:
+        "Intervalo en segundos para envío automático (0 = no enviar automáticamente)",
     },
   },
   {
@@ -114,7 +115,7 @@ const KickBotCommand = sequelize.define(
     timestamps: true,
     createdAt: "created_at",
     updatedAt: "updated_at",
-  },
+  }
 );
 
 // Métodos de instancia
