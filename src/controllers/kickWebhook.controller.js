@@ -19,7 +19,7 @@ const logger = require("../utils/logger");
 const { syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
 
 /**
- * 🔍 DIAGNÓSTICO: monitorear Redis
+ * DIAGNOSTIC: monitor Redis
  */
 
 exports.debugRedisCooldowns = async (req, res) => {
@@ -27,7 +27,7 @@ exports.debugRedisCooldowns = async (req, res) => {
     const { getRedisClient } = require("../config/redis.config");
     const redis = getRedisClient();
 
-    // Obtener todas las claves de cooldown
+    // Get all cooldown keys
     const keys = await redis.keys("chat_cooldown:*");
 
     const cooldowns = [];
@@ -63,7 +63,7 @@ exports.debugRedisCooldowns = async (req, res) => {
 };
 
 /**
- * 🔍 DIAGNÓSTICO: Verificar tokens guardados en BD
+ * DIAGNOSTIC: Check tokens stored in DB
  */
 exports.diagnosticTokensDB = async (req, res) => {
   try {
@@ -73,9 +73,9 @@ exports.diagnosticTokensDB = async (req, res) => {
     } = require("../models");
     const config = require("../../config");
 
-    logger.info("🔍 [DIAGNÓSTICO DB] Consultando tokens en base de datos...");
+    logger.info("[DIAGNOSTIC DB] Querying tokens in database...");
 
-    // 1. Obtener TODOS los tokens guardados (activos e inactivos)
+    // 1. Get ALL stored tokens (active and inactive)
     const allTokens = await KickBroadcasterToken.findAll({
       attributes: [
         "id",
@@ -91,10 +91,10 @@ exports.diagnosticTokensDB = async (req, res) => {
       ],
       order: [["updated_at", "DESC"]],
     });
-    logger.info("🔍 [DIAGNÓSTICO DB] Tokens encontrados:", allTokens.length);
-    logger.info("🔍 [DIAGNÓSTICO DB] Tokens encontrados:", allTokens.length);
+    logger.info("[DIAGNOSTIC DB] Tokens found:", allTokens.length);
+    logger.info("[DIAGNOSTIC DB] Tokens found:", allTokens.length);
 
-    // 2. Verificar el broadcaster principal específicamente
+    // 2. Check main broadcaster specifically
     const broadcasterPrincipal = await KickBroadcasterToken.findOne({
       where: {
         kick_user_id: config.kick.broadcasterId,
@@ -102,7 +102,7 @@ exports.diagnosticTokensDB = async (req, res) => {
       },
     });
 
-    // 3. Verificar suscripciones del broadcaster principal
+    // 3. Check main broadcaster subscriptions
     const suscripciones = await KickEventSubscription.findAll({
       where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
       attributes: [
@@ -114,7 +114,7 @@ exports.diagnosticTokensDB = async (req, res) => {
       ],
     });
 
-    // 4. Análisis de tokens
+    // 4. Token analysis
     const tokensActivos = allTokens.filter((t) => t.is_active);
     const tokensExpirados = allTokens.filter((t) => {
       if (!t.token_expires_at) return false;
@@ -144,7 +144,7 @@ exports.diagnosticTokensDB = async (req, res) => {
             updated_at: broadcasterPrincipal.updated_at,
             token_valido: broadcasterPrincipal.token_expires_at
               ? new Date(broadcasterPrincipal.token_expires_at) > new Date()
-              : "DESCONOCIDO",
+              : "UNKNOWN",
           }
         : null,
       todos_los_tokens: allTokens.map((t) => ({
@@ -156,7 +156,7 @@ exports.diagnosticTokensDB = async (req, res) => {
         token_expires_at: t.token_expires_at,
         token_valido: t.token_expires_at
           ? new Date(t.token_expires_at) > new Date()
-          : "DESCONOCIDO",
+          : "UNKNOWN",
         created_at: t.created_at,
         updated_at: t.updated_at,
       })),
@@ -169,22 +169,22 @@ exports.diagnosticTokensDB = async (req, res) => {
       })),
       estado: {
         problema_identificado: !broadcasterPrincipal
-          ? "El broadcaster principal (ID: " +
+          ? "Main broadcaster (ID: " +
             config.kick.broadcasterId +
-            ") NO tiene token guardado"
+            ") has NO stored token"
           : suscripciones.length === 0
-            ? "El broadcaster principal tiene token pero NO hay suscripciones"
-            : "Token y suscripciones presentes - debería funcionar",
+            ? "Main broadcaster has token but NO subscriptions"
+            : "Token and subscriptions present - should work",
         accion_requerida: !broadcasterPrincipal
-          ? "Luisardito necesita autenticarse en: https://luisardito.com/auth/login"
+          ? "Luisardito needs to authenticate at: https://luisardito.com/auth/login"
           : suscripciones.length === 0
-            ? "Re-autenticación necesaria para crear suscripciones"
-            : "Probar webhook enviando mensaje en chat de Luisardito",
+            ? "Re-authentication needed to create subscriptions"
+            : "Test webhook by sending a message in Luisardito's chat",
       },
     };
 
     logger.info(
-      "🔍 [DIAGNÓSTICO DB] RESULTADO:",
+      "[DIAGNOSTIC DB] RESULT:",
       JSON.stringify(diagnostico.resumen, null, 2),
     );
 
@@ -194,7 +194,7 @@ exports.diagnosticTokensDB = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔍 [DIAGNÓSTICO DB] Error:", error);
+    logger.error("[DIAGNOSTIC DB] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -209,16 +209,16 @@ exports.diagnosticTokens = async (req, res) => {
     } = require("../models");
     const config = require("../../config");
 
-    logger.info("🔍 [DIAGNÓSTICO] Iniciando verificación...");
+    logger.info("[DIAGNOSTIC] Starting verification...");
 
-    // 1. Verificar el broadcaster principal configurado
+    // 1. Check configured main broadcaster
     const broadcasterPrincipal = config.kick.broadcasterId;
     logger.info(
-      "🔍 [DIAGNÓSTICO] Broadcaster principal configurado:",
+      "[DIAGNOSTIC] Main broadcaster configured:",
       broadcasterPrincipal,
     );
 
-    // 2. Obtener todos los tokens disponibles
+    // 2. Get all available tokens
     const allTokens = await KickBroadcasterToken.findAll({
       where: { is_active: true },
       attributes: [
@@ -230,7 +230,7 @@ exports.diagnosticTokens = async (req, res) => {
     });
 
     logger.info(
-      "🔍 [DIAGNÓSTICO] Tokens disponibles:",
+      "[DIAGNOSTIC] Available tokens:",
       allTokens.map((t) => ({
         kick_user_id: t.kick_user_id,
         auto_subscribed: t.auto_subscribed,
@@ -238,36 +238,36 @@ exports.diagnosticTokens = async (req, res) => {
       })),
     );
 
-    // 3. Verificar si el broadcaster principal tiene token
+    // 3. Check if main broadcaster has a token
     const broadcasterToken = allTokens.find(
       (t) => t.kick_user_id.toString() === broadcasterPrincipal.toString(),
     );
     logger.info(
-      "🔍 [DIAGNÓSTICO] ¿Broadcaster principal tiene token?",
+      "[DIAGNOSTIC] Main broadcaster has token?",
       !!broadcasterToken,
     );
 
-    // 4. Verificar suscripciones actuales
+    // 4. Check current subscriptions
     const suscripciones = await KickEventSubscription.findAll({
       where: { broadcaster_user_id: parseInt(broadcasterPrincipal) },
       attributes: ["event_type", "subscription_id", "status"],
     });
 
     logger.info(
-      "🔍 [DIAGNÓSTICO] Suscripciones del broadcaster principal:",
+      "[DIAGNOSTIC] Main broadcaster subscriptions:",
       suscripciones.length,
     );
 
-    // 5. Verificar qué usuario es NaferJ (ID 33112734)
+    // 5. Check which user is NaferJ (ID 33112734)
     const naferToken = allTokens.find(
       (t) => t.kick_user_id.toString() === "33112734",
     );
     logger.info(
-      "🔍 [DIAGNÓSTICO] ¿NaferJ (33112734) tiene token?",
+      "[DIAGNOSTIC] NaferJ (33112734) has token?",
       !!naferToken,
     );
     logger.info(
-      "🔍 [DIAGNÓSTICO] ¿NaferJ ES el broadcaster principal?",
+      "[DIAGNOSTIC] Is NaferJ the main broadcaster?",
       broadcasterPrincipal.toString() === "33112734",
     );
 
@@ -283,17 +283,17 @@ exports.diagnosticTokens = async (req, res) => {
       tokens_disponibles: allTokens.map((t) => t.kick_user_id),
       posible_problema:
         broadcasterPrincipal.toString() !== "33112734"
-          ? "El broadcaster principal NO es NaferJ, pero NaferJ está intentando suscribirse a eventos de otro broadcaster"
-          : "NaferJ ES el broadcaster principal, debería funcionar",
+          ? "Main broadcaster is NOT NaferJ, but NaferJ is trying to subscribe to another broadcaster's events"
+          : "NaferJ IS the main broadcaster, should work",
       recomendacion:
         broadcasterPrincipal.toString() !== "33112734"
-          ? "Necesitas que el broadcaster principal (ID: " +
+          ? "The main broadcaster (ID: " +
             broadcasterPrincipal +
-            ") se autentique y use SU token"
-          : "El setup debería estar correcto, el problema puede ser de red o configuración",
+            ") needs to authenticate and use THEIR token"
+          : "Setup should be correct, the issue may be network or configuration",
     };
 
-    logger.info("🔍 [DIAGNÓSTICO] RESUMEN:", diagnostico);
+    logger.info("[DIAGNOSTIC] SUMMARY:", diagnostico);
 
     res.json({
       success: true,
@@ -301,7 +301,7 @@ exports.diagnosticTokens = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔍 [DIAGNÓSTICO] Error:", error);
+    logger.error("[DIAGNOSTIC] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -309,35 +309,35 @@ exports.diagnosticTokens = async (req, res) => {
   }
 };
 exports.testCors = async (req, res) => {
-  logger.info("🧪 [CORS Test] ==========================================");
-  logger.info("🧪 [CORS Test] Method:", req.method);
-  logger.info("🧪 [CORS Test] Origin:", req.headers.origin || "SIN ORIGIN");
-  logger.info("🧪 [CORS Test] User-Agent:", req.headers["user-agent"]);
-  logger.info("🧪 [CORS Test] Headers:", Object.keys(req.headers));
-  logger.info("🧪 [CORS Test] ==========================================");
+  logger.info("[CORS Test] ==========================================");
+  logger.info("[CORS Test] Method:", req.method);
+  logger.info("[CORS Test] Origin:", req.headers.origin || "NO ORIGIN");
+  logger.info("[CORS Test] User-Agent:", req.headers["user-agent"]);
+  logger.info("[CORS Test] Headers:", Object.keys(req.headers));
+  logger.info("[CORS Test] ==========================================");
 
   res.status(200).json({
-    message: "✅ CORS funcionando correctamente para webhooks",
+    message: "CORS working correctly for webhooks",
     timestamp: new Date().toISOString(),
     method: req.method,
-    origin: req.headers.origin || "Sin origin",
+    origin: req.headers.origin || "No origin",
     headers: req.headers,
     corsEnabled: true,
   });
 };
 
 /**
- * Controlador principal para recibir webhooks de Kick
+ * Main controller to receive Kick webhooks
  */
 exports.handleWebhook = async (req, res) => {
-  // Log optimizado para producción
+  // Production-optimized logging
   const eventType = req.headers["kick-event-type"];
   const messageId = req.headers["kick-event-message-id"];
 
-  // LOG TODOS LOS EVENTOS - SIN FILTRAR
+  // LOG ALL EVENTS - UNFILTERED
 
   try {
-    // Si es una petición de test simple, responder inmediatamente
+    // If it's a simple test request, respond immediately
     if (req.body && req.body.test === true) {
       return res.status(200).json({
         status: "success",
@@ -346,27 +346,27 @@ exports.handleWebhook = async (req, res) => {
       });
     }
 
-    // Extraer headers del webhook
+    // Extract webhook headers
     const subscriptionId = req.headers["kick-event-subscription-id"];
     const signature = req.headers["kick-event-signature"];
     const timestamp = req.headers["kick-event-message-timestamp"];
     const eventVersion = req.headers["kick-event-version"];
 
-    // Si faltan headers de webhook de Kick, pero hay contenido, puede ser una verificación
+    // If Kick webhook headers are missing but there's content, it may be a verification
     if (!messageId && !eventType) {
       return res.status(200).json({ message: "Webhook endpoint ready" });
     }
 
-    // Validar que existen los headers necesarios
+    // Validate required headers exist
     if (!messageId || !signature || !timestamp || !eventType) {
-      logger.error("[Kick Webhook] ❌ Faltan headers requeridos");
-      return res.status(400).json({ error: "Faltan headers requeridos" });
+      logger.error("[Kick Webhook] Missing required headers");
+      return res.status(400).json({ error: "Missing required headers" });
     }
 
-    // Obtener el cuerpo sin procesar como string
+    // Get raw body as string
     const rawBody = JSON.stringify(req.body);
 
-    // Verificar la firma del webhook
+    // Verify webhook signature
     const isValidSignature = verifyWebhookSignature(
       messageId,
       timestamp,
@@ -375,11 +375,11 @@ exports.handleWebhook = async (req, res) => {
     );
 
     if (!isValidSignature) {
-      logger.error("[Kick Webhook] ❌ Firma inválida");
-      return res.status(401).json({ error: "Firma inválida" });
+      logger.error("[Kick Webhook] Invalid signature");
+      return res.status(401).json({ error: "Invalid signature" });
     }
 
-    // Verificar si el evento ya fue procesado (idempotencia)
+    // Check if event was already processed (idempotency)
     const existingEvent = await KickWebhookEvent.findOne({
       where: { message_id: messageId },
     });
@@ -387,10 +387,10 @@ exports.handleWebhook = async (req, res) => {
     if (existingEvent) {
       return res
         .status(200)
-        .json({ message: "Evento ya procesado previamente" });
+        .json({ message: "Event already processed" });
     }
 
-    // Guardar el evento en la base de datos
+    // Save event to database
     await KickWebhookEvent.create({
       message_id: messageId,
       subscription_id: subscriptionId,
@@ -401,44 +401,44 @@ exports.handleWebhook = async (req, res) => {
       processed: false,
     });
 
-    // Procesar el evento según su tipo
+    // Process event by type
     await processWebhookEvent(eventType, eventVersion, req.body, {
       messageId,
       subscriptionId,
       timestamp,
     });
 
-    // Marcar como procesado
+    // Mark as processed
     await KickWebhookEvent.update(
       { processed: true, processed_at: new Date() },
       { where: { message_id: messageId } },
     );
 
-    // Responder con 200 para confirmar recepción
-    return res.status(200).json({ message: "Webhook procesado correctamente" });
+    // Respond with 200 to confirm receipt
+    return res.status(200).json({ message: "Webhook processed successfully" });
   } catch (error) {
-    logger.error("[Kick Webhook] ❌ Error procesando webhook:", error.message);
-    return res.status(500).json({ error: "Error interno al procesar webhook" });
+    logger.error("[Kick Webhook] Error processing webhook:", error.message);
+    return res.status(500).json({ error: "Internal error processing webhook" });
   }
 };
 
 /**
- * Procesa el evento según su tipo
- * @param {string} eventType - Tipo de evento (ej: chat.message.sent)
- * @param {string} eventVersion - Versión del evento
- * @param {object} payload - Datos del evento
- * @param {object} metadata - Metadatos del webhook (messageId, subscriptionId, timestamp)
+ * Process event by type
+ * @param {string} eventType - Event type (e.g. chat.message.sent)
+ * @param {string} eventVersion - Event version
+ * @param {object} payload - Event data
+ * @param {object} metadata - Webhook metadata (messageId, subscriptionId, timestamp)
  */
 async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
-  logger.info(`[Kick Webhook] Procesando evento ${eventType}`);
+  logger.info(`[Kick Webhook] Processing event ${eventType}`);
 
-  // LOG PARA DEBUG - VER TODOS LOS EVENTOS
+  // DEBUG LOG - SEE ALL EVENTS
 
-  // Ver exactamente qué valor tiene
+  // Check exact value
   if (eventType === "livestream.status.updated") {
-    logger.warn(`✅ MATCH EXACTO: livestream.status.updated`);
+    logger.warn(`EXACT MATCH: livestream.status.updated`);
   } else if (eventType?.includes?.("livestream")) {
-    logger.warn(`⚠️ CONTIENE livestream PERO NO COINCIDE: "${eventType}"`);
+    logger.warn(`CONTAINS livestream BUT NO MATCH: "${eventType}"`);
   }
 
   switch (eventType) {
@@ -447,62 +447,62 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
       break;
 
     case "channel.followed":
-      logger.info("👥 CASE MATCH: channel.followed");
+      logger.info("CASE MATCH: channel.followed");
       await handleChannelFollowed(payload, metadata);
       break;
 
     case "channel.subscription.new":
-      logger.info("🔔 CASE MATCH: channel.subscription.new");
+      logger.info("CASE MATCH: channel.subscription.new");
       await handleNewSubscription(payload, metadata);
       break;
 
     case "channel.subscription.renewal":
-      logger.info("🔄 CASE MATCH: channel.subscription.renewal");
+      logger.info("CASE MATCH: channel.subscription.renewal");
       await handleSubscriptionRenewal(payload, metadata);
       break;
 
     case "channel.subscription.gifts":
-      logger.info("🎁 CASE MATCH: channel.subscription.gifts");
+      logger.info("CASE MATCH: channel.subscription.gifts");
       await handleSubscriptionGifts(payload, metadata);
       break;
 
     case "livestream.status.updated":
-      logger.info("🎥🎥🎥 CASE MATCH: livestream.status.updated 🎥🎥🎥");
+      logger.info("CASE MATCH: livestream.status.updated");
       await handleLivestreamStatusUpdated(payload, metadata);
       break;
 
     case "livestream.metadata.updated":
-      logger.info("📝 CASE MATCH: livestream.metadata.updated");
+      logger.info("CASE MATCH: livestream.metadata.updated");
       await handleLivestreamMetadataUpdated(payload, metadata);
       break;
 
     case "moderation.banned":
-      logger.info("🚫 CASE MATCH: moderation.banned");
+      logger.info("CASE MATCH: moderation.banned");
       await handleModerationBanned(payload, metadata);
       break;
 
     case "kicks.gifted":
-      logger.info("💰 CASE MATCH: kicks.gifted");
+      logger.info("CASE MATCH: kicks.gifted");
       await handleKicksGifted(payload, metadata);
       break;
 
     case "channel.reward.redemption.updated":
-      logger.info("🏆 CASE MATCH: channel.reward.redemption.updated");
+      logger.info("CASE MATCH: channel.reward.redemption.updated");
       await handleRewardRedemption(payload, metadata);
       break;
 
     default:
-      logger.warn(`❌ EVENTO NO MANEJADO: "${eventType}"`);
-      logger.info(`[Kick Webhook] Tipo de evento no manejado: ${eventType}`);
+      logger.warn(`UNHANDLED EVENT: "${eventType}"`);
+      logger.info(`[Kick Webhook] Unhandled event type: ${eventType}`);
   }
 }
 
 // ============================================================================
-// Handlers para cada tipo de evento
+// Handlers for each event type
 // ============================================================================
 
 /**
- * 🎁 Maneja canjeos de recompensas de canal
+ * Handle channel reward redemptions
  */
 async function handleRewardRedemption(payload, metadata) {
   try {
@@ -511,78 +511,78 @@ async function handleRewardRedemption(payload, metadata) {
     const kickUserId = String(redeemer.user_id);
     const kickUsername = redeemer.username;
 
-    logger.info(`🎁 [Reward Redemption] ${kickUsername} canjeó "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
+    logger.info(`[Reward Redemption] ${kickUsername} redeemed "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
 
-    // Buscar la recompensa en nuestra BD
+    // Find reward in our DB
     const localReward = await KickReward.findOne({
       where: { kick_reward_id: kickRewardId }
     });
 
     if (!localReward) {
-      logger.warn(`⚠️ [Reward Redemption] Recompensa "${reward.title}" (${kickRewardId}) no configurada en BD`);
+      logger.warn(`[Reward Redemption] Reward "${reward.title}" (${kickRewardId}) not configured in DB`);
       return;
     }
 
-    // SIEMPRE buscar el usuario en nuestra BD (para ambos casos: pending y accepted)
+    // ALWAYS find user in our DB (for both cases: pending and accepted)
     let usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId }
     });
 
-    // Si es pending y el usuario no existe, enviar mensaje
+    // If pending and user doesn't exist, send message
     if (status === 'pending' && !usuario) {
-      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} no registrado en la tienda`);
-      
-      // Enviar mensaje en chat notificando al usuario INMEDIATAMENTE
+      logger.warn(`[Reward Redemption] User ${kickUsername} not registered in store`);
+
+      // Send chat message notifying user IMMEDIATELY
       try {
         const bot = require('../services/kickBot.service');
-        const message = `@${kickUsername} tu recompensa "${localReward.title}" no pudo ser gestionada porque no estás registrado en la tienda. Regístrate en https://shop.luisardito.com/ para recibir tus puntos! 🎁`;
+        const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
         await bot.sendMessage(message);
-        logger.info(`📢 [Reward Redemption] Mensaje enviado a ${kickUsername} en chat`);
+        logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
       } catch (botError) {
-        logger.error(`❌ [Reward Redemption] Error enviando mensaje al chat:`, botError.message);
+        logger.error(`[Reward Redemption] Error sending chat message:`, botError.message);
       }
       return;
     }
 
-    // Si es pending y el usuario SÍ existe, solo esperar
+    // If pending and user DOES exist, just wait
     if (status === 'pending') {
-      logger.info(`⏳ [Reward Redemption] Usuario registrado. Canje pendiente de aprobación - esperando...`);
+      logger.info(`[Reward Redemption] User registered. Redemption pending approval - waiting...`);
       return;
     }
 
     if (status === 'rejected') {
-      logger.info(`❌ [Reward Redemption] Canje rechazado - no se procesan puntos`);
+      logger.info(`[Reward Redemption] Redemption rejected - no points processed`);
       return;
     }
 
     if (status !== 'accepted') {
-      logger.warn(`⚠️ [Reward Redemption] Status desconocido: ${status}`);
+      logger.warn(`[Reward Redemption] Unknown status: ${status}`);
       return;
     }
 
-    // VOLVER A BUSCAR el usuario por si se registró después del pending
+    // Search again in case user registered after pending
     if (!usuario) {
       usuario = await Usuario.findOne({
         where: { user_id_ext: kickUserId }
       });
     }
 
-    // Si después de accepted el usuario TODAVÍA no existe
+    // If user STILL doesn't exist after accepted
     if (!usuario) {
-      logger.warn(`⚠️ [Reward Redemption] Usuario ${kickUsername} sigue sin registrarse. No se otorgan puntos.`);
+      logger.warn(`[Reward Redemption] User ${kickUsername} still not registered. No points awarded.`);
       return;
     }
 
     if (!localReward.is_enabled) {
-      logger.info(`🔒 [Reward Redemption] Recompensa "${localReward.title}" deshabilitada`);
+      logger.info(`[Reward Redemption] Reward "${localReward.title}" disabled`);
       return;
     }
 
-    // Otorgar puntos
+    // Award points
     const puntosAOtorgar = localReward.puntos_a_otorgar;
-    
+
     if (puntosAOtorgar <= 0) {
-      logger.info(`ℹ️ [Reward Redemption] Recompensa "${localReward.title}" no otorga puntos (configurado en 0)`);
+      logger.info(`[Reward Redemption] Reward "${localReward.title}" awards no points (configured at 0)`);
       return;
     }
 
@@ -591,13 +591,13 @@ async function handleRewardRedemption(payload, metadata) {
     });
 
     try {
-      // Incrementar puntos del usuario
+      // Increment user points
       await usuario.increment('puntos', {
         by: puntosAOtorgar,
         transaction
       });
 
-      // Registrar en historial
+      // Register in history
       await HistorialPunto.create({
         usuario_id: usuario.id,
         puntos: puntosAOtorgar,
@@ -613,7 +613,7 @@ async function handleRewardRedemption(payload, metadata) {
         }
       }, { transaction });
 
-      // 📬 Crear notificación de puntos ganados
+      // Create notification for earned points
       await NotificacionService.crearNotificacionPuntosGanados(
         usuario.id,
         {
@@ -624,7 +624,7 @@ async function handleRewardRedemption(payload, metadata) {
         transaction
       );
 
-      // Incrementar contador de canjeos
+      // Increment redemption counter
       await localReward.increment('total_redemptions', {
         by: 1,
         transaction
@@ -633,7 +633,7 @@ async function handleRewardRedemption(payload, metadata) {
       await transaction.commit();
 
       await usuario.reload();
-      logger.info(`✅ [Reward Redemption] ${kickUsername} recibió ${puntosAOtorgar} puntos. Total: ${usuario.puntos}`);
+      logger.info(`[Reward Redemption] ${kickUsername} received ${puntosAOtorgar} points. Total: ${usuario.puntos}`);
 
     } catch (error) {
       if (!transaction.finished) {
@@ -643,12 +643,12 @@ async function handleRewardRedemption(payload, metadata) {
     }
 
   } catch (error) {
-    logger.error('[Reward Redemption] ❌ Error:', error.message);
+    logger.error('[Reward Redemption] Error:', error.message);
   }
 }
 
 /**
- * Maneja mensajes de chat
+ * Handle chat messages
  */
 async function handleChatMessage(payload, metadata) {
   try {
@@ -657,47 +657,47 @@ async function handleChatMessage(payload, metadata) {
     const kickUsername = sender.username;
 
 
-    // PRIORIDAD 1: Verificar si es migración de Botrix
-    // Solo procesamos si la migración está habilitada
+    // PRIORITY 1: Check if it's a Botrix migration
+    // Only process if migration is enabled
     const { BotrixMigrationConfig } = require("../models");
     const botrixConfig = await BotrixMigrationConfig.getConfig();
 
     if (botrixConfig.migration_enabled) {
-      logger.info("🔍 [BOTRIX DEBUG] Verificando mensaje para migración de puntos...");
+      logger.info("[BOTRIX DEBUG] Checking message for points migration...");
       const botrixResult =
         await BotrixMigrationService.processChatMessage(payload);
-      logger.info("🔍 [BOTRIX DEBUG] Resultado procesamiento:", botrixResult);
+      logger.info("[BOTRIX DEBUG] Processing result:", botrixResult);
 
       if (botrixResult.processed) {
         logger.info(
-          `📄 [BOTRIX] Migración de puntos procesada: ${JSON.stringify(botrixResult.details)}`,
+          `[BOTRIX] Points migration processed: ${JSON.stringify(botrixResult.details)}`,
         );
         return;
       } else {
-        logger.info(`🔍 [BOTRIX] Puntos no procesados: ${botrixResult.reason}`);
+        logger.info(`[BOTRIX] Points not processed: ${botrixResult.reason}`);
       }
     }
 
-    // Procesar migración de watchtime
+    // Process watchtime migration
     if (botrixConfig.watchtime_migration_enabled) {
-      logger.info("🔍 [BOTRIX WATCHTIME DEBUG] Verificando mensaje para migración de watchtime...");
+      logger.info("[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration...");
       const watchtimeResult =
         await BotrixMigrationService.processWatchtimeMessage(payload);
-      logger.info("🔍 [BOTRIX WATCHTIME DEBUG] Resultado procesamiento:", watchtimeResult);
+      logger.info("[BOTRIX WATCHTIME DEBUG] Processing result:", watchtimeResult);
 
       if (watchtimeResult.processed) {
         logger.info(
-          `📄 [BOTRIX WATCHTIME] Migración de watchtime procesada: ${JSON.stringify(watchtimeResult.details)}`,
+          `[BOTRIX WATCHTIME] Watchtime migration processed: ${JSON.stringify(watchtimeResult.details)}`,
         );
         return;
       } else {
-        logger.info(`🔍 [BOTRIX WATCHTIME] Watchtime no procesado: ${watchtimeResult.reason}`);
+        logger.info(`[BOTRIX WATCHTIME] Watchtime not processed: ${watchtimeResult.reason}`);
       }
     }
 
     // ==========================================
-    // COMANDOS DE MODERADORES (Gestión de comandos desde el chat)
-    // Se procesan ANTES de los comandos regulares y puntos
+    // MODERATOR COMMANDS (Command management from chat)
+    // Processed BEFORE regular commands and points
     // ==========================================
     try {
       const content = String(payload.content || "").trim();
@@ -708,32 +708,32 @@ async function handleChatMessage(payload, metadata) {
         const modResult = await ModeratorCommandsService.processModeratorCommand(payload);
 
         if (modResult.processed) {
-          logger.info(`[MOD-CMD] Comando de moderador procesado: ${content.split(/\s+/)[0]}`);
+          logger.info(`[MOD-CMD] Moderator command processed: ${content.split(/\s+/)[0]}`);
 
-          // Enviar respuesta al chat si hay mensaje
+          // Send response to chat if there's a message
           if (modResult.message) {
             try {
               const bot = require("../services/kickBot.service");
               await bot.sendMessage(modResult.message);
-              logger.info(`[MOD-CMD] Respuesta enviada al chat: ${modResult.message}`);
+              logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
             } catch (botError) {
-              logger.error(`[MOD-CMD] Error enviando respuesta al chat:`, botError.message);
+              logger.error(`[MOD-CMD] Error sending response to chat:`, botError.message);
             }
           }
 
-          return; // Terminar procesamiento aquí
+          return; // End processing here
         }
       }
     } catch (modErr) {
       logger.error(
-        "[MOD-CMD] Error manejando comandos de moderador:",
+        "[MOD-CMD] Error handling moderator commands:",
         modErr.message,
       );
     }
 
     // ==========================================
-    // 🤖 Comandos del BOT (Sistema Dinámico desde DB)
-    // Se responden SIEMPRE, independientemente del estado del stream
+    // BOT COMMANDS (Dynamic system from DB)
+    // Always responded to, regardless of stream status
     // ==========================================
     try {
       const content = String(payload.content || "").trim();
@@ -741,80 +741,80 @@ async function handleChatMessage(payload, metadata) {
         const bot = require("../services/kickBot.service");
         const commandHandler = require("../services/kickBotCommandHandler.service");
 
-        // Procesar comando dinámicamente desde la base de datos
+        // Process command dynamically from database
         const commandProcessed = await commandHandler.processMessage(
           content,
-          kickUserId, // Usar ID numérico para buscar en user_id_ext
+          kickUserId, // Use numeric ID to search in user_id_ext
           payload.channel?.username || "luisardito",
           bot,
-          null, // No hay contexto de mensaje para webhooks
-          'kick', // Especificar plataforma
-          null, // No hay discordUserId
-          kickUsername // Pasar displayName para @ en respuestas
+          null, // No message context for webhooks
+          'kick', // Specify platform
+          null, // No discordUserId
+          kickUsername // Pass displayName for @ in responses
         );
 
         if (commandProcessed) {
           logger.info(
-            `✅ [BOT-COMMAND] Comando procesado exitosamente para ${kickUsername}`,
+            `[BOT-COMMAND] Command processed successfully for ${kickUsername}`,
           );
         } else {
           logger.debug(
-            `ℹ️ [BOT-COMMAND] Comando no registrado: ${content.split(/\s+/)[0]}`,
+            `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`,
           );
         }
       }
     } catch (cmdErr) {
       logger.error(
-        "[Chat Command] ❌ Error manejando comandos:",
+        "[Chat Command] Error handling commands:",
         cmdErr.message,
       );
     }
 
-    // 🎥 PRIORIDAD 2: Verificar si el stream está en vivo (para puntos, no para comandos)
+    // PRIORITY 2: Check if stream is live (for points, not for commands)
     try {
       const redis = getRedisClient();
       const isLive = await redis.get("stream:is_live");
 
       if (isLive !== "true") {
         logger.info(
-          `🔴 [STREAM] OFFLINE - No se otorgan puntos a ${kickUsername}`,
+          `[STREAM] OFFLINE - No points awarded to ${kickUsername}`,
         );
-        return; // ❌ NO CONTINUAR
+        return; // DO NOT CONTINUE
       }
 
       logger.info(
-        `🟢 [STREAM] EN VIVO - Procesando puntos para ${kickUsername}`,
+        `[STREAM] LIVE - Processing points for ${kickUsername}`,
       );
     } catch (redisError) {
-      logger.error(`❌ [STREAM] Error verificando estado:`, redisError.message);
-      logger.info(`⚠️  [STREAM] Asumiendo EN VIVO por error de Redis`);
-      // Fallback: continuar si Redis falla (para no romper el sistema)
+      logger.error(`[STREAM] Error checking status:`, redisError.message);
+      logger.info(`[STREAM] Assuming LIVE due to Redis error`);
+      // Fallback: continue if Redis fails (to avoid breaking the system)
     }
 
-    // Verificar si el usuario existe en nuestra BD
+    // Check if user exists in our DB
     const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
     if (!usuario) {
       logger.info(
-        `[Chat Message] Usuario ${kickUsername} no registrado, ignorando`,
+        `[Chat Message] User ${kickUsername} not registered, ignoring`,
       );
       return;
     }
 
-    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (con throttling de 24h)
-    // El webhook SIEMPRE trae sender.profile_picture según la documentación de Kick
+    // Sync full profile (username and avatar) if changed (with 24h throttling)
+    // The webhook ALWAYS brings sender.profile_picture per Kick documentation
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, sender.profile_picture);
 
     // ============================================================================
-    // 🕐 WATCHTIME: Se procesa en CADA mensaje (stream en vivo + usuario registrado)
-    // Cooldown propio de 1 minuto para evitar spam de +1min por flood
+    // WATCHTIME: Processed on EVERY message (live stream + registered user)
+    // 1-minute cooldown to avoid +1min spam from flood
     // ============================================================================
     try {
       const wtNow = new Date();
       const redis = getRedisClient();
-      const WATCHTIME_COOLDOWN_MS = 60 * 1000; // 1 minuto
+      const WATCHTIME_COOLDOWN_MS = 60 * 1000; // 1 minute
       const watchtimeKey = `watchtime_cooldown:${kickUserId}`;
 
       const wasSet = await redis.set(
@@ -827,7 +827,7 @@ async function handleChatMessage(payload, metadata) {
 
       if (!wasSet) {
         logger.info(
-          `⏰ [WATCHTIME] ${kickUsername} en cooldown (1 min)`
+          `[WATCHTIME] ${kickUsername} on cooldown (1 min)`
         );
       } else {
         const [, created] = await UserWatchtime.findOrCreate({
@@ -854,15 +854,15 @@ async function handleChatMessage(payload, metadata) {
         }
 
         logger.info(
-          `🕐 [WATCHTIME] ${kickUsername} +1 minuto`
+          `[WATCHTIME] ${kickUsername} +1 minute`
         );
       }
     } catch (watchtimeError) {
-      logger.error(`❌ [WATCHTIME] Error:`, watchtimeError.message);
-      // No bloquear el resto del procesamiento
+      logger.error(`[WATCHTIME] Error:`, watchtimeError.message);
+      // Do not block the rest of processing
     }
 
-    // Obtener configuración de puntos
+    // Get points configuration
     const configs = await KickPointsConfig.findAll({
       where: { enabled: true },
     });
@@ -872,7 +872,7 @@ async function handleChatMessage(payload, metadata) {
       configMap[c.config_key] = c.config_value;
     });
 
-    // Determinar si es suscriptor (validando expiración)
+    // Determine if subscriber (validating expiration)
     const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
     });
@@ -886,18 +886,18 @@ async function handleChatMessage(payload, metadata) {
       if (expiresAt && expiresAt > now) {
         isSubscriber = true;
       } else {
-        // Suscripción expirada: desactivar flag para no dar puntos de sub
+        // Expired subscription: deactivate flag to avoid sub points
         try {
           await KickUserTracking.update(
             { is_subscribed: false },
             { where: { kick_user_id: kickUserId } },
           );
           logger.info(
-            `[CHAT] Suscripción expirada para ${kickUsername} - is_subscribed=false`,
+            `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`,
           );
         } catch (e) {
           logger.error(
-            "[CHAT] Error desactivando suscripción expirada:",
+            "[CHAT] Error deactivating expired subscription:",
             e.message,
           );
         }
@@ -918,14 +918,14 @@ async function handleChatMessage(payload, metadata) {
 
     if (isSubscriber) {
       userType = "subscriber";
-      // Los puntos ya están asignados en basePoints (chat_points_subscriber)
+      // Points already assigned in basePoints (chat_points_subscriber)
     } else if (isVipActive && configMap["chat_points_vip"]) {
       pointsToAward = configMap["chat_points_vip"];
       userType = "vip";
     }
 
     logger.info(
-      `🎯 [CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Tipo: ${userType}, Puntos: ${pointsToAward}`,
+      `[CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Type: ${userType}, Points: ${pointsToAward}`,
     );
 
     if (pointsToAward <= 0) {
@@ -933,69 +933,69 @@ async function handleChatMessage(payload, metadata) {
     }
 
     // ============================================================================
-    // 🚀 COOLDOWN CON REDIS: Ultra-rápido y atómico (para 1000 msg/min)
+    // REDIS COOLDOWN: Ultra-fast and atomic (for 1000 msg/min)
     // ============================================================================
-    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos
+    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
     const cooldownKey = `chat_cooldown:${kickUserId}`;
 
     logger.info(
-      `🚀 [REDIS COOLDOWN] Verificando para ${kickUsername} (${kickUserId})`,
+      `[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`,
     );
 
     try {
       const redis = getRedisClient();
 
-      // 🔒 SET NX PX: SET si NO existe, con expiración automática
-      // Retorna "OK" si se creó la clave, null si ya existía
+      // SET NX PX: SET if NOT exists, with automatic expiration
+      // Returns "OK" if key was created, null if it already existed
       const wasSet = await redis.set(
         cooldownKey,
         now.toISOString(),
-        "PX", // Milisegundos
+        "PX", // Milliseconds
         COOLDOWN_MS,
-        "NX", // Solo si NO existe
+        "NX", // Only if NOT exists
       );
 
       if (!wasSet) {
-        // La clave ya existe = cooldown activo
-        const ttl = await redis.pttl(cooldownKey); // TTL en milisegundos
+        // Key already exists = active cooldown
+        const ttl = await redis.pttl(cooldownKey); // TTL in milliseconds
         const remainingSecs = Math.ceil(ttl / 1000);
 
         logger.info(
-          `⏰ [REDIS COOLDOWN] ${kickUsername} BLOQUEADO - cooldown activo`,
+          `[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`,
         );
         logger.info(
-          `⏰ [REDIS COOLDOWN] Faltan ${remainingSecs}s (${Math.ceil(ttl / 60000)} minutos)`,
+          `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`,
         );
 
-        return; // ❌ NO CONTINUAR - NO DAR PUNTOS
+        return; // DO NOT CONTINUE - DO NOT AWARD POINTS
       }
 
-      // ✅ Si llegamos aquí: clave creada exitosamente = puede recibir puntos
-      logger.info(`✅ [REDIS COOLDOWN] ${kickUsername} puede recibir puntos`);
+      // If we got here: key created successfully = can receive points
+      logger.info(`[REDIS COOLDOWN] ${kickUsername} can receive points`);
       logger.info(
-        `📅 [REDIS COOLDOWN] Próximo mensaje permitido en: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutos)`,
+        `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`,
       );
     } catch (redisError) {
-      logger.error(`❌ [REDIS COOLDOWN] Error de Redis:`, redisError.message);
+      logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
       logger.info(
-        `⚠️  [REDIS COOLDOWN] Fallback: continuando sin cooldown por error de Redis`,
+        `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`,
       );
-      // Para máxima disponibilidad: continuar
-      // Para máxima consistencia: return;
+      // For maximum availability: continue
+      // For maximum consistency: return;
     }
 
     // ============================================================================
-    // 💰 OTORGAR PUNTOS (solo si pasó el cooldown de Redis)
+    // AWARD POINTS (only if passed Redis cooldown)
     // ============================================================================
     const transaction = await sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     });
 
     try {
-      // Otorgar puntos
+      // Award points
       await usuario.increment("puntos", { by: pointsToAward }, { transaction });
 
-      // Actualizar max_puntos si es necesario
+      // Update max_puntos if necessary
       const usuarioActualizado = await usuario.reload({ transaction });
       if (usuarioActualizado.puntos > usuarioActualizado.max_puntos) {
         await usuarioActualizado.update(
@@ -1003,11 +1003,11 @@ async function handleChatMessage(payload, metadata) {
           { transaction }
         );
         logger.info(
-          `🏆 [MAX POINTS] Nuevo máximo de puntos: ${usuarioActualizado.puntos} para ${kickUsername}`,
+          `[MAX POINTS] New max points: ${usuarioActualizado.puntos} for ${kickUsername}`,
         );
       }
 
-      // Registrar en historial
+      // Register in history
       await HistorialPunto.create(
         {
           usuario_id: usuario.id,
@@ -1030,28 +1030,28 @@ async function handleChatMessage(payload, metadata) {
       await transaction.commit();
 
       logger.info(
-        `[Chat Message] ✅ ${pointsToAward} puntos → ${kickUsername} (${userType})`,
+        `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`,
       );
       logger.info(
-        `[Chat Message] 💰 Total puntos usuario: ${usuarioActualizado.puntos}`,
+        `[Chat Message] Total user points: ${usuarioActualizado.puntos}`,
       );
     } catch (transactionError) {
       await transaction.rollback();
       logger.error(
-        `[Chat Message] ❌ Error en transacción para ${kickUsername}:`,
+        `[Chat Message] Transaction error for ${kickUsername}:`,
         transactionError.message,
       );
 
-      // Si falla la DB, eliminar el cooldown de Redis para permitir retry
+      // If DB fails, delete Redis cooldown to allow retry
       try {
         const redis = getRedisClient();
         await redis.del(cooldownKey);
         logger.info(
-          `🔄 [REDIS COOLDOWN] Cooldown eliminado por error de DB - permitir retry`,
+          `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`,
         );
       } catch (redisCleanupError) {
         logger.error(
-          `❌ [REDIS COOLDOWN] Error limpiando cooldown:`,
+          `[REDIS COOLDOWN] Error cleaning cooldown:`,
           redisCleanupError.message,
         );
       }
@@ -1059,12 +1059,12 @@ async function handleChatMessage(payload, metadata) {
       throw transactionError;
     }
   } catch (error) {
-    logger.error("[Chat Message] ❌ Error:", error.message);
+    logger.error("[Chat Message] Error:", error.message);
   }
 }
 
 /**
- * Maneja nuevos seguidores
+ * Handle new followers
  */
 async function handleChannelFollowed(payload, metadata) {
   try {
@@ -1077,34 +1077,34 @@ async function handleChannelFollowed(payload, metadata) {
       follower: kickUsername,
     });
 
-    // Verificar si el usuario existe en nuestra BD
+    // Check if user exists in our DB
     const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Channel Followed] Usuario ${kickUsername} no registrado en la BD`,
+        `[Kick Webhook][Channel Followed] User ${kickUsername} not registered in DB`,
       );
       return;
     }
 
-    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, follower.profile_picture);
 
-    // Verificar si ya siguió antes (solo primera vez)
+    // Check if already followed before (first time only)
     let userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
     });
 
     if (userTracking && userTracking.follow_points_awarded) {
       logger.info(
-        `[Kick Webhook][Channel Followed] Usuario ${kickUsername} ya recibió puntos por follow anteriormente`,
+        `[Kick Webhook][Channel Followed] User ${kickUsername} already received follow points previously`,
       );
       return;
     }
 
-    // Obtener configuración de puntos por follow
+    // Get follow points configuration
     const config = await KickPointsConfig.findOne({
       where: {
         config_key: "follow_points",
@@ -1114,23 +1114,23 @@ async function handleChannelFollowed(payload, metadata) {
 
     const basePoints = config?.config_value || 0;
 
-    // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
+    // Calculate points considering VIP (TEMPORARY: Disabled)
     const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
 
     if (pointsToAward <= 0) {
       logger.info(
-        "[Kick Webhook][Channel Followed] Puntos por follow deshabilitados",
+        "[Kick Webhook][Channel Followed] Follow points disabled",
       );
       return;
     }
 
-    // Otorgar puntos
+    // Award points
     await usuario.increment("puntos", { by: pointsToAward });
 
-    // Determinar tipo de usuario
+    // Determine user type
     const userType = "regular"; // usuario.getUserType();
 
-    // Registrar en historial
+    // Register in history
     await HistorialPunto.create({
       usuario_id: usuario.id,
       puntos: pointsToAward,
@@ -1145,7 +1145,7 @@ async function handleChannelFollowed(payload, metadata) {
       },
     });
 
-    // 📬 Crear notificación de puntos ganados por follow
+    // Create notification for follow points earned
     await NotificacionService.crearNotificacionPuntosGanados(
       usuario.id,
       {
@@ -1155,7 +1155,7 @@ async function handleChannelFollowed(payload, metadata) {
       }
     );
 
-    // Actualizar o crear tracking
+    // Update or create tracking
     if (!userTracking) {
       userTracking = await KickUserTracking.create({
         kick_user_id: kickUserId,
@@ -1173,7 +1173,7 @@ async function handleChannelFollowed(payload, metadata) {
     }
 
     logger.info(
-      `[Kick Webhook][Channel Followed] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} (primer follow - ${userType})`,
+      `[Kick Webhook][Channel Followed] ${pointsToAward} points awarded to ${kickUsername} (first follow - ${userType})`,
     );
   } catch (error) {
     logger.error("[Kick Webhook][Channel Followed] Error:", error.message);
@@ -1181,7 +1181,7 @@ async function handleChannelFollowed(payload, metadata) {
 }
 
 /**
- * Maneja nuevas suscripciones
+ * Handle new subscriptions
  */
 async function handleNewSubscription(payload, metadata) {
   try {
@@ -1198,22 +1198,22 @@ async function handleNewSubscription(payload, metadata) {
       expires_at: expiresAt,
     });
 
-    // Verificar si el usuario existe en nuestra BD
+    // Check if user exists in our DB
     const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][New Subscription] Usuario ${kickUsername} no registrado en la BD`,
+        `[Kick Webhook][New Subscription] User ${kickUsername} not registered in DB`,
       );
       return;
     }
 
-    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
 
-    // Obtener configuración de puntos por nueva suscripción
+    // Get new subscription points configuration
     const config = await KickPointsConfig.findOne({
       where: {
         config_key: "subscription_new_points",
@@ -1223,22 +1223,22 @@ async function handleNewSubscription(payload, metadata) {
 
     const basePoints = config?.config_value || 0;
 
-    // 🌟 Calcular puntos considerando VIP (TEMPORAL: Deshabilitado)
+    // Calculate points considering VIP (TEMPORARY: Disabled)
     const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'sub', basePoints);
 
     if (pointsToAward > 0) {
-      // Otorgar puntos
+      // Award points
       await usuario.increment("puntos", { by: pointsToAward });
 
-      // Determinar tipo de usuario
+      // Determine user type
       const userType = "sub"; // usuario.getUserType();
 
-      // Registrar en historial
+      // Register in history
       await HistorialPunto.create({
         usuario_id: usuario.id,
         puntos: pointsToAward,
         tipo: "ganado",
-        concepto: `Nueva suscripción (${duration} ${duration === 1 ? "mes" : "meses"}) - ${userType}`,
+        concepto: `New subscription (${duration} ${duration === 1 ? "month" : "months"}) - ${userType}`,
         kick_event_data: {
           event_type: "channel.subscription.new",
           kick_user_id: kickUserId,
@@ -1250,19 +1250,19 @@ async function handleNewSubscription(payload, metadata) {
         },
       });
 
-      // 📬 Crear notificación de puntos ganados por suscripción
+      // Create notification for subscription points earned
       await NotificacionService.crearNotificacionPuntosGanados(
         usuario.id,
         {
           cantidad: pointsToAward,
-          concepto: `Nueva suscripción (${duration} ${duration === 1 ? "mes" : "meses"})`,
+          concepto: `New subscription (${duration} ${duration === 1 ? "month" : "months"})`,
           tipo_evento: 'channel.subscription.new',
           duracion_meses: duration
         }
       );
     }
 
-    // Actualizar tracking de usuario
+    // Update user tracking
     await KickUserTracking.upsert({
       kick_user_id: kickUserId,
       kick_username: kickUsername,
@@ -1275,7 +1275,7 @@ async function handleNewSubscription(payload, metadata) {
     });
 
     logger.info(
-      `[Kick Webhook][New Subscription] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub hasta ${expiresAt}`,
+      `[Kick Webhook][New Subscription] ${pointsToAward} points awarded to ${kickUsername}, sub until ${expiresAt}`,
     );
   } catch (error) {
     logger.error("[Kick Webhook][New Subscription] Error:", error.message);
@@ -1283,7 +1283,7 @@ async function handleNewSubscription(payload, metadata) {
 }
 
 /**
- * Maneja renovaciones de suscripción
+ * Handle subscription renewals
  */
 async function handleSubscriptionRenewal(payload, metadata) {
   try {
@@ -1300,22 +1300,22 @@ async function handleSubscriptionRenewal(payload, metadata) {
       expires_at: expiresAt,
     });
 
-    // Verificar si el usuario existe en nuestra BD
+    // Check if user exists in our DB
     const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Subscription Renewal] Usuario ${kickUsername} no registrado en la BD`,
+        `[Kick Webhook][Subscription Renewal] User ${kickUsername} not registered in DB`,
       );
       return;
     }
 
-    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
 
-    // Obtener configuración de puntos por renovación
+    // Get renewal points configuration
     const config = await KickPointsConfig.findOne({
       where: {
         config_key: "subscription_renewal_points",
@@ -1326,15 +1326,15 @@ async function handleSubscriptionRenewal(payload, metadata) {
     const pointsToAward = config?.config_value || 0;
 
     if (pointsToAward > 0) {
-      // Otorgar puntos
+      // Award points
       await usuario.increment("puntos", { by: pointsToAward });
 
-      // Registrar en historial
+      // Register in history
       await HistorialPunto.create({
         usuario_id: usuario.id,
         puntos: pointsToAward,
         tipo: "ganado",
-        concepto: `Renovación de suscripción (${duration} ${duration === 1 ? "mes" : "meses"})`,
+        concepto: `Subscription renewal (${duration} ${duration === 1 ? "month" : "months"})`,
         kick_event_data: {
           event_type: "channel.subscription.renewal",
           kick_user_id: kickUserId,
@@ -1345,7 +1345,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
       });
     }
 
-    // Actualizar tracking de usuario
+    // Update user tracking
     await KickUserTracking.upsert({
       kick_user_id: kickUserId,
       kick_username: kickUsername,
@@ -1358,7 +1358,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
     });
 
     logger.info(
-      `[Kick Webhook][Subscription Renewal] ✅ ${pointsToAward} puntos otorgados a ${kickUsername}, sub renovada hasta ${expiresAt}`,
+      `[Kick Webhook][Subscription Renewal] ${pointsToAward} points awarded to ${kickUsername}, sub renewed until ${expiresAt}`,
     );
   } catch (error) {
     logger.error("[Kick Webhook][Subscription Renewal] Error:", error.message);
@@ -1366,7 +1366,7 @@ async function handleSubscriptionRenewal(payload, metadata) {
 }
 
 /**
- * Maneja regalos de suscripciones
+ * Handle subscription gifts
  */
 async function handleSubscriptionGifts(payload, metadata) {
   try {
@@ -1376,12 +1376,12 @@ async function handleSubscriptionGifts(payload, metadata) {
 
     logger.info("[Kick Webhook][Subscription Gifts]", {
       broadcaster: payload.broadcaster.username,
-      gifter: gifter.is_anonymous ? "Anónimo" : gifter.username,
+      gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
       giftees: giftees.map((g) => g.username),
       totalGifts: giftees.length,
     });
 
-    // Obtener configuraciones de puntos
+    // Get points configurations
     const configs = await KickPointsConfig.findAll({
       where: {
         config_key: ["gift_given_points", "gift_received_points"],
@@ -1397,7 +1397,7 @@ async function handleSubscriptionGifts(payload, metadata) {
     const pointsForGifter = configMap["gift_given_points"] || 0;
     const pointsForGiftee = configMap["gift_received_points"] || 0;
 
-    // Otorgar puntos al que regala (si no es anónimo)
+    // Award points to gifter (if not anonymous)
     if (!gifter.is_anonymous && pointsForGifter > 0) {
       const gifterKickUserId = String(gifter.user_id);
       const gifterUsuario = await Usuario.findOne({
@@ -1406,10 +1406,10 @@ async function handleSubscriptionGifts(payload, metadata) {
 
       if (gifterUsuario) {
         logger.info(
-          "🎯 [Subscription Gifts] Regalador encontrado en BD, otorgando puntos",
+          "[Subscription Gifts] Gifter found in DB, awarding points",
         );
-        
-        // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+
+        // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
         await syncUserProfileIfNeeded(gifterUsuario, gifter.username, gifterKickUserId, true, gifter.profile_picture);
 
         const totalPoints = pointsForGifter * giftees.length;
@@ -1419,7 +1419,7 @@ async function handleSubscriptionGifts(payload, metadata) {
           usuario_id: gifterUsuario.id,
           puntos: totalPoints,
           tipo: "ganado",
-          concepto: `Regaló ${giftees.length} suscripción${giftees.length !== 1 ? "es" : ""}`,
+          concepto: `Gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
           kick_event_data: {
             event_type: "channel.subscription.gifts",
             kick_user_id: gifterKickUserId,
@@ -1428,18 +1428,18 @@ async function handleSubscriptionGifts(payload, metadata) {
           },
         });
 
-        // 📬 Crear notificación de puntos ganados por regalo de suscripciones
+        // Create notification for gift subscription points earned
         await NotificacionService.crearNotificacionPuntosGanados(
           gifterUsuario.id,
           {
             cantidad: totalPoints,
-            concepto: `Regalaste ${giftees.length} suscripción${giftees.length !== 1 ? "es" : ""}`,
+            concepto: `You gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
             tipo_evento: 'channel.subscription.gifts',
             gifts_count: giftees.length
           }
         );
 
-        // Actualizar tracking del que regala
+        // Update gifter tracking
         await KickUserTracking.upsert({
           kick_user_id: gifterKickUserId,
           kick_username: gifter.username,
@@ -1449,12 +1449,12 @@ async function handleSubscriptionGifts(payload, metadata) {
         });
 
         logger.info(
-          `[Kick Webhook][Subscription Gifts] ✅ ${totalPoints} puntos a ${gifter.username} por regalar ${giftees.length} subs`,
+          `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`,
         );
       }
     }
 
-    // Otorgar puntos a cada giftee
+    // Award points to each giftee
     if (pointsForGiftee > 0) {
       for (const giftee of giftees) {
         const gifteeKickUserId = String(giftee.user_id);
@@ -1465,7 +1465,7 @@ async function handleSubscriptionGifts(payload, metadata) {
         });
 
         if (gifteeUsuario) {
-          // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+          // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
           await syncUserProfileIfNeeded(gifteeUsuario, gifteeUsername, gifteeKickUserId, true, giftee.profile_picture);
 
           await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
@@ -1474,28 +1474,28 @@ async function handleSubscriptionGifts(payload, metadata) {
             usuario_id: gifteeUsuario.id,
             puntos: pointsForGiftee,
             tipo: "ganado",
-            concepto: `Suscripción regalada recibida`,
+            concepto: `Received gifted subscription`,
             kick_event_data: {
               event_type: "channel.subscription.gifts",
               kick_user_id: gifteeKickUserId,
               kick_username: gifteeUsername,
-              gifter: gifter.is_anonymous ? "Anónimo" : gifter.username,
+              gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
               expires_at: expiresAt,
             },
           });
 
-          // 📬 Crear notificación de suscripción regalada
+          // Create notification for gifted subscription
           await NotificacionService.crearNotificacionSubRegalada(
             gifteeUsuario.id,
             {
-              regalador_username: gifter.is_anonymous ? "Un usuario anónimo" : gifter.username,
+              regalador_username: gifter.is_anonymous ? "An anonymous user" : gifter.username,
               monto_subscription: 1,
               puntos_otorgados: pointsForGiftee,
               expires_at: expiresAt
             }
           );
 
-          // Actualizar tracking del que recibe
+          // Update receiver tracking
           await KickUserTracking.upsert({
             kick_user_id: gifteeKickUserId,
             kick_username: gifteeUsername,
@@ -1510,14 +1510,14 @@ async function handleSubscriptionGifts(payload, metadata) {
           });
 
           logger.info(
-            "🎯 [Subscription Gifts] ✅",
+            "[Subscription Gifts]",
             pointsForGiftee,
-            "puntos a",
+            "points to",
             gifteeUsername,
-            "por recibir sub regalada",
+            "for receiving gifted sub",
           );
           logger.info(
-            "🎯 [Subscription Gifts] 💰 Total puntos del receptor:",
+            "[Subscription Gifts] Total receiver points:",
             (await gifteeUsuario.reload()).puntos,
           );
         }
@@ -1529,28 +1529,28 @@ async function handleSubscriptionGifts(payload, metadata) {
 }
 
 /**
- * Maneja cambios de estado de transmisión
+ * Handle livestream status changes
  */
 async function handleLivestreamStatusUpdated(payload, metadata) {
   try {
-    console.log("🎥🎥🎥 WEBHOOK LIVESTREAM.STATUS.UPDATED RECIBIDO 🎥🎥🎥");
+    logger.info("WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED");
 
     const isLive = payload.is_live;
     const redis = getRedisClient();
 
-    // 📊 Log detallado del payload completo para debugging
+    // Detailed full payload log for debugging
     logger.info(
-      "🎥 [STREAM STATUS] ==========================================",
+      "[STREAM STATUS] ==========================================",
     );
     logger.info(
-      "🎥 [STREAM STATUS] ✅ WEBHOOK LIVESTREAM.STATUS.UPDATED RECIBIDO",
+      "[STREAM STATUS] WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED",
     );
     logger.info(
-      "🎥 [STREAM STATUS] Payload completo:",
+      "[STREAM STATUS] Full payload:",
       JSON.stringify(payload, null, 2),
     );
     logger.info(
-      "🎥 [STREAM STATUS] Metadata:",
+      "[STREAM STATUS] Metadata:",
       JSON.stringify(metadata, null, 2),
     );
 
@@ -1560,11 +1560,11 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       title: payload.title,
       started_at: payload.started_at,
       ended_at: payload.ended_at,
-      timestamp_evento: metadata.timestamp,
-      timestamp_actual: new Date().toISOString(),
+      event_timestamp: metadata.timestamp,
+      current_timestamp: new Date().toISOString(),
     });
 
-    // 🔍 Validar timestamp del evento (no procesar eventos muy antiguos)
+    // Validate event timestamp (do not process very old events)
     if (metadata.timestamp) {
       const eventTimestamp = new Date(metadata.timestamp);
       const now = new Date();
@@ -1572,48 +1572,48 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
 
       if (ageMinutes > 5) {
         logger.warn(
-          `⚠️  [STREAM STATUS] Evento muy antiguo (${ageMinutes.toFixed(2)} minutos)`,
+          `[STREAM STATUS] Event too old (${ageMinutes.toFixed(2)} minutes)`,
         );
         logger.warn(
-          `⚠️  [STREAM STATUS] Podría estar desactualizado, procesando con precaución`,
+          `[STREAM STATUS] May be outdated, processing with caution`,
         );
       }
     }
 
-    // 🎥 Obtener estado anterior de Redis
+    // Get previous state from Redis
     const previousState = await redis.get("stream:is_live");
     const stateChanged = previousState !== (isLive ? "true" : "false");
 
     if (stateChanged) {
       logger.info(
-        `🔄 [STREAM STATUS] CAMBIO DETECTADO: ${previousState || "unknown"} → ${isLive ? "true" : "false"}`,
+        `[STREAM STATUS] CHANGE DETECTED: ${previousState || "unknown"} -> ${isLive ? "true" : "false"}`,
       );
     } else {
       logger.info(
-        `✅ [STREAM STATUS] Estado sin cambios: ${isLive ? "online" : "offline"}`,
+        `[STREAM STATUS] State unchanged: ${isLive ? "online" : "offline"}`,
       );
     }
 
-    // 🎥 Actualizar estado en Redis con lógica de debounce
-    // Webhooks son fuente rápida, pero offline requiere confirmación
+    // Update state in Redis with debounce logic
+    // Webhooks are a fast source, but offline requires confirmation
     if (isLive) {
-      // Stream ONLINE: SIN TTL (persiste indefinidamente)
+      // Stream ONLINE: NO TTL (persists indefinitely)
       await redis.set("stream:is_live", "true");
       await redis.set("stream:last_webhook_status", "online");
-      await redis.set("stream:offline_poll_failures", 0); // Resetear contador de fallos
+      await redis.set("stream:offline_poll_failures", 0); // Reset failure counter
       logger.info(
-        "✅ [STREAM STATUS] Estado ONLINE guardado (según payload.is_live=true)",
+        "[STREAM STATUS] ONLINE state saved (payload.is_live=true)",
       );
     } else {
-      // Stream OFFLINE: Marcar directamente como offline (sin esperar monitor)
+      // Stream OFFLINE: Mark directly as offline (without waiting for monitor)
       await redis.set("stream:is_live", "false");
       await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "🔴 [STREAM STATUS] Estado OFFLINE confirmado directamente por webhook",
+        "[STREAM STATUS] OFFLINE state confirmed directly by webhook",
       );
     }
 
-    // Guardar timestamp de última actualización (siempre con TTL para limpieza)
+    // Save last update timestamp (always with TTL for cleanup)
     await redis.set(
       "stream:last_status_update",
       new Date().toISOString(),
@@ -1621,30 +1621,30 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       86400,
     );
 
-    // Guardar información adicional del stream
+    // Save additional stream info
     if (isLive) {
       const streamInfo = {
-        title: payload.title || "Sin título",
+        title: payload.title || "Untitled",
         started_at: payload.started_at,
         broadcaster: payload.broadcaster?.username,
         updated_by: "status.updated",
       };
-      // Info del stream SIN TTL mientras esté online
+      // Stream info NO TTL while online
       await redis.set("stream:current_info", JSON.stringify(streamInfo));
     } else {
-      // Al terminar el stream, limpiar información
+      // When stream ends, clean up info
       await redis.del("stream:current_info");
-      logger.info("🧹 [STREAM STATUS] Información del stream limpiada");
+      logger.info("[STREAM STATUS] Stream info cleaned");
     }
 
     logger.info(
       isLive
-        ? "🟢 [STREAM] EN VIVO - Puntos por chat ACTIVADOS"
-        : "🔴 [STREAM] OFFLINE - Puntos por chat DESACTIVADOS",
+        ? "[STREAM] LIVE - Chat points ACTIVATED"
+        : "[STREAM] OFFLINE - Chat points DEACTIVATED",
     );
 
     logger.info(
-      "🎥 [STREAM STATUS] ==========================================",
+      "[STREAM STATUS] ==========================================",
     );
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Status] Error:", error);
@@ -1653,10 +1653,10 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
 }
 
 /**
- * Maneja actualizaciones de metadatos de transmisión
- * IMPORTANTE: Este evento NO indica si el stream está online/offline
- * Solo actualiza información (título, categoría, etc.) del stream
- * NO debe cambiar el estado stream:is_live
+ * Handle livestream metadata updates
+ * IMPORTANT: This event does NOT indicate if stream is online/offline
+ * Only updates stream info (title, category, etc.)
+ * Must NOT change stream:is_live state
  */
 async function handleLivestreamMetadataUpdated(payload, metadata) {
   try {
@@ -1670,13 +1670,13 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
       has_mature_content: payload.metadata.has_mature_content,
     });
 
-    // Obtener estado actual (NO lo modificamos aquí)
+    // Get current state (do NOT modify here)
     const currentState = await redis.get("stream:is_live");
 
-    // Actualizar solo la información de metadatos
+    // Update only metadata info
     const streamInfo = {
-      title: payload.metadata.title || "Sin título",
-      category: payload.metadata.category?.name || "Sin categoría",
+      title: payload.metadata.title || "Untitled",
+      category: payload.metadata.category?.name || "Uncategorized",
       category_id: payload.metadata.category?.id,
       language: payload.metadata.language || "en",
       has_mature_content: payload.metadata.has_mature_content || false,
@@ -1685,14 +1685,14 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
       last_update: new Date().toISOString(),
     };
 
-    // Info del stream SIN TTL
+    // Stream info NO TTL
     await redis.set("stream:current_info", JSON.stringify(streamInfo));
 
     logger.info(
-      `💾 [STREAM METADATA] Metadatos actualizados: "${streamInfo.title}" - ${streamInfo.category}`,
+      `[STREAM METADATA] Metadata updated: "${streamInfo.title}" - ${streamInfo.category}`,
     );
     logger.info(
-      `ℹ️  [STREAM METADATA] Estado actual del stream: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (sin cambios)`,
+      `[STREAM METADATA] Current stream state: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (unchanged)`,
     );
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);
@@ -1700,7 +1700,7 @@ async function handleLivestreamMetadataUpdated(payload, metadata) {
 }
 
 /**
- * Maneja baneos de moderación
+ * Handle moderation bans
  */
 async function handleModerationBanned(payload, metadata) {
   logger.info("[Kick Webhook][Moderation Banned]", {
@@ -1711,12 +1711,12 @@ async function handleModerationBanned(payload, metadata) {
     expires_at: payload.metadata.expires_at,
   });
 
-  // TODO: Implementar lógica de negocio (registrar baneo, actualizar permisos, etc.)
+  // TODO: Implement business logic (register ban, update permissions, etc.)
 }
 
 /**
- * Maneja regalos de kicks (kicks.gifted)
- * Otorga puntos equivalentes a la cantidad de kicks regalados
+ * Handle kicks gifts (kicks.gifted)
+ * Awards points equivalent to the amount of kicks gifted
  */
 async function handleKicksGifted(payload, metadata) {
   try {
@@ -1738,22 +1738,22 @@ async function handleKicksGifted(payload, metadata) {
       created_at: payload.created_at,
     });
 
-    // Verificar si el usuario existe en nuestra BD
+    // Check if user exists in our DB
     const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Kicks Gifted] Usuario ${kickUsername} no registrado en la BD`,
+        `[Kick Webhook][Kicks Gifted] User ${kickUsername} not registered in DB`,
       );
       return;
     }
 
-    // 🔄 Sincronizar perfil completo (username y avatar) si cambió (SIN throttling, evento poco frecuente)
+    // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
     await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, sender.profile_picture);
 
-    // Obtener el multiplicador desde la configuración
+    // Get multiplier from configuration
     const config = await KickPointsConfig.findOne({
       where: {
         config_key: 'kicks_gifted_multiplier',
@@ -1761,26 +1761,26 @@ async function handleKicksGifted(payload, metadata) {
       }
     });
 
-    const multiplier = config?.config_value || 2; // Por defecto x2
+    const multiplier = config?.config_value || 2; // Default x2
     const pointsToAward = kickAmount * multiplier;
 
     if (pointsToAward <= 0) {
       logger.info(
-        "[Kick Webhook][Kicks Gifted] Cantidad de kicks es 0 o inválida",
+        "[Kick Webhook][Kicks Gifted] Kick amount is 0 or invalid",
       );
       return;
     }
 
-    // Iniciar transacción para garantizar atomicidad
+    // Start transaction to guarantee atomicity
     const transaction = await sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     });
 
     try {
-      // Otorgar puntos
+      // Award points
       await usuario.increment("puntos", { by: pointsToAward }, { transaction });
 
-      // Registrar en historial
+      // Register in history
       await HistorialPunto.create(
         {
           usuario_id: usuario.id,
@@ -1801,7 +1801,7 @@ async function handleKicksGifted(payload, metadata) {
         { transaction },
       );
 
-      // 📬 Crear notificación de puntos ganados por regalo de kicks
+      // Create notification for kicks gift points earned
       await NotificacionService.crearNotificacionPuntosGanados(
         usuario.id,
         {
@@ -1815,7 +1815,7 @@ async function handleKicksGifted(payload, metadata) {
         transaction
       );
 
-      // Actualizar tracking del usuario (opcional, para estadísticas)
+      // Update user tracking (optional, for statistics)
       await KickUserTracking.upsert(
         {
           kick_user_id: kickUserId,
@@ -1830,18 +1830,18 @@ async function handleKicksGifted(payload, metadata) {
       await transaction.commit();
 
       logger.info(
-        `[Kick Webhook][Kicks Gifted] ✅ ${pointsToAward} puntos otorgados a ${kickUsername} por regalar ${kickAmount} kicks`,
+        `[Kick Webhook][Kicks Gifted] ${pointsToAward} points awarded to ${kickUsername} for gifting ${kickAmount} kicks`,
       );
 
-      // Recargar usuario para mostrar total actualizado
+      // Reload user to show updated total
       const updatedUser = await usuario.reload();
       logger.info(
-        `[Kick Webhook][Kicks Gifted] 💰 Total puntos de ${kickUsername}: ${updatedUser.puntos}`,
+        `[Kick Webhook][Kicks Gifted] Total points for ${kickUsername}: ${updatedUser.puntos}`,
       );
     } catch (transactionError) {
       await transaction.rollback();
       logger.error(
-        `[Kick Webhook][Kicks Gifted] ❌ Error en transacción para ${kickUsername}:`,
+        `[Kick Webhook][Kicks Gifted] Transaction error for ${kickUsername}:`,
         transactionError.message,
       );
       throw transactionError;
@@ -1852,11 +1852,11 @@ async function handleKicksGifted(payload, metadata) {
 }
 
 /**
- * Endpoint simple para verificar que Kick puede alcanzar el servidor
+ * Simple endpoint to verify Kick can reach the server
  * GET /webhook/test
  */
 exports.testWebhook = async (req, res) => {
-  logger.info("[Kick Webhook] Test endpoint alcanzado");
+  logger.info("[Kick Webhook] Test endpoint reached");
   logger.info("[Kick Webhook] Headers:", req.headers);
   logger.info("[Kick Webhook] IP:", req.ip);
   logger.info("[Kick Webhook] User-Agent:", req.headers["user-agent"]);
@@ -1871,7 +1871,7 @@ exports.testWebhook = async (req, res) => {
 };
 
 /**
- * Endpoint para verificar la configuración del webhook
+ * Endpoint to verify webhook configuration
  * GET /webhook/debug
  */
 exports.debugWebhook = async (req, res) => {
@@ -1908,19 +1908,19 @@ exports.debugWebhook = async (req, res) => {
 };
 
 /**
- * Endpoint temporal para simular un evento de chat y verificar que el procesamiento funciona
+ * Temporary endpoint to simulate a chat event and verify processing works
  * POST /api/kick-webhook/simulate-chat
  */
 exports.simulateChat = async (req, res) => {
   try {
-    logger.info("[Webhook Simulator] Simulando evento de chat...");
+    logger.info("[Webhook Simulator] Simulating chat event...");
 
-    // Simular payload de chat message
+    // Simulate chat message payload
     const simulatedPayload = {
       message_id: "sim_" + Date.now(),
       content: "Mensaje de prueba simulado",
       sender: {
-        user_id: 33112734, // Tu user_id
+        user_id: 33112734, // Your user_id
         username: "NaferJ",
       },
       broadcaster: {
@@ -1936,9 +1936,9 @@ exports.simulateChat = async (req, res) => {
       timestamp: Date.now(),
     };
 
-    logger.info("[Webhook Simulator] Procesando evento simulado...");
+    logger.info("[Webhook Simulator] Processing simulated event...");
 
-    // Procesar el evento como si fuera real
+    // Process the event as if it were real
     await processWebhookEvent(
       "chat.message.sent",
       1,
@@ -1948,7 +1948,7 @@ exports.simulateChat = async (req, res) => {
 
     return res.json({
       status: "success",
-      message: "Evento de chat simulado procesado",
+      message: "Simulated chat event processed",
       payload: simulatedPayload,
       timestamp: new Date().toISOString(),
     });
@@ -1962,16 +1962,16 @@ exports.simulateChat = async (req, res) => {
 };
 
 /**
- * Endpoint para simular un webhook REAL de Kick (con headers y todo)
+ * Endpoint to simulate a REAL Kick webhook (with headers and all)
  * POST /api/kick-webhook/test-real-webhook
  */
 exports.testRealWebhook = async (req, res) => {
   try {
     logger.info(
-      "[Test Real Webhook] Simulando webhook REAL de Kick con headers...",
+      "[Test Real Webhook] Simulating REAL Kick webhook with headers...",
     );
 
-    // Simular headers exactos que envía Kick
+    // Simulate exact headers sent by Kick
     const mockHeaders = {
       "kick-event-message-id": "test_" + Date.now(),
       "kick-event-subscription-id": "01K7JPFW2HYW4GCBQN85DVB9WG",
@@ -1983,7 +1983,7 @@ exports.testRealWebhook = async (req, res) => {
       "user-agent": "Kick-Webhooks/1.0",
     };
 
-    // Simular payload real de Kick
+    // Simulate real Kick payload
     const mockPayload = {
       message_id: "real_test_" + Date.now(),
       content: "7",
@@ -1998,14 +1998,14 @@ exports.testRealWebhook = async (req, res) => {
       sent_at: new Date().toISOString(),
     };
 
-    // Modificar el request para simular que viene de Kick
+    // Modify request to simulate coming from Kick
     req.headers = { ...req.headers, ...mockHeaders };
     req.body = mockPayload;
 
-    logger.info("[Test Real Webhook] Headers simulados:", mockHeaders);
-    logger.info("[Test Real Webhook] Payload simulado:", mockPayload);
+    logger.info("[Test Real Webhook] Simulated headers:", mockHeaders);
+    logger.info("[Test Real Webhook] Simulated payload:", mockPayload);
 
-    // Llamar al handler principal como si fuera un webhook real
+    // Call main handler as if it were a real webhook
     await this.handleWebhook(req, res);
   } catch (error) {
     logger.error("[Test Real Webhook] Error:", error.message);
@@ -2017,7 +2017,7 @@ exports.testRealWebhook = async (req, res) => {
 };
 
 /**
- * 🔧 REACTIVAR: Token del broadcaster principal
+ * REACTIVATE: Main broadcaster token
  */
 exports.reactivateBroadcasterToken = async (req, res) => {
   try {
@@ -2027,7 +2027,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
     } = require("../services/kickAutoSubscribe.service");
     const config = require("../../config");
 
-    logger.info("🔧 [REACTIVAR] Buscando token de broadcaster principal...");
+    logger.info("[REACTIVATE] Looking for main broadcaster token...");
 
     const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { kick_user_id: config.kick.broadcasterId },
@@ -2036,19 +2036,19 @@ exports.reactivateBroadcasterToken = async (req, res) => {
     if (!broadcasterToken) {
       return res.status(404).json({
         success: false,
-        error: "No se encontró token del broadcaster principal",
-        accion: "Luisardito debe autenticarse primero",
+        error: "Main broadcaster token not found",
+        accion: "Luisardito must authenticate first",
       });
     }
 
-    logger.info("🔧 [REACTIVAR] Token encontrado, verificando expiración...");
+    logger.info("[REACTIVATE] Token found, checking expiration...");
 
-    // Verificar si el token está expirado
+    // Check if token is expired
     const now = new Date();
     const expiresAt = new Date(broadcasterToken.token_expires_at);
     const isExpired = expiresAt <= now;
 
-    logger.info("🔧 [REACTIVAR] Estado del token:", {
+    logger.info("[REACTIVATE] Token status:", {
       expires_at: expiresAt,
       now: now,
       is_expired: isExpired,
@@ -2057,66 +2057,66 @@ exports.reactivateBroadcasterToken = async (req, res) => {
 
     if (isExpired) {
       logger.info(
-        "🔧 [REACTIVAR] Token expirado, intentando renovar con refresh_token...",
+        "[REACTIVATE] Token expired, attempting renewal with refresh_token...",
       );
 
       if (!broadcasterToken.refresh_token) {
         return res.status(400).json({
           success: false,
-          error: "Token expirado y no hay refresh_token disponible",
+          error: "Token expired and no refresh_token available",
           expires_at: broadcasterToken.token_expires_at,
-          accion: "Luisardito debe re-autenticarse completamente",
+          accion: "Luisardito must fully re-authenticate",
         });
       }
 
-      // Intentar renovar el token
+      // Attempt to renew token
       try {
         const {
           refreshAccessToken,
         } = require("../services/kickAutoSubscribe.service");
-        logger.info("🔧 [REACTIVAR] Intentando renovar token...");
+        logger.info("[REACTIVATE] Attempting token renewal...");
 
         const renewed = await refreshAccessToken(broadcasterToken);
 
         if (!renewed) {
           return res.status(400).json({
             success: false,
-            error: "No se pudo renovar el token expirado",
+            error: "Could not renew expired token",
             expires_at: broadcasterToken.token_expires_at,
-            accion: "Luisardito debe re-autenticarse completamente",
+            accion: "Luisardito must fully re-authenticate",
           });
         }
 
-        logger.info("🔧 [REACTIVAR] ✅ Token renovado exitosamente");
-        await broadcasterToken.reload(); // Recargar el token actualizado
+        logger.info("[REACTIVATE] Token renewed successfully");
+        await broadcasterToken.reload(); // Reload updated token
       } catch (refreshError) {
         logger.error(
-          "🔧 [REACTIVAR] Error renovando token:",
+          "[REACTIVATE] Error renewing token:",
           refreshError.message,
         );
         return res.status(400).json({
           success: false,
-          error: "Error renovando token: " + refreshError.message,
+          error: "Error renewing token: " + refreshError.message,
           expires_at: broadcasterToken.token_expires_at,
-          accion: "Luisardito debe re-autenticarse completamente",
+          accion: "Luisardito must fully re-authenticate",
         });
       }
     }
 
-    logger.info("🔧 [REACTIVAR] Reactivando token...");
+    logger.info("[REACTIVATE] Reactivating token...");
 
-    // Reactivar el token
+    // Reactivate token
     await broadcasterToken.update({
       is_active: true,
-      auto_subscribed: false, // Lo marcaremos true después de suscribirse
+      auto_subscribed: false, // Will mark true after subscribing
       subscription_error: null,
     });
 
     logger.info(
-      "🔧 [REACTIVAR] Intentando auto-suscripción con token del broadcaster...",
+      "[REACTIVATE] Attempting auto-subscription with broadcaster token...",
     );
 
-    // Intentar auto-suscripción usando SU propio token
+    // Attempt auto-subscription using ITS own token
     try {
       const autoSubscribeResult = await autoSubscribeToEvents(
         broadcasterToken.access_token,
@@ -2133,8 +2133,8 @@ exports.reactivateBroadcasterToken = async (req, res) => {
       });
 
       logger.info(
-        "🔧 [REACTIVAR] Resultado de suscripción:",
-        autoSubscribeResult.success ? "ÉXITO" : "FALLO",
+        "[REACTIVATE] Subscription result:",
+        autoSubscribeResult.success ? "SUCCESS" : "FAILURE",
       );
 
       res.json({
@@ -2146,15 +2146,15 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         subscriptions_created: autoSubscribeResult.totalSubscribed || 0,
         subscriptions_errors: autoSubscribeResult.totalErrors || 0,
         message: autoSubscribeResult.success
-          ? "✅ Token reactivado y suscripciones creadas. ¡Los webhooks deberían funcionar!"
-          : "⚠️ Token reactivado pero falló la suscripción",
+          ? "Token reactivated and subscriptions created. Webhooks should work!"
+          : "Token reactivated but subscription failed",
         next_step: autoSubscribeResult.success
-          ? "Probar enviando mensaje en chat de Luisardito"
-          : "Verificar logs de error de suscripción",
+          ? "Test by sending a message in Luisardito's chat"
+          : "Check subscription error logs",
       });
     } catch (subscribeError) {
       logger.error(
-        "🔧 [REACTIVAR] Error en suscripción:",
+        "[REACTIVATE] Subscription error:",
         subscribeError.message,
       );
 
@@ -2168,12 +2168,12 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         token_reactivated: true,
         auto_subscribed: false,
         error: subscribeError.message,
-        message: "⚠️ Token reactivado pero falló la suscripción",
-        next_step: "Verificar logs de error",
+        message: "Token reactivated but subscription failed",
+        next_step: "Check error logs",
       });
     }
   } catch (error) {
-    logger.error("🔧 [REACTIVAR] Error general:", error);
+    logger.error("[REACTIVATE] General error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2182,7 +2182,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
 };
 
 /**
- * Estado simplificado del sistema de webhooks
+ * Simplified webhook system status
  */
 exports.systemStatus = async (req, res) => {
   try {
@@ -2192,7 +2192,7 @@ exports.systemStatus = async (req, res) => {
     } = require("../models");
     const config = require("../../config");
 
-    // Verificar broadcaster principal
+    // Check main broadcaster
     const broadcasterToken = await KickBroadcasterToken.findOne({
       where: {
         kick_user_id: config.kick.broadcasterId,
@@ -2200,7 +2200,7 @@ exports.systemStatus = async (req, res) => {
       },
     });
 
-    // Contar suscripciones activas
+    // Count active subscriptions
     const subscriptions = await KickEventSubscription.count({
       where: {
         broadcaster_user_id: parseInt(config.kick.broadcasterId),
@@ -2233,8 +2233,8 @@ exports.systemStatus = async (req, res) => {
       success: status.system_ready,
       status,
       message: status.system_ready
-        ? "Sistema de webhooks operativo"
-        : "Sistema necesita configuración",
+        ? "Webhook system operational"
+        : "System needs configuration",
     });
   } catch (error) {
     logger.error("[System Status] Error:", error);
@@ -2246,7 +2246,7 @@ exports.systemStatus = async (req, res) => {
 };
 
 /**
- * 🔧 DEPURACIÓN: Endpoint temporal para debuggear el proceso de suscripción
+ * DEBUG: Temporary endpoint to debug the subscription process
  */
 exports.debugSubscriptionProcess = async (req, res) => {
   try {
@@ -2258,10 +2258,10 @@ exports.debugSubscriptionProcess = async (req, res) => {
     const axios = require("axios");
 
     logger.info(
-      "🔧 [DEBUG SUB] Iniciando depuración del proceso de suscripción...",
+      "[DEBUG SUB] Starting subscription process debugging...",
     );
 
-    // 1. Verificar token activo
+    // 1. Check active token
     const broadcasterToken = await KickBroadcasterToken.findOne({
       where: {
         kick_user_id: config.kick.broadcasterId,
@@ -2272,27 +2272,27 @@ exports.debugSubscriptionProcess = async (req, res) => {
     if (!broadcasterToken) {
       return res.json({
         success: false,
-        error: "No hay token activo para el broadcaster principal",
+        error: "No active token for main broadcaster",
         broadcaster_id: config.kick.broadcasterId,
       });
     }
 
     logger.info(
-      "🔧 [DEBUG SUB] Token encontrado para:",
+      "[DEBUG SUB] Token found for:",
       broadcasterToken.kick_username,
     );
 
-    // 2. Simular llamada a la API de Kick (solo un evento para prueba)
+    // 2. Simulate Kick API call (single event for testing)
     const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
     const testPayload = {
       broadcaster_user_id: parseInt(config.kick.broadcasterId),
-      events: [{ name: "chat.message.sent", version: 1 }], // Solo un evento para prueba
+      events: [{ name: "chat.message.sent", version: 1 }], // Single event for testing
       method: "webhook",
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
     };
 
     logger.info(
-      "🔧 [DEBUG SUB] Payload enviado a Kick:",
+      "[DEBUG SUB] Payload sent to Kick:",
       JSON.stringify(testPayload, null, 2),
     );
 
@@ -2307,25 +2307,25 @@ exports.debugSubscriptionProcess = async (req, res) => {
       });
       kickResponse = response.data;
       logger.info(
-        "🔧 [DEBUG SUB] Respuesta de Kick:",
+        "[DEBUG SUB] Kick response:",
         JSON.stringify(kickResponse, null, 2),
       );
     } catch (apiError) {
-      logger.error("🔧 [DEBUG SUB] Error en API de Kick:", apiError.message);
+      logger.error("[DEBUG SUB] Kick API error:", apiError.message);
       return res.json({
         success: false,
-        error: "Error comunicándose con API de Kick",
+        error: "Error communicating with Kick API",
         details: apiError.response?.data || apiError.message,
       });
     }
 
-    // 3. Intentar guardar cada suscripción y capturar errores detallados
+    // 3. Try saving each subscription and capture detailed errors
     const subscriptionsData = kickResponse.data || [];
     const debugResults = [];
 
     for (const sub of subscriptionsData) {
       logger.info(
-        "🔧 [DEBUG SUB] Procesando suscripción:",
+        "[DEBUG SUB] Processing subscription:",
         JSON.stringify(sub, null, 2),
       );
 
@@ -2340,18 +2340,18 @@ exports.debugSubscriptionProcess = async (req, res) => {
         };
 
         logger.info(
-          "🔧 [DEBUG SUB] Datos a guardar:",
+          "[DEBUG SUB] Data to save:",
           JSON.stringify(dataToSave, null, 2),
         );
 
         try {
-          // Usar la misma lógica que en el servicio principal: find-update
+          // Use same logic as main service: find-update
           let localSub = await KickEventSubscription.findOne({
             where: { subscription_id: sub.subscription_id },
           });
 
           if (localSub) {
-            // Si existe, actualizar los datos
+            // If exists, update data
             await localSub.update(dataToSave);
             debugResults.push({
               event: sub.name,
@@ -2361,11 +2361,11 @@ exports.debugSubscriptionProcess = async (req, res) => {
               db_id: localSub.id,
             });
             logger.info(
-              "🔧 [DEBUG SUB] ✅ Actualizado exitoso para:",
+              "[DEBUG SUB] Update successful for:",
               sub.name,
             );
           } else {
-            // Si no existe, crear nuevo
+            // If not exists, create new
             const newSubscription =
               await KickEventSubscription.create(dataToSave);
             debugResults.push({
@@ -2375,10 +2375,10 @@ exports.debugSubscriptionProcess = async (req, res) => {
               subscription_id: sub.subscription_id,
               db_id: newSubscription.id,
             });
-            logger.info("🔧 [DEBUG SUB] ✅ Creado exitoso para:", sub.name);
+            logger.info("[DEBUG SUB] Create successful for:", sub.name);
           }
         } catch (dbError) {
-          logger.error("🔧 [DEBUG SUB] ❌ Error DB detallado:", {
+          logger.error("[DEBUG SUB] Detailed DB error:", {
             message: dbError.message,
             name: dbError.name,
             errors: dbError.errors,
@@ -2387,7 +2387,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
           });
 
           debugResults.push({
-            event: sub.name || "DESCONOCIDO",
+            event: sub.name || "UNKNOWN",
             success: false,
             error: {
               message: dbError.message,
@@ -2407,21 +2407,21 @@ exports.debugSubscriptionProcess = async (req, res) => {
         }
       } else {
         debugResults.push({
-          event: sub.name || "DESCONOCIDO",
+          event: sub.name || "UNKNOWN",
           success: false,
-          kick_error: sub.error || "No subscription_id en respuesta",
+          kick_error: sub.error || "No subscription_id in response",
         });
       }
     }
 
-    // 4. Limpiar cualquier suscripción que se haya creado durante la prueba
+    // 4. Clean up any subscription created during testing
     await KickEventSubscription.destroy({
       where: {
         broadcaster_user_id: parseInt(config.kick.broadcasterId),
         event_type: "chat.message.sent",
       },
     });
-    logger.info("🔧 [DEBUG SUB] Limpieza completada");
+    logger.info("[DEBUG SUB] Cleanup completed");
 
     res.json({
       success: true,
@@ -2436,7 +2436,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔧 [DEBUG SUB] Error general:", error);
+    logger.error("[DEBUG SUB] General error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2446,21 +2446,21 @@ exports.debugSubscriptionProcess = async (req, res) => {
 };
 
 /**
- * 🔧 DEPURACIÓN: Verificar estructura de tabla KickEventSubscription
+ * DEBUG: Verify KickEventSubscription table structure
  */
 exports.debugTableStructure = async (req, res) => {
   try {
     const { KickEventSubscription } = require("../models");
     const { sequelize } = require("../models/database");
 
-    logger.info("🔧 [DEBUG TABLE] Verificando estructura de tabla...");
+    logger.info("[DEBUG TABLE] Checking table structure...");
 
-    // 1. Describir la tabla directamente en la BD
+    // 1. Describe table directly in DB
     const [tableDescription] = await sequelize.query(
       `DESCRIBE kick_event_subscriptions`,
     );
 
-    // 2. Obtener constraints y índices
+    // 2. Get constraints and indexes
     const [constraints] = await sequelize.query(`
             SELECT
                 COLUMN_NAME,
@@ -2474,7 +2474,7 @@ exports.debugTableStructure = async (req, res) => {
             AND TABLE_SCHEMA = DATABASE()
         `);
 
-    // 3. Verificar índices únicos
+    // 3. Check unique indexes
     const [uniqueIndexes] = await sequelize.query(`
             SELECT
                 INDEX_NAME,
@@ -2486,7 +2486,7 @@ exports.debugTableStructure = async (req, res) => {
             AND NON_UNIQUE = 0
         `);
 
-    // 4. Verificar foreign keys
+    // 4. Check foreign keys
     const [foreignKeys] = await sequelize.query(`
             SELECT
                 COLUMN_NAME,
@@ -2499,10 +2499,10 @@ exports.debugTableStructure = async (req, res) => {
             AND REFERENCED_TABLE_NAME IS NOT NULL
         `);
 
-    // 5. Probar inserción simple para capturar error
+    // 5. Test simple insert to capture error
     let insertTestResult = null;
     try {
-      // Datos de prueba mínimos
+      // Minimal test data
       const testData = {
         subscription_id: "test_debug_" + Date.now(),
         broadcaster_user_id: 33112734,
@@ -2512,21 +2512,21 @@ exports.debugTableStructure = async (req, res) => {
         status: "active",
       };
 
-      logger.info("🔧 [DEBUG TABLE] Probando inserción con datos:", testData);
+      logger.info("[DEBUG TABLE] Testing insert with data:", testData);
 
       const testRecord = await KickEventSubscription.create(testData);
 
-      // Si funciona, eliminar inmediatamente
+      // If it works, delete immediately
       await testRecord.destroy();
 
       insertTestResult = {
         success: true,
-        message: "Inserción de prueba exitosa",
+        message: "Test insert successful",
         test_data: testData,
       };
     } catch (insertError) {
       logger.error(
-        "🔧 [DEBUG TABLE] Error en inserción de prueba:",
+        "[DEBUG TABLE] Test insert error:",
         insertError,
       );
 
@@ -2571,7 +2571,7 @@ exports.debugTableStructure = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔧 [DEBUG TABLE] Error general:", error);
+    logger.error("[DEBUG TABLE] General error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2581,7 +2581,7 @@ exports.debugTableStructure = async (req, res) => {
 };
 
 /**
- * 🚀 APP TOKEN: Configurar webhooks permanentes con App Access Token
+ * APP TOKEN: Configure permanent webhooks with App Access Token
  */
 exports.setupPermanentWebhooks = async (req, res) => {
   try {
@@ -2591,7 +2591,7 @@ exports.setupPermanentWebhooks = async (req, res) => {
     const config = require("../../config");
 
     logger.info(
-      "🚀 [Setup Permanent] Iniciando configuración de webhooks permanentes...",
+      "[Setup Permanent] Starting permanent webhooks configuration...",
     );
 
     const result = await subscribeToEventsWithAppToken(
@@ -2601,7 +2601,7 @@ exports.setupPermanentWebhooks = async (req, res) => {
     if (result.success) {
       res.json({
         success: true,
-        message: "🚀 ¡Webhooks permanentes configurados exitosamente!",
+        message: "Permanent webhooks configured successfully!",
         permanent: true,
         token_type: "APP_TOKEN",
         no_user_auth_required: true,
@@ -2610,39 +2610,39 @@ exports.setupPermanentWebhooks = async (req, res) => {
         subscriptions_errors: result.totalErrors,
         webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
         benefits: [
-          "No requiere re-autenticación del usuario",
-          "Funciona 24/7 sin intervención manual",
-          "No expira cada 2 horas",
-          "No hay refresh tokens que expiren",
-          "Completamente autónomo",
+          "No user re-authentication required",
+          "Works 24/7 without manual intervention",
+          "Does not expire every 2 hours",
+          "No refresh tokens that expire",
+          "Completely autonomous",
         ],
         next_steps: [
-          "Los webhooks están listos",
-          "Probar enviando mensaje en chat",
-          "Verificar logs del servidor",
+          "Webhooks are ready",
+          "Test by sending a message in chat",
+          "Check server logs",
         ],
       });
     } else {
       res.status(500).json({
         success: false,
-        message: "Error configurando webhooks permanentes",
+        message: "Error configuring permanent webhooks",
         error: result.error,
         token_type: "APP_TOKEN",
         permanent: false,
       });
     }
   } catch (error) {
-    logger.error("🚀 [Setup Permanent] Error general:", error);
+    logger.error("[Setup Permanent] General error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
-      message: "Error interno configurando webhooks permanentes",
+      message: "Internal error configuring permanent webhooks",
     });
   }
 };
 
 /**
- * 🔍 APP TOKEN: Debug y estado de webhooks permanentes
+ * APP TOKEN: Debug and status of permanent webhooks
  */
 exports.debugAppTokenWebhooks = async (req, res) => {
   try {
@@ -2653,22 +2653,22 @@ exports.debugAppTokenWebhooks = async (req, res) => {
     const config = require("../../config");
 
     logger.info(
-      "🔍 [Debug App Token] Iniciando diagnóstico de webhooks permanentes...",
+      "[Debug App Token] Starting permanent webhooks diagnostics...",
     );
 
-    // 1. Probar obtención de App Token
+    // 1. Test App Token retrieval
     logger.info(
-      "🔍 [Debug App Token] Probando obtención de App Access Token...",
+      "[Debug App Token] Testing App Access Token retrieval...",
     );
     const appToken = await getAppAccessToken();
 
-    // 2. Verificar estado de suscripciones
-    logger.info("🔍 [Debug App Token] Verificando estado de suscripciones...");
+    // 2. Check subscription status
+    logger.info("[Debug App Token] Checking subscription status...");
     const webhooksStatus = await checkAppTokenWebhooksStatus(
       config.kick.broadcasterId,
     );
 
-    // 3. Verificar todas las suscripciones en DB
+    // 3. Check all subscriptions in DB
     const { KickEventSubscription } = require("../models");
     const allSubscriptions = await KickEventSubscription.findAll({
       where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
@@ -2689,8 +2689,8 @@ exports.debugAppTokenWebhooks = async (req, res) => {
         token_obtained: !!appToken,
         token_length: appToken ? appToken.length : 0,
         message: appToken
-          ? "App Token obtenido exitosamente"
-          : "Error obteniendo App Token",
+          ? "App Token obtained successfully"
+          : "Error obtaining App Token",
       },
       webhooks_status: webhooksStatus,
       broadcaster_config: {
@@ -2713,8 +2713,8 @@ exports.debugAppTokenWebhooks = async (req, res) => {
         requires_maintenance: !webhooksStatus.is_permanent,
         user_dependency: webhooksStatus.requires_user_auth,
         recommendation: webhooksStatus.is_permanent
-          ? "Sistema funcionando con webhooks permanentes"
-          : "Se recomienda configurar webhooks permanentes con App Token",
+          ? "System running with permanent webhooks"
+          : "Recommended to configure permanent webhooks with App Token",
       },
     };
 
@@ -2730,7 +2730,7 @@ exports.debugAppTokenWebhooks = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔍 [Debug App Token] Error:", error);
+    logger.error("[Debug App Token] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2740,7 +2740,7 @@ exports.debugAppTokenWebhooks = async (req, res) => {
 };
 
 /**
- * 🔄 APP TOKEN: Estado comparativo entre User Token vs App Token
+ * APP TOKEN: Comparative status between User Token vs App Token
  */
 exports.compareTokenTypes = async (req, res) => {
   try {
@@ -2750,14 +2750,14 @@ exports.compareTokenTypes = async (req, res) => {
     const { KickBroadcasterToken } = require("../models");
     const config = require("../../config");
 
-    logger.info("🔄 [Compare Tokens] Comparando User Token vs App Token...");
+    logger.info("[Compare Tokens] Comparing User Token vs App Token...");
 
-    // Estado de webhooks
+    // Webhooks status
     const webhooksStatus = await checkAppTokenWebhooksStatus(
       config.kick.broadcasterId,
     );
 
-    // Estado de User Tokens
+    // User Tokens status
     const userTokens = await KickBroadcasterToken.findAll({
       where: { kick_user_id: config.kick.broadcasterId },
       attributes: [
@@ -2786,29 +2786,29 @@ exports.compareTokenTypes = async (req, res) => {
             : null,
         requires_user_interaction: true,
         maintenance_required: true,
-        duration: "2 horas (con refresh hasta ~30-90 días)",
+        duration: "2 hours (with refresh up to ~30-90 days)",
         webhooks_count: webhooksStatus.user_token_subscriptions,
       },
       app_tokens: {
-        total: "N/A (sin estado en DB)",
+        total: "N/A (no DB state)",
         active: webhooksStatus.app_token_subscriptions > 0 ? 1 : 0,
-        expires: "NUNCA (permanente)",
+        expires: "NEVER (permanent)",
         requires_user_interaction: false,
         maintenance_required: false,
-        duration: "PERMANENTE (hasta cambio manual de credenciales)",
+        duration: "PERMANENT (until manual credential change)",
         webhooks_count: webhooksStatus.app_token_subscriptions,
       },
       recommendation: {
         current_status: webhooksStatus.is_permanent
-          ? "USANDO_APP_TOKEN"
-          : "USANDO_USER_TOKEN",
+          ? "USING_APP_TOKEN"
+          : "USING_USER_TOKEN",
         should_migrate: !webhooksStatus.is_permanent,
         benefits_migration: [
-          "Elimina dependencia del usuario",
-          "No requiere re-autenticación",
-          "Funciona 24/7 sin mantenimiento",
-          "Elimina expiración de tokens",
-          "Sistema completamente autónomo",
+          "Eliminates user dependency",
+          "No re-authentication required",
+          "Works 24/7 without maintenance",
+          "Eliminates token expiration",
+          "Fully autonomous system",
         ],
       },
     };
@@ -2821,14 +2821,14 @@ exports.compareTokenTypes = async (req, res) => {
           ? "PERMANENT (App Token)"
           : "TEMPORARY (User Token)",
         recommendation: webhooksStatus.is_permanent
-          ? "Ya optimizado"
-          : "Migrar a App Token",
+          ? "Already optimized"
+          : "Migrate to App Token",
         action_needed: !webhooksStatus.is_permanent,
       },
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🔄 [Compare Tokens] Error:", error);
+    logger.error("[Compare Tokens] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2837,11 +2837,11 @@ exports.compareTokenTypes = async (req, res) => {
 };
 
 // ============================================================================
-// ENDPOINTS DE DEBUG PARA NUEVAS FUNCIONALIDADES
+// DEBUG ENDPOINTS FOR NEW FEATURES
 // ============================================================================
 
 /**
- * 🧪 DEBUG: Simular migración de Botrix
+ * DEBUG: Simulate Botrix migration
  */
 exports.debugBotrixMigration = async (req, res) => {
   try {
@@ -2850,15 +2850,15 @@ exports.debugBotrixMigration = async (req, res) => {
     if (!kick_username || !points_amount) {
       return res.status(400).json({
         success: false,
-        error: "Faltan parámetros: kick_username, points_amount",
+        error: "Missing parameters: kick_username, points_amount",
       });
     }
 
     logger.info(
-      `🧪 [DEBUG BOTRIX] Simulando migración: ${kick_username} con ${points_amount} puntos`,
+      `[DEBUG BOTRIX] Simulating migration: ${kick_username} with ${points_amount} points`,
     );
 
-    // Crear mensaje simulado de BotRix
+    // Create simulated BotRix message
     const mockMessage = {
       sender: {
         username: "BotRix",
@@ -2870,18 +2870,18 @@ exports.debugBotrixMigration = async (req, res) => {
       },
     };
 
-    // Procesar con el servicio real
+    // Process with the real service
     const result = await BotrixMigrationService.processChatMessage(mockMessage);
 
     res.json({
       success: true,
-      message: "Simulación de migración completada",
+      message: "Migration simulation completed",
       input: { kick_username, points_amount },
       result: result,
       mock_message: mockMessage.content,
     });
   } catch (error) {
-    logger.error("❌ [DEBUG BOTRIX] Error en simulación:", error);
+    logger.error("[DEBUG BOTRIX] Simulation error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2890,17 +2890,17 @@ exports.debugBotrixMigration = async (req, res) => {
 };
 
 /**
- * 🧪 DEBUG: Información de configuración VIP y migración
+ * DEBUG: VIP configuration and migration info
  */
 exports.debugSystemInfo = async (req, res) => {
   try {
     const { BotrixMigrationConfig } = require("../models");
     const config = await BotrixMigrationConfig.getConfig();
 
-    // Obtener estadísticas reales de migración
+    // Get real migration stats
     const migrationStats = await BotrixMigrationService.getMigrationStats();
 
-    // Obtener estadísticas reales de VIP usando el servicio importado
+    // Get real VIP stats using imported service
     const vipStats = await VipService.getVipStats();
 
     res.json({
@@ -2934,7 +2934,7 @@ exports.debugSystemInfo = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("Error obteniendo información del sistema:", error);
+    logger.error("Error getting system info:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -2943,33 +2943,33 @@ exports.debugSystemInfo = async (req, res) => {
 };
 
 /**
- * 🎥 DEBUG: Verificar estado del stream
+ * DEBUG: Check stream status
  */
 exports.debugStreamStatus = async (req, res) => {
   try {
     const redis = getRedisClient();
 
-    // Obtener todas las claves relacionadas con el stream
+    // Get all stream-related keys
     const isLive = await redis.get("stream:is_live");
     const currentInfo = await redis.get("stream:current_info");
     const lastStatusUpdate = await redis.get("stream:last_status_update");
     const lastMetadataUpdate = await redis.get("stream:last_metadata_update");
 
-    // Obtener TTL de las claves
+    // Get TTL of keys
     const ttlIsLive = await redis.ttl("stream:is_live");
     const ttlCurrentInfo = await redis.ttl("stream:current_info");
 
-    // Parsear información del stream si existe
+    // Parse stream info if exists
     let streamInfo = null;
     if (currentInfo) {
       try {
         streamInfo = JSON.parse(currentInfo);
       } catch (e) {
-        logger.warn("[Stream Status] Error parseando stream:current_info");
+        logger.warn("[Stream Status] Error parsing stream:current_info");
       }
     }
 
-    // Calcular tiempo desde última actualización
+    // Calculate time since last update
     let minutesSinceStatusUpdate = null;
     if (lastStatusUpdate) {
       const lastUpdate = new Date(lastStatusUpdate);
@@ -2984,12 +2984,12 @@ exports.debugStreamStatus = async (req, res) => {
       minutesSinceMetadataUpdate = (now - lastUpdate) / 1000 / 60;
     }
 
-    // Detectar inconsistencias
+    // Detect inconsistencies
     const warnings = [];
 
     if (isLive === "true" && ttlIsLive < 3600) {
       warnings.push(
-        `⚠️ TTL bajo: expira en ${Math.floor(ttlIsLive / 60)} minutos`,
+        `Low TTL: expires in ${Math.floor(ttlIsLive / 60)} minutes`,
       );
     }
 
@@ -2999,16 +2999,16 @@ exports.debugStreamStatus = async (req, res) => {
       minutesSinceStatusUpdate > 120
     ) {
       warnings.push(
-        `⚠️ Sin actualizaciones de status desde hace ${minutesSinceStatusUpdate.toFixed(1)} minutos`,
+        `No status updates for ${minutesSinceStatusUpdate.toFixed(1)} minutes`,
       );
     }
 
     if (isLive === "true" && !streamInfo) {
-      warnings.push("⚠️ Stream online pero sin información en Redis");
+      warnings.push("Stream online but no info in Redis");
     }
 
     if (ttlIsLive === -1) {
-      warnings.push("⚠️ Clave sin TTL (permanente)");
+      warnings.push("Key without TTL (permanent)");
     }
 
     res.json({
@@ -3019,25 +3019,25 @@ exports.debugStreamStatus = async (req, res) => {
         points_enabled: isLive === "true",
         message:
           isLive === "true"
-            ? "🟢 Stream EN VIVO - Puntos activados"
-            : "🔴 Stream OFFLINE - Puntos desactivados",
+            ? "Stream LIVE - Points activated"
+            : "Stream OFFLINE - Points deactivated",
       },
       stream_info: streamInfo,
       redis_metadata: {
         ttl_is_live:
           ttlIsLive === -1
-            ? "sin_expiración"
+            ? "no_expiration"
             : ttlIsLive === -2
-              ? "no_existe"
+              ? "not_found"
               : `${ttlIsLive}s (${Math.floor(ttlIsLive / 60)} min)`,
         ttl_current_info:
           ttlCurrentInfo === -1
-            ? "sin_expiración"
+            ? "no_expiration"
             : ttlCurrentInfo === -2
-              ? "no_existe"
+              ? "not_found"
               : `${ttlCurrentInfo}s (${Math.floor(ttlCurrentInfo / 60)} min)`,
-        last_status_update: lastStatusUpdate || "nunca",
-        last_metadata_update: lastMetadataUpdate || "nunca",
+        last_status_update: lastStatusUpdate || "never",
+        last_metadata_update: lastMetadataUpdate || "never",
         minutes_since_status_update: minutesSinceStatusUpdate
           ? minutesSinceStatusUpdate.toFixed(1)
           : "n/a",
@@ -3046,7 +3046,7 @@ exports.debugStreamStatus = async (req, res) => {
           : "n/a",
       },
       health_check: {
-        status: warnings.length === 0 ? "✅ Saludable" : "⚠️ Advertencias",
+        status: warnings.length === 0 ? "Healthy" : "Warnings",
         warnings: warnings,
       },
       timestamp: new Date().toISOString(),
@@ -3061,9 +3061,9 @@ exports.debugStreamStatus = async (req, res) => {
 };
 
 /**
- * 🚨 EMERGENCY: Establecer manualmente el estado del stream
+ * EMERGENCY: Manually set stream status
  * POST /api/kick-webhook/debug/force-stream-state
- * Body: { "is_live": true/false, "reason": "explicación" }
+ * Body: { "is_live": true/false, "reason": "explanation" }
  */
 exports.forceStreamState = async (req, res) => {
   try {
@@ -3072,7 +3072,7 @@ exports.forceStreamState = async (req, res) => {
     if (typeof is_live !== "boolean") {
       return res.status(400).json({
         success: false,
-        error: "Parámetro is_live debe ser boolean (true/false)",
+        error: "Parameter is_live must be boolean (true/false)",
       });
     }
 
@@ -3080,36 +3080,36 @@ exports.forceStreamState = async (req, res) => {
     const previousState = await redis.get("stream:is_live");
 
     logger.warn(
-      "🚨 [FORCE STREAM STATE] ==========================================",
+      "[FORCE STREAM STATE] ==========================================",
     );
-    logger.warn("🚨 [FORCE STREAM STATE] CAMBIO MANUAL DE ESTADO DETECTADO");
+    logger.warn("[FORCE STREAM STATE] MANUAL STATE CHANGE DETECTED");
     logger.warn(
-      `🚨 [FORCE STREAM STATE] Estado anterior: ${previousState || "unknown"}`,
-    );
-    logger.warn(
-      `🚨 [FORCE STREAM STATE] Nuevo estado: ${is_live ? "true" : "false"}`,
+      `[FORCE STREAM STATE] Previous state: ${previousState || "unknown"}`,
     );
     logger.warn(
-      `🚨 [FORCE STREAM STATE] Razón: ${reason || "No especificada"}`,
+      `[FORCE STREAM STATE] New state: ${is_live ? "true" : "false"}`,
     );
     logger.warn(
-      `🚨 [FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`,
+      `[FORCE STREAM STATE] Reason: ${reason || "Not specified"}`,
     );
     logger.warn(
-      "🚨 [FORCE STREAM STATE] ==========================================",
+      `[FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`,
+    );
+    logger.warn(
+      "[FORCE STREAM STATE] ==========================================",
     );
 
-    // Actualizar estado con lógica consistente: SIN TTL si está online, CON TTL si está offline
+    // Update state with consistent logic: NO TTL if online, WITH TTL if offline
     if (is_live) {
       await redis.set("stream:is_live", "true");
       logger.warn(
-        "✅ [FORCE STREAM STATE] Estado forzado a ONLINE (persistente, sin TTL)",
+        "[FORCE STREAM STATE] State forced to ONLINE (persistent, no TTL)",
       );
     } else {
       await redis.set("stream:is_live", "false");
       await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "🔴 [FORCE STREAM STATE] Estado OFFLINE confirmado directamente por webhook",
+        "[FORCE STREAM STATE] OFFLINE state confirmed directly by webhook",
       );
     }
 
@@ -3120,21 +3120,21 @@ exports.forceStreamState = async (req, res) => {
       86400,
     );
 
-    // Marcar que fue un cambio manual
+    // Mark as manual change
     await redis.set(
       "stream:last_manual_override",
       JSON.stringify({
         previous_state: previousState || "unknown",
         new_state: is_live ? "true" : "false",
-        reason: reason || "No especificada",
+        reason: reason || "Not specified",
         timestamp: new Date().toISOString(),
       }),
       "EX",
       86400,
-    ); // 24 horas
+    ); // 24 hours
 
     if (is_live) {
-      // Si se fuerza a online, crear información básica (SIN TTL)
+      // If forced online, create basic info (NO TTL)
       const streamInfo = {
         title: "Stream manual override",
         broadcaster: "Manual",
@@ -3143,22 +3143,22 @@ exports.forceStreamState = async (req, res) => {
       };
       await redis.set("stream:current_info", JSON.stringify(streamInfo));
     } else {
-      // Si se fuerza a offline, limpiar información
+      // If forced offline, clean up info
       await redis.del("stream:current_info");
     }
 
     res.json({
       success: true,
-      message: "✅ Estado del stream actualizado manualmente",
+      message: "Stream state updated manually",
       previous_state: previousState || "unknown",
       new_state: is_live ? "true" : "false",
-      reason: reason || "No especificada",
-      warning: "⚠️ Este cambio se revertirá si llega un webhook de Kick",
+      reason: reason || "Not specified",
+      warning: "This change will be reverted if a Kick webhook arrives",
       ttl_hours: 2,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    logger.error("🚨 [FORCE STREAM STATE] Error:", error);
+    logger.error("[FORCE STREAM STATE] Error:", error);
     res.status(500).json({
       success: false,
       error: error.message,
@@ -3167,7 +3167,7 @@ exports.forceStreamState = async (req, res) => {
 };
 
 /**
- * 📊 ENDPOINT PÚBLICO: Obtener configuración pública de puntos de Kick
+ * PUBLIC ENDPOINT: Get public Kick points configuration
  * GET /api/kick/public/points-config
  */
 exports.getPublicPointsConfig = async (req, res) => {
@@ -3194,7 +3194,7 @@ exports.getPublicPointsConfig = async (req, res) => {
     logger.error("[Public Points Config] Error:", error.message);
     res.status(500).json({
       success: false,
-      error: "Error interno del servidor",
+      error: "Internal server error",
     });
   }
 };

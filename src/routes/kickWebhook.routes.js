@@ -3,46 +3,46 @@ const router = express.Router();
 const kickWebhookCtrl = require('../controllers/kickWebhook.controller');
 const { webhookCors, logWebhookRequest } = require('../middleware/webhook.middleware');
 
-// Aplicar CORS específico para webhooks a todas las rutas
+// Apply webhook-specific CORS to all routes
 router.use(webhookCors);
 router.use(logWebhookRequest);
 
 router.post('/events', kickWebhookCtrl.handleWebhook);
-router.get('/events', kickWebhookCtrl.handleWebhook); // Para verificaciones GET
+router.get('/events', kickWebhookCtrl.handleWebhook); // For GET verifications
 
-// Endpoints de testing y debug
+// Testing and debug endpoints
 router.get('/test', kickWebhookCtrl.testWebhook);
 router.get('/debug', kickWebhookCtrl.debugWebhook);
 router.post('/simulate-chat', kickWebhookCtrl.simulateChat);
 router.post('/test-real-webhook', kickWebhookCtrl.testRealWebhook);
 
-// 🧪 NUEVO: Endpoint específico para probar CORS
+// NEW: Specific endpoint to test CORS
 router.get('/test-cors', kickWebhookCtrl.testCors);
 router.post('/test-cors', kickWebhookCtrl.testCors);
 router.options('/test-cors', kickWebhookCtrl.testCors);
 
-// 🔍 DIAGNÓSTICO: Verificar problema de tokens
+// DIAGNOSTIC: Check token issues
 router.get('/diagnostic-tokens', kickWebhookCtrl.diagnosticTokens);
 router.get('/diagnostic-tokens-db', kickWebhookCtrl.diagnosticTokensDB);
 
-// 🔧 REPARAR: Reactivar token del broadcaster principal
+// REPAIR: Reactivate main broadcaster token
 router.post('/reactivate-broadcaster-token', kickWebhookCtrl.reactivateBroadcasterToken);
 
-// 🔧 DEPURACIÓN: Debug proceso de suscripción
+// DEBUG: Debug subscription process
 router.get('/debug-subscription-process', kickWebhookCtrl.debugSubscriptionProcess);
 
-// 🔧 DEPURACIÓN: Verificar estructura de tabla
+// DEBUG: Check table structure
 router.get('/debug-table-structure', kickWebhookCtrl.debugTableStructure);
 
-// 🚀 APP TOKEN: Webhooks permanentes
+// APP TOKEN: Permanent webhooks
 router.post('/setup-permanent-webhooks', kickWebhookCtrl.setupPermanentWebhooks);
 router.get('/debug-app-token', kickWebhookCtrl.debugAppTokenWebhooks);
 router.get('/compare-token-types', kickWebhookCtrl.compareTokenTypes);
 
-// 📊 ESTADO: Sistema de webhooks
+// STATUS: Webhook system
 router.get('/status', kickWebhookCtrl.systemStatus);
 
-// 🧪 DEBUG: Nuevas funcionalidades
+// DEBUG: New features
 router.post('/debug-botrix-migration', kickWebhookCtrl.debugBotrixMigration);
 router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
 
@@ -50,7 +50,7 @@ router.get('/debug-system-info', kickWebhookCtrl.debugSystemInfo);
 router.get('/debug-stream-status', kickWebhookCtrl.debugStreamStatus);
 router.post('/debug/force-stream-state', kickWebhookCtrl.forceStreamState);
 
-// 📊 ENDPOINT PÚBLICO: Configuración de puntos
+// PUBLIC ENDPOINT: Points configuration
 router.get('/public/points-config', kickWebhookCtrl.getPublicPointsConfig);
 
 module.exports = router;
