@@ -37,7 +37,7 @@ build/
 
 # Environment files (general)
 .env*
-!.env.template
+!.env.example
 
 # Tokens file (sensitive data)
 tokens.json
@@ -50,5 +50,5 @@ backups/
 *.sql
 *.sql.gz
 
-# Local backup bundle (notar que este archivo es grande y sensible)
+# Local backup bundle (note that this file is large and sensitive)
 backup-antes-de-limpiar.bundle

@@ -9,13 +9,6 @@ const toBool = (val, def = false) => {
     return /^(1|true|yes|on)$/i.test(String(val).trim());
 };
 
-// 🔍 DEBUG: Agreguemos logs para ver qué está pasando
-console.log('🔍 DEBUG - Variables de entorno:');
-console.log('JWT_SECRET existe:', !!process.env.JWT_SECRET);
-console.log('NODE_ENV:', process.env.NODE_ENV);
-console.log('DB_HOST:', process.env.DB_HOST);
-console.log('KICK_BROADCASTER_ID:', process.env.KICK_BROADCASTER_ID || 'NO CONFIGURADO');
-
 module.exports = {
     db: {
         host:     process.env.DB_HOST,
@@ -74,8 +67,3 @@ module.exports = {
         redirectUri: process.env.DISCORD_REDIRECT_URI || 'https://api.luisardito.com/api/auth/discord/callback'
     }
 };
-
-console.log('🔍 DEBUG - Config resultante:');
-console.log('jwtSecret existe:', !!module.exports.jwtSecret);
-console.log('jwtSecret valor:', module.exports.jwtSecret ? 'CONFIGURADO' : 'undefined');
-console.log('kick.broadcasterId:', module.exports.kick.broadcasterId || 'NO CONFIGURADO');
