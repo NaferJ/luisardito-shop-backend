@@ -70,7 +70,7 @@ const LeaderboardSnapshot = sequelize.define(
         fields: ["position", "snapshot_date"],
       },
     ],
-  },
+  }
 );
 
 module.exports = LeaderboardSnapshot;

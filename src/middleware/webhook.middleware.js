@@ -3,44 +3,44 @@
  */
 
 const logWebhookRequest = (req, res, next) => {
-    // Only log for real Kick webhooks
-    const hasKickHeaders = Object.keys(req.headers).some(key =>
-        key.toLowerCase().startsWith('kick-event')
-    );
+  // Only log for real Kick webhooks
+  const hasKickHeaders = Object.keys(req.headers).some((key) =>
+    key.toLowerCase().startsWith("kick-event")
+  );
 
-    if (hasKickHeaders || req.body?.test) {
-        const kickHeaders = {};
-        Object.keys(req.headers).forEach(key => {
-            if (key.toLowerCase().startsWith('kick-event')) {
-                kickHeaders[key] = req.headers[key];
-            }
-        });
+  if (hasKickHeaders || req.body?.test) {
+    const kickHeaders = {};
+    Object.keys(req.headers).forEach((key) => {
+      if (key.toLowerCase().startsWith("kick-event")) {
+        kickHeaders[key] = req.headers[key];
+      }
+    });
 
-        if (Object.keys(kickHeaders).length > 0) {
-            // logger.debug('[KICK HEADERS]', kickHeaders);
-        }
-
-        if (req.body && Object.keys(req.body).length > 0) {
-            // logger.debug('[PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
-        }
+    if (Object.keys(kickHeaders).length > 0) {
+      // logger.debug('[KICK HEADERS]', kickHeaders);
     }
 
-    next();
+    if (req.body && Object.keys(req.body).length > 0) {
+      // logger.debug('[PAYLOAD]', JSON.stringify(req.body).substring(0, 200) + '...');
+    }
+  }
+
+  next();
 };
 
 const webhookCors = (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', '*');
-    res.header('Access-Control-Allow-Headers', '*');
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "*");
+  res.header("Access-Control-Allow-Headers", "*");
 
-    if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-    }
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
 
-    next();
+  next();
 };
 
 module.exports = {
-    webhookCors,
-    logWebhookRequest
+  webhookCors,
+  logWebhookRequest,
 };

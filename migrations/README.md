@@ -18,6 +18,7 @@ Este directorio contiene las migraciones de Sequelize para el proyecto Luisardit
 ## Comandos Útiles
 
 ### Desarrollo Local
+
 ```bash
 # Ver estado de migraciones
 npm run migrate:status
@@ -36,6 +37,7 @@ npm run reset-db
 ```
 
 ### Verificar Estado en Docker
+
 ```bash
 # Ver migraciones registradas
 docker exec -it luisardito-mysql mysql -u app -papp luisardito_shop -e "SELECT * FROM SequelizeMeta ORDER BY name;"
@@ -49,12 +51,14 @@ docker exec -it luisardito-mysql mysql -u app -papp luisardito_shop -e "SHOW TAB
 Si necesitas sincronizar las migraciones en un entorno donde las tablas ya existen:
 
 **Windows (PowerShell):**
+
 ```powershell
 .\sync-migrations.ps1 register
 .\sync-migrations.ps1 status
 ```
 
 **Linux/Mac:**
+
 ```bash
 ./sync-migrations.sh register
 ./sync-migrations.sh status
@@ -63,18 +67,21 @@ Si necesitas sincronizar las migraciones en un entorno donde las tablas ya exist
 ## Estructura de la Base de Datos
 
 ### Tablas Principales
+
 - `usuarios` - Información de usuarios (local + Kick)
 - `productos` - Catálogo de productos para canje
 - `canjes` - Historial de canjes realizados
 - `historial_puntos` - Movimientos de puntos detallados
 
 ### Autenticación
+
 - `roles` - Roles del sistema (usuario, admin, etc.)
 - `permisos` - Permisos granulares
 - `rol_permisos` - Relación many-to-many entre roles y permisos
 - `refresh_tokens` - Tokens de refresco para autenticación
 
 ### Integración con Kick
+
 - `kick_points_config` - Configuración de puntos por eventos
 - `kick_broadcaster_tokens` - Tokens OAuth de streamers
 - `kick_event_subscriptions` - Suscripciones a eventos de Kick
@@ -92,15 +99,18 @@ Si necesitas sincronizar las migraciones en un entorno donde las tablas ya exist
 ## Troubleshooting
 
 ### Error: "Table already exists"
+
 - Las tablas ya existen pero no están registradas en migraciones
 - Usar los scripts `sync-migrations.*` para registrar migraciones existentes
 
 ### Error: "Cannot connect to database"
+
 - Verificar que el contenedor de MySQL esté ejecutándose: `docker ps`
 - Verificar variables de entorno en `.env`
 - Para desarrollo local, usar `DB_HOST=localhost` y `DB_PORT=3307`
 
 ### Verificar Consistencia
+
 ```sql
 -- Verificar que todas las tablas tienen las columnas correctas
 DESCRIBE usuarios;

@@ -47,7 +47,7 @@ exports.debugRedisCooldowns = async (req, res) => {
       success: true,
       total_active_cooldowns: cooldowns.length,
       cooldowns: cooldowns.sort(
-        (a, b) => a.expires_in_seconds - b.expires_in_seconds,
+        (a, b) => a.expires_in_seconds - b.expires_in_seconds
       ),
       redis_status: redis.status,
       timestamp: new Date().toISOString(),
@@ -184,7 +184,7 @@ exports.diagnosticTokensDB = async (req, res) => {
 
     logger.info(
       "[DIAGNOSTIC DB] RESULT:",
-      JSON.stringify(diagnostico.resumen, null, 2),
+      JSON.stringify(diagnostico.resumen, null, 2)
     );
 
     res.json({
@@ -214,7 +214,7 @@ exports.diagnosticTokens = async (req, res) => {
     const broadcasterPrincipal = config.kick.broadcasterId;
     logger.info(
       "[DIAGNOSTIC] Main broadcaster configured:",
-      broadcasterPrincipal,
+      broadcasterPrincipal
     );
 
     // 2. Get all available tokens
@@ -234,17 +234,14 @@ exports.diagnosticTokens = async (req, res) => {
         kick_user_id: t.kick_user_id,
         auto_subscribed: t.auto_subscribed,
         last_attempt: t.last_subscription_attempt,
-      })),
+      }))
     );
 
     // 3. Check if main broadcaster has a token
     const broadcasterToken = allTokens.find(
-      (t) => t.kick_user_id.toString() === broadcasterPrincipal.toString(),
+      (t) => t.kick_user_id.toString() === broadcasterPrincipal.toString()
     );
-    logger.info(
-      "[DIAGNOSTIC] Main broadcaster has token?",
-      !!broadcasterToken,
-    );
+    logger.info("[DIAGNOSTIC] Main broadcaster has token?", !!broadcasterToken);
 
     // 4. Check current subscriptions
     const suscripciones = await KickEventSubscription.findAll({
@@ -254,20 +251,17 @@ exports.diagnosticTokens = async (req, res) => {
 
     logger.info(
       "[DIAGNOSTIC] Main broadcaster subscriptions:",
-      suscripciones.length,
+      suscripciones.length
     );
 
     // 5. Check which user is NaferJ (ID 33112734)
     const naferToken = allTokens.find(
-      (t) => t.kick_user_id.toString() === "33112734",
+      (t) => t.kick_user_id.toString() === "33112734"
     );
-    logger.info(
-      "[DIAGNOSTIC] NaferJ (33112734) has token?",
-      !!naferToken,
-    );
+    logger.info("[DIAGNOSTIC] NaferJ (33112734) has token?", !!naferToken);
     logger.info(
       "[DIAGNOSTIC] Is NaferJ the main broadcaster?",
-      broadcasterPrincipal.toString() === "33112734",
+      broadcasterPrincipal.toString() === "33112734"
     );
 
     const diagnostico = {
@@ -370,7 +364,7 @@ exports.handleWebhook = async (req, res) => {
       messageId,
       timestamp,
       rawBody,
-      signature,
+      signature
     );
 
     if (!isValidSignature) {
@@ -384,9 +378,7 @@ exports.handleWebhook = async (req, res) => {
     });
 
     if (existingEvent) {
-      return res
-        .status(200)
-        .json({ message: "Event already processed" });
+      return res.status(200).json({ message: "Event already processed" });
     }
 
     // Save event to database
@@ -410,7 +402,7 @@ exports.handleWebhook = async (req, res) => {
     // Mark as processed
     await KickWebhookEvent.update(
       { processed: true, processed_at: new Date() },
-      { where: { message_id: messageId } },
+      { where: { message_id: messageId } }
     );
 
     // Respond with 200 to confirm receipt
@@ -510,51 +502,66 @@ async function handleRewardRedemption(payload, _metadata) {
     const kickUserId = String(redeemer.user_id);
     const kickUsername = redeemer.username;
 
-    logger.info(`[Reward Redemption] ${kickUsername} redeemed "${reward.title}" (${reward.cost} pts) - Status: ${status}`);
+    logger.info(
+      `[Reward Redemption] ${kickUsername} redeemed "${reward.title}" (${reward.cost} pts) - Status: ${status}`
+    );
 
     // Find reward in our DB
     const localReward = await KickReward.findOne({
-      where: { kick_reward_id: kickRewardId }
+      where: { kick_reward_id: kickRewardId },
     });
 
     if (!localReward) {
-      logger.warn(`[Reward Redemption] Reward "${reward.title}" (${kickRewardId}) not configured in DB`);
+      logger.warn(
+        `[Reward Redemption] Reward "${reward.title}" (${kickRewardId}) not configured in DB`
+      );
       return;
     }
 
     // ALWAYS find user in our DB (for both cases: pending and accepted)
     let usuario = await Usuario.findOne({
-      where: { user_id_ext: kickUserId }
+      where: { user_id_ext: kickUserId },
     });
 
     // If pending and user doesn't exist, send message
-    if (status === 'pending' && !usuario) {
-      logger.warn(`[Reward Redemption] User ${kickUsername} not registered in store`);
+    if (status === "pending" && !usuario) {
+      logger.warn(
+        `[Reward Redemption] User ${kickUsername} not registered in store`
+      );
 
       // Send chat message notifying user IMMEDIATELY
       try {
-        const bot = require('../services/kickBot.service');
+        const bot = require("../services/kickBot.service");
         const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
         await bot.sendMessage(message);
-        logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
+        logger.info(
+          `[Reward Redemption] Message sent to ${kickUsername} in chat`
+        );
       } catch (botError) {
-        logger.error(`[Reward Redemption] Error sending chat message:`, botError.message);
+        logger.error(
+          `[Reward Redemption] Error sending chat message:`,
+          botError.message
+        );
       }
       return;
     }
 
     // If pending and user DOES exist, just wait
-    if (status === 'pending') {
-      logger.info(`[Reward Redemption] User registered. Redemption pending approval - waiting...`);
+    if (status === "pending") {
+      logger.info(
+        `[Reward Redemption] User registered. Redemption pending approval - waiting...`
+      );
       return;
     }
 
-    if (status === 'rejected') {
-      logger.info(`[Reward Redemption] Redemption rejected - no points processed`);
+    if (status === "rejected") {
+      logger.info(
+        `[Reward Redemption] Redemption rejected - no points processed`
+      );
       return;
     }
 
-    if (status !== 'accepted') {
+    if (status !== "accepted") {
       logger.warn(`[Reward Redemption] Unknown status: ${status}`);
       return;
     }
@@ -562,13 +569,15 @@ async function handleRewardRedemption(payload, _metadata) {
     // Search again in case user registered after pending
     if (!usuario) {
       usuario = await Usuario.findOne({
-        where: { user_id_ext: kickUserId }
+        where: { user_id_ext: kickUserId },
       });
     }
 
     // If user STILL doesn't exist after accepted
     if (!usuario) {
-      logger.warn(`[Reward Redemption] User ${kickUsername} still not registered. No points awarded.`);
+      logger.warn(
+        `[Reward Redemption] User ${kickUsername} still not registered. No points awarded.`
+      );
       return;
     }
 
@@ -581,36 +590,41 @@ async function handleRewardRedemption(payload, _metadata) {
     const puntosAOtorgar = localReward.puntos_a_otorgar;
 
     if (puntosAOtorgar <= 0) {
-      logger.info(`[Reward Redemption] Reward "${localReward.title}" awards no points (configured at 0)`);
+      logger.info(
+        `[Reward Redemption] Reward "${localReward.title}" awards no points (configured at 0)`
+      );
       return;
     }
 
     const transaction = await sequelize.transaction({
-      isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED
+      isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     });
 
     try {
       // Increment user points
-      await usuario.increment('puntos', {
+      await usuario.increment("puntos", {
         by: puntosAOtorgar,
-        transaction
+        transaction,
       });
 
       // Register in history
-      await HistorialPunto.create({
-        usuario_id: usuario.id,
-        puntos: puntosAOtorgar,
-        tipo: 'ganado',
-        concepto: `Canje de recompensa: ${localReward.title}`,
-        kick_event_data: {
-          event_type: 'channel.reward.redemption.updated',
-          redemption_id: redemptionId,
-          reward_id: kickRewardId,
-          reward_title: localReward.title,
-          reward_cost: reward.cost,
-          user_input: user_input || ''
-        }
-      }, { transaction });
+      await HistorialPunto.create(
+        {
+          usuario_id: usuario.id,
+          puntos: puntosAOtorgar,
+          tipo: "ganado",
+          concepto: `Canje de recompensa: ${localReward.title}`,
+          kick_event_data: {
+            event_type: "channel.reward.redemption.updated",
+            redemption_id: redemptionId,
+            reward_id: kickRewardId,
+            reward_title: localReward.title,
+            reward_cost: reward.cost,
+            user_input: user_input || "",
+          },
+        },
+        { transaction }
+      );
 
       // Create notification for earned points
       await NotificacionService.crearNotificacionPuntosGanados(
@@ -618,31 +632,31 @@ async function handleRewardRedemption(payload, _metadata) {
         {
           cantidad: puntosAOtorgar,
           concepto: `Canje de recompensa: ${localReward.title}`,
-          tipo_evento: 'channel.reward.redemption.updated'
+          tipo_evento: "channel.reward.redemption.updated",
         },
         transaction
       );
 
       // Increment redemption counter
-      await localReward.increment('total_redemptions', {
+      await localReward.increment("total_redemptions", {
         by: 1,
-        transaction
+        transaction,
       });
 
       await transaction.commit();
 
       await usuario.reload();
-      logger.info(`[Reward Redemption] ${kickUsername} received ${puntosAOtorgar} points. Total: ${usuario.puntos}`);
-
+      logger.info(
+        `[Reward Redemption] ${kickUsername} received ${puntosAOtorgar} points. Total: ${usuario.puntos}`
+      );
     } catch (error) {
       if (!transaction.finished) {
         await transaction.rollback();
       }
       throw error;
     }
-
   } catch (error) {
-    logger.error('[Reward Redemption] Error:', error.message);
+    logger.error("[Reward Redemption] Error:", error.message);
   }
 }
 
@@ -654,7 +668,6 @@ async function handleChatMessage(payload, _metadata) {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
     const kickUsername = sender.username;
-
 
     // PRIORITY 1: Check if it's a Botrix migration
     // Only process if migration is enabled
@@ -669,7 +682,7 @@ async function handleChatMessage(payload, _metadata) {
 
       if (botrixResult.processed) {
         logger.info(
-          `[BOTRIX] Points migration processed: ${JSON.stringify(botrixResult.details)}`,
+          `[BOTRIX] Points migration processed: ${JSON.stringify(botrixResult.details)}`
         );
         return;
       } else {
@@ -679,18 +692,25 @@ async function handleChatMessage(payload, _metadata) {
 
     // Process watchtime migration
     if (botrixConfig.watchtime_migration_enabled) {
-      logger.info("[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration...");
+      logger.info(
+        "[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration..."
+      );
       const watchtimeResult =
         await BotrixMigrationService.processWatchtimeMessage(payload);
-      logger.info("[BOTRIX WATCHTIME DEBUG] Processing result:", watchtimeResult);
+      logger.info(
+        "[BOTRIX WATCHTIME DEBUG] Processing result:",
+        watchtimeResult
+      );
 
       if (watchtimeResult.processed) {
         logger.info(
-          `[BOTRIX WATCHTIME] Watchtime migration processed: ${JSON.stringify(watchtimeResult.details)}`,
+          `[BOTRIX WATCHTIME] Watchtime migration processed: ${JSON.stringify(watchtimeResult.details)}`
         );
         return;
       } else {
-        logger.info(`[BOTRIX WATCHTIME] Watchtime not processed: ${watchtimeResult.reason}`);
+        logger.info(
+          `[BOTRIX WATCHTIME] Watchtime not processed: ${watchtimeResult.reason}`
+        );
       }
     }
 
@@ -700,23 +720,31 @@ async function handleChatMessage(payload, _metadata) {
     // ==========================================
     try {
       const content = String(payload.content || "").trim();
-      const modCommands = ['!addcmd', '!editcmd', '!delcmd', '!cmdinfo'];
+      const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
 
-      if (modCommands.some(cmd => content.startsWith(cmd))) {
+      if (modCommands.some((cmd) => content.startsWith(cmd))) {
         const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
-        const modResult = await ModeratorCommandsService.processModeratorCommand(payload);
+        const modResult =
+          await ModeratorCommandsService.processModeratorCommand(payload);
 
         if (modResult.processed) {
-          logger.info(`[MOD-CMD] Moderator command processed: ${content.split(/\s+/)[0]}`);
+          logger.info(
+            `[MOD-CMD] Moderator command processed: ${content.split(/\s+/)[0]}`
+          );
 
           // Send response to chat if there's a message
           if (modResult.message) {
             try {
               const bot = require("../services/kickBot.service");
               await bot.sendMessage(modResult.message);
-              logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
+              logger.info(
+                `[MOD-CMD] Response sent to chat: ${modResult.message}`
+              );
             } catch (botError) {
-              logger.error(`[MOD-CMD] Error sending response to chat:`, botError.message);
+              logger.error(
+                `[MOD-CMD] Error sending response to chat:`,
+                botError.message
+              );
             }
           }
 
@@ -726,7 +754,7 @@ async function handleChatMessage(payload, _metadata) {
     } catch (modErr) {
       logger.error(
         "[MOD-CMD] Error handling moderator commands:",
-        modErr.message,
+        modErr.message
       );
     }
 
@@ -747,26 +775,23 @@ async function handleChatMessage(payload, _metadata) {
           payload.channel?.username || "luisardito",
           bot,
           null, // No message context for webhooks
-          'kick', // Specify platform
+          "kick", // Specify platform
           null, // No discordUserId
           kickUsername // Pass displayName for @ in responses
         );
 
         if (commandProcessed) {
           logger.info(
-            `[BOT-COMMAND] Command processed successfully for ${kickUsername}`,
+            `[BOT-COMMAND] Command processed successfully for ${kickUsername}`
           );
         } else {
           logger.debug(
-            `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`,
+            `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`
           );
         }
       }
     } catch (cmdErr) {
-      logger.error(
-        "[Chat Command] Error handling commands:",
-        cmdErr.message,
-      );
+      logger.error("[Chat Command] Error handling commands:", cmdErr.message);
     }
 
     // PRIORITY 2: Check if stream is live (for points, not for commands)
@@ -775,15 +800,11 @@ async function handleChatMessage(payload, _metadata) {
       const isLive = await redis.get("stream:is_live");
 
       if (isLive !== "true") {
-        logger.info(
-          `[STREAM] OFFLINE - No points awarded to ${kickUsername}`,
-        );
+        logger.info(`[STREAM] OFFLINE - No points awarded to ${kickUsername}`);
         return; // DO NOT CONTINUE
       }
 
-      logger.info(
-        `[STREAM] LIVE - Processing points for ${kickUsername}`,
-      );
+      logger.info(`[STREAM] LIVE - Processing points for ${kickUsername}`);
     } catch (redisError) {
       logger.error(`[STREAM] Error checking status:`, redisError.message);
       logger.info(`[STREAM] Assuming LIVE due to Redis error`);
@@ -797,14 +818,20 @@ async function handleChatMessage(payload, _metadata) {
 
     if (!usuario) {
       logger.info(
-        `[Chat Message] User ${kickUsername} not registered, ignoring`,
+        `[Chat Message] User ${kickUsername} not registered, ignoring`
       );
       return;
     }
 
     // Sync full profile (username and avatar) if changed (with 24h throttling)
     // The webhook ALWAYS brings sender.profile_picture per Kick documentation
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, false, sender.profile_picture);
+    await syncUserProfileIfNeeded(
+      usuario,
+      kickUsername,
+      kickUserId,
+      false,
+      sender.profile_picture
+    );
 
     // ============================================================================
     // WATCHTIME: Processed on EVERY message (live stream + registered user)
@@ -825,9 +852,7 @@ async function handleChatMessage(payload, _metadata) {
       );
 
       if (!wasSet) {
-        logger.info(
-          `[WATCHTIME] ${kickUsername} on cooldown (1 min)`
-        );
+        logger.info(`[WATCHTIME] ${kickUsername} on cooldown (1 min)`);
       } else {
         const [, created] = await UserWatchtime.findOrCreate({
           where: { usuario_id: usuario.id },
@@ -852,9 +877,7 @@ async function handleChatMessage(payload, _metadata) {
           );
         }
 
-        logger.info(
-          `[WATCHTIME] ${kickUsername} +1 minute`
-        );
+        logger.info(`[WATCHTIME] ${kickUsername} +1 minute`);
       }
     } catch (watchtimeError) {
       logger.error(`[WATCHTIME] Error:`, watchtimeError.message);
@@ -889,15 +912,15 @@ async function handleChatMessage(payload, _metadata) {
         try {
           await KickUserTracking.update(
             { is_subscribed: false },
-            { where: { kick_user_id: kickUserId } },
+            { where: { kick_user_id: kickUserId } }
           );
           logger.info(
-            `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`,
+            `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`
           );
         } catch (e) {
           logger.error(
             "[CHAT] Error deactivating expired subscription:",
-            e.message,
+            e.message
           );
         }
         isSubscriber = false;
@@ -924,7 +947,7 @@ async function handleChatMessage(payload, _metadata) {
     }
 
     logger.info(
-      `[CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Type: ${userType}, Points: ${pointsToAward}`,
+      `[CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Type: ${userType}, Points: ${pointsToAward}`
     );
 
     if (pointsToAward <= 0) {
@@ -938,7 +961,7 @@ async function handleChatMessage(payload, _metadata) {
     const cooldownKey = `chat_cooldown:${kickUserId}`;
 
     logger.info(
-      `[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`,
+      `[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`
     );
 
     try {
@@ -951,7 +974,7 @@ async function handleChatMessage(payload, _metadata) {
         now.toISOString(),
         "PX", // Milliseconds
         COOLDOWN_MS,
-        "NX", // Only if NOT exists
+        "NX" // Only if NOT exists
       );
 
       if (!wasSet) {
@@ -960,10 +983,10 @@ async function handleChatMessage(payload, _metadata) {
         const remainingSecs = Math.ceil(ttl / 1000);
 
         logger.info(
-          `[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`,
+          `[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`
         );
         logger.info(
-          `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`,
+          `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`
         );
 
         return; // DO NOT CONTINUE - DO NOT AWARD POINTS
@@ -972,12 +995,12 @@ async function handleChatMessage(payload, _metadata) {
       // If we got here: key created successfully = can receive points
       logger.info(`[REDIS COOLDOWN] ${kickUsername} can receive points`);
       logger.info(
-        `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`,
+        `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`
       );
     } catch (redisError) {
       logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
       logger.info(
-        `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`,
+        `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`
       );
       // For maximum availability: continue
       // For maximum consistency: return;
@@ -1002,7 +1025,7 @@ async function handleChatMessage(payload, _metadata) {
           { transaction }
         );
         logger.info(
-          `[MAX POINTS] New max points: ${usuarioActualizado.puntos} for ${kickUsername}`,
+          `[MAX POINTS] New max points: ${usuarioActualizado.puntos} for ${kickUsername}`
         );
       }
 
@@ -1023,22 +1046,22 @@ async function handleChatMessage(payload, _metadata) {
             is_subscriber: isSubscriber,
           },
         },
-        { transaction },
+        { transaction }
       );
 
       await transaction.commit();
 
       logger.info(
-        `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`,
+        `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`
       );
       logger.info(
-        `[Chat Message] Total user points: ${usuarioActualizado.puntos}`,
+        `[Chat Message] Total user points: ${usuarioActualizado.puntos}`
       );
     } catch (transactionError) {
       await transaction.rollback();
       logger.error(
         `[Chat Message] Transaction error for ${kickUsername}:`,
-        transactionError.message,
+        transactionError.message
       );
 
       // If DB fails, delete Redis cooldown to allow retry
@@ -1046,12 +1069,12 @@ async function handleChatMessage(payload, _metadata) {
         const redis = getRedisClient();
         await redis.del(cooldownKey);
         logger.info(
-          `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`,
+          `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`
         );
       } catch (redisCleanupError) {
         logger.error(
           `[REDIS COOLDOWN] Error cleaning cooldown:`,
-          redisCleanupError.message,
+          redisCleanupError.message
         );
       }
 
@@ -1083,13 +1106,19 @@ async function handleChannelFollowed(payload, _metadata) {
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Channel Followed] User ${kickUsername} not registered in DB`,
+        `[Kick Webhook][Channel Followed] User ${kickUsername} not registered in DB`
       );
       return;
     }
 
     // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, follower.profile_picture);
+    await syncUserProfileIfNeeded(
+      usuario,
+      kickUsername,
+      kickUserId,
+      true,
+      follower.profile_picture
+    );
 
     // Check if already followed before (first time only)
     let userTracking = await KickUserTracking.findOne({
@@ -1098,7 +1127,7 @@ async function handleChannelFollowed(payload, _metadata) {
 
     if (userTracking && userTracking.follow_points_awarded) {
       logger.info(
-        `[Kick Webhook][Channel Followed] User ${kickUsername} already received follow points previously`,
+        `[Kick Webhook][Channel Followed] User ${kickUsername} already received follow points previously`
       );
       return;
     }
@@ -1117,9 +1146,7 @@ async function handleChannelFollowed(payload, _metadata) {
     const pointsToAward = basePoints; // await VipService.calculatePointsForUser(usuario, 'follow', basePoints);
 
     if (pointsToAward <= 0) {
-      logger.info(
-        "[Kick Webhook][Channel Followed] Follow points disabled",
-      );
+      logger.info("[Kick Webhook][Channel Followed] Follow points disabled");
       return;
     }
 
@@ -1145,14 +1172,11 @@ async function handleChannelFollowed(payload, _metadata) {
     });
 
     // Create notification for follow points earned
-    await NotificacionService.crearNotificacionPuntosGanados(
-      usuario.id,
-      {
-        cantidad: pointsToAward,
-        concepto: `Primer follow al canal`,
-        tipo_evento: 'channel.followed'
-      }
-    );
+    await NotificacionService.crearNotificacionPuntosGanados(usuario.id, {
+      cantidad: pointsToAward,
+      concepto: `Primer follow al canal`,
+      tipo_evento: "channel.followed",
+    });
 
     // Update or create tracking
     if (!userTracking) {
@@ -1172,7 +1196,7 @@ async function handleChannelFollowed(payload, _metadata) {
     }
 
     logger.info(
-      `[Kick Webhook][Channel Followed] ${pointsToAward} points awarded to ${kickUsername} (first follow - ${userType})`,
+      `[Kick Webhook][Channel Followed] ${pointsToAward} points awarded to ${kickUsername} (first follow - ${userType})`
     );
   } catch (error) {
     logger.error("[Kick Webhook][Channel Followed] Error:", error.message);
@@ -1204,13 +1228,19 @@ async function handleNewSubscription(payload, _metadata) {
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][New Subscription] User ${kickUsername} not registered in DB`,
+        `[Kick Webhook][New Subscription] User ${kickUsername} not registered in DB`
       );
       return;
     }
 
     // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
+    await syncUserProfileIfNeeded(
+      usuario,
+      kickUsername,
+      kickUserId,
+      true,
+      subscriber.profile_picture
+    );
 
     // Get new subscription points configuration
     const config = await KickPointsConfig.findOne({
@@ -1250,15 +1280,12 @@ async function handleNewSubscription(payload, _metadata) {
       });
 
       // Create notification for subscription points earned
-      await NotificacionService.crearNotificacionPuntosGanados(
-        usuario.id,
-        {
-          cantidad: pointsToAward,
-          concepto: `New subscription (${duration} ${duration === 1 ? "month" : "months"})`,
-          tipo_evento: 'channel.subscription.new',
-          duracion_meses: duration
-        }
-      );
+      await NotificacionService.crearNotificacionPuntosGanados(usuario.id, {
+        cantidad: pointsToAward,
+        concepto: `New subscription (${duration} ${duration === 1 ? "month" : "months"})`,
+        tipo_evento: "channel.subscription.new",
+        duracion_meses: duration,
+      });
     }
 
     // Update user tracking
@@ -1269,12 +1296,12 @@ async function handleNewSubscription(payload, _metadata) {
       subscription_expires_at: expiresAt,
       subscription_duration_months: duration,
       total_subscriptions: KickUserTracking.sequelize.literal(
-        "total_subscriptions + 1",
+        "total_subscriptions + 1"
       ),
     });
 
     logger.info(
-      `[Kick Webhook][New Subscription] ${pointsToAward} points awarded to ${kickUsername}, sub until ${expiresAt}`,
+      `[Kick Webhook][New Subscription] ${pointsToAward} points awarded to ${kickUsername}, sub until ${expiresAt}`
     );
   } catch (error) {
     logger.error("[Kick Webhook][New Subscription] Error:", error.message);
@@ -1306,13 +1333,19 @@ async function handleSubscriptionRenewal(payload, _metadata) {
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Subscription Renewal] User ${kickUsername} not registered in DB`,
+        `[Kick Webhook][Subscription Renewal] User ${kickUsername} not registered in DB`
       );
       return;
     }
 
     // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, subscriber.profile_picture);
+    await syncUserProfileIfNeeded(
+      usuario,
+      kickUsername,
+      kickUserId,
+      true,
+      subscriber.profile_picture
+    );
 
     // Get renewal points configuration
     const config = await KickPointsConfig.findOne({
@@ -1352,12 +1385,12 @@ async function handleSubscriptionRenewal(payload, _metadata) {
       subscription_expires_at: expiresAt,
       subscription_duration_months: duration,
       total_subscriptions: KickUserTracking.sequelize.literal(
-        "total_subscriptions + 1",
+        "total_subscriptions + 1"
       ),
     });
 
     logger.info(
-      `[Kick Webhook][Subscription Renewal] ${pointsToAward} points awarded to ${kickUsername}, sub renewed until ${expiresAt}`,
+      `[Kick Webhook][Subscription Renewal] ${pointsToAward} points awarded to ${kickUsername}, sub renewed until ${expiresAt}`
     );
   } catch (error) {
     logger.error("[Kick Webhook][Subscription Renewal] Error:", error.message);
@@ -1404,12 +1437,16 @@ async function handleSubscriptionGifts(payload, _metadata) {
       });
 
       if (gifterUsuario) {
-        logger.info(
-          "[Subscription Gifts] Gifter found in DB, awarding points",
-        );
+        logger.info("[Subscription Gifts] Gifter found in DB, awarding points");
 
         // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-        await syncUserProfileIfNeeded(gifterUsuario, gifter.username, gifterKickUserId, true, gifter.profile_picture);
+        await syncUserProfileIfNeeded(
+          gifterUsuario,
+          gifter.username,
+          gifterKickUserId,
+          true,
+          gifter.profile_picture
+        );
 
         const totalPoints = pointsForGifter * giftees.length;
         await gifterUsuario.increment("puntos", { by: totalPoints });
@@ -1433,8 +1470,8 @@ async function handleSubscriptionGifts(payload, _metadata) {
           {
             cantidad: totalPoints,
             concepto: `You gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
-            tipo_evento: 'channel.subscription.gifts',
-            gifts_count: giftees.length
+            tipo_evento: "channel.subscription.gifts",
+            gifts_count: giftees.length,
           }
         );
 
@@ -1443,12 +1480,12 @@ async function handleSubscriptionGifts(payload, _metadata) {
           kick_user_id: gifterKickUserId,
           kick_username: gifter.username,
           total_gifts_given: KickUserTracking.sequelize.literal(
-            `total_gifts_given + ${giftees.length}`,
+            `total_gifts_given + ${giftees.length}`
           ),
         });
 
         logger.info(
-          `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`,
+          `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`
         );
       }
     }
@@ -1465,7 +1502,13 @@ async function handleSubscriptionGifts(payload, _metadata) {
 
         if (gifteeUsuario) {
           // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-          await syncUserProfileIfNeeded(gifteeUsuario, gifteeUsername, gifteeKickUserId, true, giftee.profile_picture);
+          await syncUserProfileIfNeeded(
+            gifteeUsuario,
+            gifteeUsername,
+            gifteeKickUserId,
+            true,
+            giftee.profile_picture
+          );
 
           await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
 
@@ -1487,10 +1530,12 @@ async function handleSubscriptionGifts(payload, _metadata) {
           await NotificacionService.crearNotificacionSubRegalada(
             gifteeUsuario.id,
             {
-              regalador_username: gifter.is_anonymous ? "An anonymous user" : gifter.username,
+              regalador_username: gifter.is_anonymous
+                ? "An anonymous user"
+                : gifter.username,
               monto_subscription: 1,
               puntos_otorgados: pointsForGiftee,
-              expires_at: expiresAt
+              expires_at: expiresAt,
             }
           );
 
@@ -1501,10 +1546,10 @@ async function handleSubscriptionGifts(payload, _metadata) {
             is_subscribed: true,
             subscription_expires_at: expiresAt,
             total_gifts_received: KickUserTracking.sequelize.literal(
-              "total_gifts_received + 1",
+              "total_gifts_received + 1"
             ),
             total_subscriptions: KickUserTracking.sequelize.literal(
-              "total_subscriptions + 1",
+              "total_subscriptions + 1"
             ),
           });
 
@@ -1513,11 +1558,11 @@ async function handleSubscriptionGifts(payload, _metadata) {
             pointsForGiftee,
             "points to",
             gifteeUsername,
-            "for receiving gifted sub",
+            "for receiving gifted sub"
           );
           logger.info(
             "[Subscription Gifts] Total receiver points:",
-            (await gifteeUsuario.reload()).puntos,
+            (await gifteeUsuario.reload()).puntos
           );
         }
       }
@@ -1538,20 +1583,13 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
     const redis = getRedisClient();
 
     // Detailed full payload log for debugging
-    logger.info(
-      "[STREAM STATUS] ==========================================",
-    );
-    logger.info(
-      "[STREAM STATUS] WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED",
-    );
+    logger.info("[STREAM STATUS] ==========================================");
+    logger.info("[STREAM STATUS] WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED");
     logger.info(
       "[STREAM STATUS] Full payload:",
-      JSON.stringify(payload, null, 2),
+      JSON.stringify(payload, null, 2)
     );
-    logger.info(
-      "[STREAM STATUS] Metadata:",
-      JSON.stringify(metadata, null, 2),
-    );
+    logger.info("[STREAM STATUS] Metadata:", JSON.stringify(metadata, null, 2));
 
     logger.info("[Kick Webhook][Livestream Status]", {
       broadcaster: payload.broadcaster.username,
@@ -1571,11 +1609,9 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
 
       if (ageMinutes > 5) {
         logger.warn(
-          `[STREAM STATUS] Event too old (${ageMinutes.toFixed(2)} minutes)`,
+          `[STREAM STATUS] Event too old (${ageMinutes.toFixed(2)} minutes)`
         );
-        logger.warn(
-          `[STREAM STATUS] May be outdated, processing with caution`,
-        );
+        logger.warn(`[STREAM STATUS] May be outdated, processing with caution`);
       }
     }
 
@@ -1585,11 +1621,11 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
 
     if (stateChanged) {
       logger.info(
-        `[STREAM STATUS] CHANGE DETECTED: ${previousState || "unknown"} -> ${isLive ? "true" : "false"}`,
+        `[STREAM STATUS] CHANGE DETECTED: ${previousState || "unknown"} -> ${isLive ? "true" : "false"}`
       );
     } else {
       logger.info(
-        `[STREAM STATUS] State unchanged: ${isLive ? "online" : "offline"}`,
+        `[STREAM STATUS] State unchanged: ${isLive ? "online" : "offline"}`
       );
     }
 
@@ -1600,15 +1636,13 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       await redis.set("stream:is_live", "true");
       await redis.set("stream:last_webhook_status", "online");
       await redis.set("stream:offline_poll_failures", 0); // Reset failure counter
-      logger.info(
-        "[STREAM STATUS] ONLINE state saved (payload.is_live=true)",
-      );
+      logger.info("[STREAM STATUS] ONLINE state saved (payload.is_live=true)");
     } else {
       // Stream OFFLINE: Mark directly as offline (without waiting for monitor)
       await redis.set("stream:is_live", "false");
       await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "[STREAM STATUS] OFFLINE state confirmed directly by webhook",
+        "[STREAM STATUS] OFFLINE state confirmed directly by webhook"
       );
     }
 
@@ -1617,7 +1651,7 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
       "stream:last_status_update",
       new Date().toISOString(),
       "EX",
-      86400,
+      86400
     );
 
     // Save additional stream info
@@ -1639,12 +1673,10 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
     logger.info(
       isLive
         ? "[STREAM] LIVE - Chat points ACTIVATED"
-        : "[STREAM] OFFLINE - Chat points DEACTIVATED",
+        : "[STREAM] OFFLINE - Chat points DEACTIVATED"
     );
 
-    logger.info(
-      "[STREAM STATUS] ==========================================",
-    );
+    logger.info("[STREAM STATUS] ==========================================");
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Status] Error:", error);
     logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
@@ -1688,10 +1720,10 @@ async function handleLivestreamMetadataUpdated(payload, _metadata) {
     await redis.set("stream:current_info", JSON.stringify(streamInfo));
 
     logger.info(
-      `[STREAM METADATA] Metadata updated: "${streamInfo.title}" - ${streamInfo.category}`,
+      `[STREAM METADATA] Metadata updated: "${streamInfo.title}" - ${streamInfo.category}`
     );
     logger.info(
-      `[STREAM METADATA] Current stream state: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (unchanged)`,
+      `[STREAM METADATA] Current stream state: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (unchanged)`
     );
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);
@@ -1744,29 +1776,33 @@ async function handleKicksGifted(payload, _metadata) {
 
     if (!usuario) {
       logger.info(
-        `[Kick Webhook][Kicks Gifted] User ${kickUsername} not registered in DB`,
+        `[Kick Webhook][Kicks Gifted] User ${kickUsername} not registered in DB`
       );
       return;
     }
 
     // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-    await syncUserProfileIfNeeded(usuario, kickUsername, kickUserId, true, sender.profile_picture);
+    await syncUserProfileIfNeeded(
+      usuario,
+      kickUsername,
+      kickUserId,
+      true,
+      sender.profile_picture
+    );
 
     // Get multiplier from configuration
     const config = await KickPointsConfig.findOne({
       where: {
-        config_key: 'kicks_gifted_multiplier',
-        enabled: true
-      }
+        config_key: "kicks_gifted_multiplier",
+        enabled: true,
+      },
     });
 
     const multiplier = config?.config_value || 2; // Default x2
     const pointsToAward = kickAmount * multiplier;
 
     if (pointsToAward <= 0) {
-      logger.info(
-        "[Kick Webhook][Kicks Gifted] Kick amount is 0 or invalid",
-      );
+      logger.info("[Kick Webhook][Kicks Gifted] Kick amount is 0 or invalid");
       return;
     }
 
@@ -1797,7 +1833,7 @@ async function handleKicksGifted(payload, _metadata) {
             created_at: payload.created_at,
           },
         },
-        { transaction },
+        { transaction }
       );
 
       // Create notification for kicks gift points earned
@@ -1806,10 +1842,10 @@ async function handleKicksGifted(payload, _metadata) {
         {
           cantidad: pointsToAward,
           concepto: `Regalo de ${kickAmount} kicks (${giftName})`,
-          tipo_evento: 'kicks.gifted',
+          tipo_evento: "kicks.gifted",
           kick_amount: kickAmount,
           gift_name: giftName,
-          gift_tier: giftTier
+          gift_tier: giftTier,
         },
         transaction
       );
@@ -1820,28 +1856,28 @@ async function handleKicksGifted(payload, _metadata) {
           kick_user_id: kickUserId,
           kick_username: kickUsername,
           total_kicks_gifted: sequelize.literal(
-            `COALESCE(total_kicks_gifted, 0) + ${kickAmount}`,
+            `COALESCE(total_kicks_gifted, 0) + ${kickAmount}`
           ),
         },
-        { transaction },
+        { transaction }
       );
 
       await transaction.commit();
 
       logger.info(
-        `[Kick Webhook][Kicks Gifted] ${pointsToAward} points awarded to ${kickUsername} for gifting ${kickAmount} kicks`,
+        `[Kick Webhook][Kicks Gifted] ${pointsToAward} points awarded to ${kickUsername} for gifting ${kickAmount} kicks`
       );
 
       // Reload user to show updated total
       const updatedUser = await usuario.reload();
       logger.info(
-        `[Kick Webhook][Kicks Gifted] Total points for ${kickUsername}: ${updatedUser.puntos}`,
+        `[Kick Webhook][Kicks Gifted] Total points for ${kickUsername}: ${updatedUser.puntos}`
       );
     } catch (transactionError) {
       await transaction.rollback();
       logger.error(
         `[Kick Webhook][Kicks Gifted] Transaction error for ${kickUsername}:`,
-        transactionError.message,
+        transactionError.message
       );
       throw transactionError;
     }
@@ -1942,7 +1978,7 @@ exports.simulateChat = async (req, res) => {
       "chat.message.sent",
       1,
       simulatedPayload,
-      metadata,
+      metadata
     );
 
     return res.json({
@@ -1967,7 +2003,7 @@ exports.simulateChat = async (req, res) => {
 exports.testRealWebhook = async (req, res) => {
   try {
     logger.info(
-      "[Test Real Webhook] Simulating REAL Kick webhook with headers...",
+      "[Test Real Webhook] Simulating REAL Kick webhook with headers..."
     );
 
     // Simulate exact headers sent by Kick
@@ -2056,7 +2092,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
 
     if (isExpired) {
       logger.info(
-        "[REACTIVATE] Token expired, attempting renewal with refresh_token...",
+        "[REACTIVATE] Token expired, attempting renewal with refresh_token..."
       );
 
       if (!broadcasterToken.refresh_token) {
@@ -2091,7 +2127,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
       } catch (refreshError) {
         logger.error(
           "[REACTIVATE] Error renewing token:",
-          refreshError.message,
+          refreshError.message
         );
         return res.status(400).json({
           success: false,
@@ -2112,7 +2148,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
     });
 
     logger.info(
-      "[REACTIVATE] Attempting auto-subscription with broadcaster token...",
+      "[REACTIVATE] Attempting auto-subscription with broadcaster token..."
     );
 
     // Attempt auto-subscription using ITS own token
@@ -2120,7 +2156,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
       const autoSubscribeResult = await autoSubscribeToEvents(
         broadcasterToken.access_token,
         config.kick.broadcasterId,
-        config.kick.broadcasterId,
+        config.kick.broadcasterId
       );
 
       await broadcasterToken.update({
@@ -2133,7 +2169,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
 
       logger.info(
         "[REACTIVATE] Subscription result:",
-        autoSubscribeResult.success ? "SUCCESS" : "FAILURE",
+        autoSubscribeResult.success ? "SUCCESS" : "FAILURE"
       );
 
       res.json({
@@ -2152,10 +2188,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
           : "Check subscription error logs",
       });
     } catch (subscribeError) {
-      logger.error(
-        "[REACTIVATE] Subscription error:",
-        subscribeError.message,
-      );
+      logger.error("[REACTIVATE] Subscription error:", subscribeError.message);
 
       await broadcasterToken.update({
         auto_subscribed: false,
@@ -2256,9 +2289,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
     const config = require("../../config");
     const axios = require("axios");
 
-    logger.info(
-      "[DEBUG SUB] Starting subscription process debugging...",
-    );
+    logger.info("[DEBUG SUB] Starting subscription process debugging...");
 
     // 1. Check active token
     const broadcasterToken = await KickBroadcasterToken.findOne({
@@ -2276,10 +2307,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
       });
     }
 
-    logger.info(
-      "[DEBUG SUB] Token found for:",
-      broadcasterToken.kick_username,
-    );
+    logger.info("[DEBUG SUB] Token found for:", broadcasterToken.kick_username);
 
     // 2. Simulate Kick API call (single event for testing)
     const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
@@ -2292,7 +2320,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
 
     logger.info(
       "[DEBUG SUB] Payload sent to Kick:",
-      JSON.stringify(testPayload, null, 2),
+      JSON.stringify(testPayload, null, 2)
     );
 
     let kickResponse;
@@ -2307,7 +2335,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
       kickResponse = response.data;
       logger.info(
         "[DEBUG SUB] Kick response:",
-        JSON.stringify(kickResponse, null, 2),
+        JSON.stringify(kickResponse, null, 2)
       );
     } catch (apiError) {
       logger.error("[DEBUG SUB] Kick API error:", apiError.message);
@@ -2325,7 +2353,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
     for (const sub of subscriptionsData) {
       logger.info(
         "[DEBUG SUB] Processing subscription:",
-        JSON.stringify(sub, null, 2),
+        JSON.stringify(sub, null, 2)
       );
 
       if (sub.subscription_id && !sub.error) {
@@ -2340,7 +2368,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
 
         logger.info(
           "[DEBUG SUB] Data to save:",
-          JSON.stringify(dataToSave, null, 2),
+          JSON.stringify(dataToSave, null, 2)
         );
 
         try {
@@ -2359,10 +2387,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
               subscription_id: sub.subscription_id,
               db_id: localSub.id,
             });
-            logger.info(
-              "[DEBUG SUB] Update successful for:",
-              sub.name,
-            );
+            logger.info("[DEBUG SUB] Update successful for:", sub.name);
           } else {
             // If not exists, create new
             const newSubscription =
@@ -2456,7 +2481,7 @@ exports.debugTableStructure = async (req, res) => {
 
     // 1. Describe table directly in DB
     const [tableDescription] = await sequelize.query(
-      `DESCRIBE kick_event_subscriptions`,
+      `DESCRIBE kick_event_subscriptions`
     );
 
     // 2. Get constraints and indexes
@@ -2524,10 +2549,7 @@ exports.debugTableStructure = async (req, res) => {
         test_data: testData,
       };
     } catch (insertError) {
-      logger.error(
-        "[DEBUG TABLE] Test insert error:",
-        insertError,
-      );
+      logger.error("[DEBUG TABLE] Test insert error:", insertError);
 
       insertTestResult = {
         success: false,
@@ -2559,7 +2581,7 @@ exports.debugTableStructure = async (req, res) => {
         insert_test: insertTestResult,
       },
       sequelize_model_attributes: Object.keys(
-        KickEventSubscription.rawAttributes,
+        KickEventSubscription.rawAttributes
       ).map((key) => ({
         name: key,
         type: KickEventSubscription.rawAttributes[key].type.constructor.name,
@@ -2590,11 +2612,11 @@ exports.setupPermanentWebhooks = async (req, res) => {
     const config = require("../../config");
 
     logger.info(
-      "[Setup Permanent] Starting permanent webhooks configuration...",
+      "[Setup Permanent] Starting permanent webhooks configuration..."
     );
 
     const result = await subscribeToEventsWithAppToken(
-      config.kick.broadcasterId,
+      config.kick.broadcasterId
     );
 
     if (result.success) {
@@ -2651,20 +2673,16 @@ exports.debugAppTokenWebhooks = async (req, res) => {
     } = require("../services/kickAppToken.service");
     const config = require("../../config");
 
-    logger.info(
-      "[Debug App Token] Starting permanent webhooks diagnostics...",
-    );
+    logger.info("[Debug App Token] Starting permanent webhooks diagnostics...");
 
     // 1. Test App Token retrieval
-    logger.info(
-      "[Debug App Token] Testing App Access Token retrieval...",
-    );
+    logger.info("[Debug App Token] Testing App Access Token retrieval...");
     const appToken = await getAppAccessToken();
 
     // 2. Check subscription status
     logger.info("[Debug App Token] Checking subscription status...");
     const webhooksStatus = await checkAppTokenWebhooksStatus(
-      config.kick.broadcasterId,
+      config.kick.broadcasterId
     );
 
     // 3. Check all subscriptions in DB
@@ -2700,10 +2718,10 @@ exports.debugAppTokenWebhooks = async (req, res) => {
       },
       subscriptions_breakdown: {
         app_token_subs: allSubscriptions.filter(
-          (s) => s.app_id === "APP_TOKEN",
+          (s) => s.app_id === "APP_TOKEN"
         ),
         user_token_subs: allSubscriptions.filter(
-          (s) => s.app_id !== "APP_TOKEN",
+          (s) => s.app_id !== "APP_TOKEN"
         ),
         all_subscriptions: allSubscriptions,
       },
@@ -2753,7 +2771,7 @@ exports.compareTokenTypes = async (req, res) => {
 
     // Webhooks status
     const webhooksStatus = await checkAppTokenWebhooksStatus(
-      config.kick.broadcasterId,
+      config.kick.broadcasterId
     );
 
     // User Tokens status
@@ -2772,7 +2790,7 @@ exports.compareTokenTypes = async (req, res) => {
     const now = new Date();
     const activeUserTokens = userTokens.filter(
       (t) =>
-        t.is_active && t.token_expires_at && new Date(t.token_expires_at) > now,
+        t.is_active && t.token_expires_at && new Date(t.token_expires_at) > now
     );
 
     const comparison = {
@@ -2854,7 +2872,7 @@ exports.debugBotrixMigration = async (req, res) => {
     }
 
     logger.info(
-      `[DEBUG BOTRIX] Simulating migration: ${kick_username} with ${points_amount} points`,
+      `[DEBUG BOTRIX] Simulating migration: ${kick_username} with ${points_amount} points`
     );
 
     // Create simulated BotRix message
@@ -2988,7 +3006,7 @@ exports.debugStreamStatus = async (req, res) => {
 
     if (isLive === "true" && ttlIsLive < 3600) {
       warnings.push(
-        `Low TTL: expires in ${Math.floor(ttlIsLive / 60)} minutes`,
+        `Low TTL: expires in ${Math.floor(ttlIsLive / 60)} minutes`
       );
     }
 
@@ -2998,7 +3016,7 @@ exports.debugStreamStatus = async (req, res) => {
       minutesSinceStatusUpdate > 120
     ) {
       warnings.push(
-        `No status updates for ${minutesSinceStatusUpdate.toFixed(1)} minutes`,
+        `No status updates for ${minutesSinceStatusUpdate.toFixed(1)} minutes`
       );
     }
 
@@ -3079,36 +3097,32 @@ exports.forceStreamState = async (req, res) => {
     const previousState = await redis.get("stream:is_live");
 
     logger.warn(
-      "[FORCE STREAM STATE] ==========================================",
+      "[FORCE STREAM STATE] =========================================="
     );
     logger.warn("[FORCE STREAM STATE] MANUAL STATE CHANGE DETECTED");
     logger.warn(
-      `[FORCE STREAM STATE] Previous state: ${previousState || "unknown"}`,
+      `[FORCE STREAM STATE] Previous state: ${previousState || "unknown"}`
     );
     logger.warn(
-      `[FORCE STREAM STATE] New state: ${is_live ? "true" : "false"}`,
+      `[FORCE STREAM STATE] New state: ${is_live ? "true" : "false"}`
     );
+    logger.warn(`[FORCE STREAM STATE] Reason: ${reason || "Not specified"}`);
+    logger.warn(`[FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`);
     logger.warn(
-      `[FORCE STREAM STATE] Reason: ${reason || "Not specified"}`,
-    );
-    logger.warn(
-      `[FORCE STREAM STATE] Timestamp: ${new Date().toISOString()}`,
-    );
-    logger.warn(
-      "[FORCE STREAM STATE] ==========================================",
+      "[FORCE STREAM STATE] =========================================="
     );
 
     // Update state with consistent logic: NO TTL if online, WITH TTL if offline
     if (is_live) {
       await redis.set("stream:is_live", "true");
       logger.warn(
-        "[FORCE STREAM STATE] State forced to ONLINE (persistent, no TTL)",
+        "[FORCE STREAM STATE] State forced to ONLINE (persistent, no TTL)"
       );
     } else {
       await redis.set("stream:is_live", "false");
       await redis.set("stream:last_webhook_status", "offline");
       logger.info(
-        "[FORCE STREAM STATE] OFFLINE state confirmed directly by webhook",
+        "[FORCE STREAM STATE] OFFLINE state confirmed directly by webhook"
       );
     }
 
@@ -3116,7 +3130,7 @@ exports.forceStreamState = async (req, res) => {
       "stream:last_status_update",
       new Date().toISOString(),
       "EX",
-      86400,
+      86400
     );
 
     // Mark as manual change
@@ -3129,7 +3143,7 @@ exports.forceStreamState = async (req, res) => {
         timestamp: new Date().toISOString(),
       }),
       "EX",
-      86400,
+      86400
     ); // 24 hours
 
     if (is_live) {

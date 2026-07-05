@@ -1,4 +1,4 @@
-'use strict';
+"use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -9,7 +9,7 @@ module.exports = {
       );
 
       if (permisos.length === 0) {
-        console.log('❌ Permiso ver_historial_puntos no encontrado');
+        console.log("❌ Permiso ver_historial_puntos no encontrado");
         return;
       }
 
@@ -21,7 +21,9 @@ module.exports = {
       );
 
       if (existeRelacion.length > 0) {
-        console.log('✅ Rol usuario básico ya tiene permiso ver_historial_puntos');
+        console.log(
+          "✅ Rol usuario básico ya tiene permiso ver_historial_puntos"
+        );
         return;
       }
 
@@ -31,10 +33,11 @@ module.exports = {
          VALUES (1, ${permisoId}, NOW(), NOW())`
       );
 
-      console.log('✅ Permiso ver_historial_puntos agregado al rol usuario básico');
-
+      console.log(
+        "✅ Permiso ver_historial_puntos agregado al rol usuario básico"
+      );
     } catch (error) {
-      console.error('Error en seeder de permisos:', error);
+      console.error("Error en seeder de permisos:", error);
       // No lanzar error para no bloquear el startup
     }
   },
@@ -50,10 +53,12 @@ module.exports = {
         await queryInterface.sequelize.query(
           `DELETE FROM rol_permisos WHERE rol_id = 1 AND permiso_id = ${permisoId}`
         );
-        console.log('❌ Permiso ver_historial_puntos removido del rol usuario básico');
+        console.log(
+          "❌ Permiso ver_historial_puntos removido del rol usuario básico"
+        );
       }
     } catch (error) {
-      console.error('Error en rollback de seeder:', error);
+      console.error("Error en rollback de seeder:", error);
     }
-  }
+  },
 };

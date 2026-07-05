@@ -1,9 +1,10 @@
-'use strict';
+"use strict";
 
 module.exports = {
   async up(queryInterface, Sequelize) {
     // Agregar comando !watchtime a la tabla kick_bot_commands
-    await queryInterface.sequelize.query(`
+    await queryInterface.sequelize.query(
+      `
       INSERT INTO kick_bot_commands (
         command,
         description,
@@ -35,18 +36,22 @@ module.exports = {
         cooldown_seconds = 5,
         enabled = 1,
         updated_at = NOW()
-    `, { raw: true });
+    `,
+      { raw: true }
+    );
 
-    console.log('✅ Comando !watchtime agregado a la base de datos');
+    console.log("✅ Comando !watchtime agregado a la base de datos");
   },
 
   async down(queryInterface, Sequelize) {
     // Remover comando !watchtime de la tabla kick_bot_commands
-    await queryInterface.sequelize.query(`
+    await queryInterface.sequelize.query(
+      `
       DELETE FROM kick_bot_commands WHERE command = 'watchtime'
-    `, { raw: true });
+    `,
+      { raw: true }
+    );
 
-    console.log('❌ Comando !watchtime removido de la base de datos');
-  }
+    console.log("❌ Comando !watchtime removido de la base de datos");
+  },
 };
-

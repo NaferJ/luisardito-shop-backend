@@ -149,15 +149,15 @@ module.exports = {
     // Eliminar índices
     await queryInterface.removeIndex(
       "kick_bot_commands",
-      "idx_kick_bot_commands_command",
+      "idx_kick_bot_commands_command"
     );
     await queryInterface.removeIndex(
       "kick_bot_commands",
-      "idx_kick_bot_commands_enabled",
+      "idx_kick_bot_commands_enabled"
     );
     await queryInterface.removeIndex(
       "kick_bot_commands",
-      "idx_kick_bot_commands_type",
+      "idx_kick_bot_commands_type"
     );
 
     // Eliminar tabla

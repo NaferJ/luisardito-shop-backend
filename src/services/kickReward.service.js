@@ -1,5 +1,5 @@
-const { KickReward } = require('../models');
-const logger = require('../utils/logger');
+const { KickReward } = require("../models");
+const logger = require("../utils/logger");
 
 /**
  * Simplified service for Kick Rewards
@@ -14,15 +14,18 @@ const logger = require('../utils/logger');
  * @returns {Promise<Object|null>}
  */
 async function getRewardByKickId(kickRewardId) {
-    try {
-        const reward = await KickReward.findOne({
-            where: { kick_reward_id: kickRewardId }
-        });
-        return reward;
-    } catch (error) {
-        logger.error('[Kick Rewards] Error getting reward by kick_id:', error.message);
-        throw error;
-    }
+  try {
+    const reward = await KickReward.findOne({
+      where: { kick_reward_id: kickRewardId },
+    });
+    return reward;
+  } catch (error) {
+    logger.error(
+      "[Kick Rewards] Error getting reward by kick_id:",
+      error.message
+    );
+    throw error;
+  }
 }
 
 /**
@@ -30,26 +33,26 @@ async function getRewardByKickId(kickRewardId) {
  * @returns {Promise<Object>}
  */
 async function getRewardStats() {
-    try {
-        const [totalRewards, enabledRewards, totalRedemptions] = await Promise.all([
-            KickReward.count(),
-            KickReward.count({ where: { is_enabled: true } }),
-            KickReward.sum('total_redemptions') || 0
-        ]);
+  try {
+    const [totalRewards, enabledRewards, totalRedemptions] = await Promise.all([
+      KickReward.count(),
+      KickReward.count({ where: { is_enabled: true } }),
+      KickReward.sum("total_redemptions") || 0,
+    ]);
 
-        return {
-            total_rewards: totalRewards,
-            enabled_rewards: enabledRewards,
-            disabled_rewards: totalRewards - enabledRewards,
-            total_redemptions: totalRedemptions
-        };
-    } catch (error) {
-        logger.error('[Kick Rewards] Error getting statistics:', error.message);
-        throw error;
-    }
+    return {
+      total_rewards: totalRewards,
+      enabled_rewards: enabledRewards,
+      disabled_rewards: totalRewards - enabledRewards,
+      total_redemptions: totalRedemptions,
+    };
+  } catch (error) {
+    logger.error("[Kick Rewards] Error getting statistics:", error.message);
+    throw error;
+  }
 }
 
 module.exports = {
-    getRewardByKickId,
-    getRewardStats
+  getRewardByKickId,
+  getRewardStats,
 };

@@ -1,16 +1,23 @@
-const bcrypt = require('bcryptjs');
-const jwt    = require('jsonwebtoken');
-const axios  = require('axios');
-const config = require('../../config');
-const { Usuario, KickBroadcasterToken, sequelize, DiscordUserLink } = require('../models');
-const { generatePkce } = require('../utils/pkce.util');
-const { getKickUserData } = require('../utils/kickApi');
-const { Op } = require('sequelize');
-const { autoSubscribeToEvents } = require('../services/kickAutoSubscribe.service');
-const { extractAvatarUrl } = require('../utils/kickApi');
-const { setAuthCookies, clearAuthCookies } = require('../utils/cookies.util');
-const KickBotTokenService = require('../services/kickBotToken.service');
-const logger = require('../utils/logger');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const axios = require("axios");
+const config = require("../../config");
+const {
+  Usuario,
+  KickBroadcasterToken,
+  sequelize,
+  DiscordUserLink,
+} = require("../models");
+const { generatePkce } = require("../utils/pkce.util");
+const { getKickUserData } = require("../utils/kickApi");
+const { Op } = require("sequelize");
+const {
+  autoSubscribeToEvents,
+} = require("../services/kickAutoSubscribe.service");
+const { extractAvatarUrl } = require("../utils/kickApi");
+const { setAuthCookies, clearAuthCookies } = require("../utils/cookies.util");
+const KickBotTokenService = require("../services/kickBotToken.service");
+const logger = require("../utils/logger");
 
 /**
  * Helper to enrich user info with Discord data
@@ -20,7 +27,7 @@ const logger = require('../utils/logger');
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
   const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id }
+    where: { tienda_user_id: user.id },
   });
 
   if (discordLink) {
@@ -31,25 +38,27 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
-        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-        : discordLink.discord_username
+      display_name:
+        discordLink.discord_discriminator &&
+        discordLink.discord_discriminator !== "0"
+          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+          : discordLink.discord_username,
     };
   }
 
   return {
     discord_info: discordInfo,
-    display_name: discordInfo?.display_name || user.nickname
+    display_name: discordInfo?.display_name || user.nickname,
   };
 }
 const {
-    generateAccessToken,
-    createRefreshToken,
-    validateRefreshToken,
-    revokeRefreshToken,
-    revokeAllUserTokens,
-    rotateRefreshToken
-} = require('../services/tokenService');
+  generateAccessToken,
+  createRefreshToken,
+  validateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserTokens,
+  rotateRefreshToken,
+} = require("../services/tokenService");
 
 /**
  * Extracts the Kick avatar
@@ -57,885 +66,1027 @@ const {
  * @returns {string|null} - Kick avatar URL or null if absent
  */
 async function processKickAvatar(kickUser) {
-    try {
-        const kickAvatarUrl = extractAvatarUrl(kickUser);
+  try {
+    const kickAvatarUrl = extractAvatarUrl(kickUser);
 
-        if (!kickAvatarUrl) {
-            logger.info(`[Auth] No avatar found in Kick data`);
-            return null;
-        }
-
-        logger.info(`[Auth] Kick avatar obtained:`, kickAvatarUrl);
-        return kickAvatarUrl;
-
-    } catch (error) {
-        logger.warn(`[Auth] Error extracting avatar, continuing without it:`, error.message);
-        return null;
+    if (!kickAvatarUrl) {
+      logger.info(`[Auth] No avatar found in Kick data`);
+      return null;
     }
+
+    logger.info(`[Auth] Kick avatar obtained:`, kickAvatarUrl);
+    return kickAvatarUrl;
+  } catch (error) {
+    logger.warn(
+      `[Auth] Error extracting avatar, continuing without it:`,
+      error.message
+    );
+    return null;
+  }
 }
 
 exports.registerLocal = async (req, res) => {
-    try {
-        let { nickname, email, password } = req.body;
+  try {
+    let { nickname, email, password } = req.body;
 
-        if (!nickname || !email || !password) {
-            return res.status(400).json({ error: 'All fields are required' });
-        }
-
-        nickname = nickname.trim().toLowerCase();
-        email = email.trim().toLowerCase();
-
-        const developers = ['naferjml@gmail.com'];
-        if (!developers.includes(email)) {
-            return res.status(403).json({ error: 'Manual registration is for developers only' });
-        }
-
-        // Check for duplicates
-        const existe = await Usuario.findOne({
-            where: { [Op.or]: [{ nickname }, { email }] }
-        });
-        if (existe) {
-            return res.status(409).json({ error: 'Nickname or email already registered' });
-        }
-
-        const hash = await bcrypt.hash(password, 10);
-        const user = await Usuario.create({ nickname, email, password_hash: hash });
-        res.status(201).json({ message: 'User created', userId: user.id });
-    } catch (err) {
-        res.status(400).json({ error: err.message });
+    if (!nickname || !email || !password) {
+      return res.status(400).json({ error: "All fields are required" });
     }
+
+    nickname = nickname.trim().toLowerCase();
+    email = email.trim().toLowerCase();
+
+    const developers = ["naferjml@gmail.com"];
+    if (!developers.includes(email)) {
+      return res
+        .status(403)
+        .json({ error: "Manual registration is for developers only" });
+    }
+
+    // Check for duplicates
+    const existe = await Usuario.findOne({
+      where: { [Op.or]: [{ nickname }, { email }] },
+    });
+    if (existe) {
+      return res
+        .status(409)
+        .json({ error: "Nickname or email already registered" });
+    }
+
+    const hash = await bcrypt.hash(password, 10);
+    const user = await Usuario.create({ nickname, email, password_hash: hash });
+    res.status(201).json({ message: "User created", userId: user.id });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
 };
 
 // Local login
 exports.loginLocal = async (req, res) => {
-    try {
-        const { nickname, password } = req.body;
-        const user = await Usuario.findOne({ where: { nickname } });
-        if (!user || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
-            return res.status(401).json({ error: 'Invalid credentials' });
-        }
-
-        // Generate access token and refresh token
-        const accessToken = generateAccessToken({
-            userId: user.id,
-            rolId: user.rol_id,
-            nickname: user.nickname
-        });
-
-        const ipAddress = req.ip || req.connection.remoteAddress;
-        const userAgent = req.headers['user-agent'];
-
-        const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
-
-        // Set cross-domain cookies
-        setAuthCookies(res, accessToken, refreshToken.token);
-
-        // Enrich user info with Discord data
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
-
-        res.json({
-            accessToken,
-            refreshToken: refreshToken.token,
-            expiresIn: 3600, // 1 hour in seconds
-            user: {
-                id: user.id,
-                nickname: user.nickname,
-                display_name,
-                puntos: user.puntos,
-                rol_id: user.rol_id,
-                discord_info
-            }
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+  try {
+    const { nickname, password } = req.body;
+    const user = await Usuario.findOne({ where: { nickname } });
+    if (
+      !user ||
+      !user.password_hash ||
+      !(await bcrypt.compare(password, user.password_hash))
+    ) {
+      return res.status(401).json({ error: "Invalid credentials" });
     }
+
+    // Generate access token and refresh token
+    const accessToken = generateAccessToken({
+      userId: user.id,
+      rolId: user.rol_id,
+      nickname: user.nickname,
+    });
+
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers["user-agent"];
+
+    const refreshToken = await createRefreshToken(
+      user.id,
+      ipAddress,
+      userAgent
+    );
+
+    // Set cross-domain cookies
+    setAuthCookies(res, accessToken, refreshToken.token);
+
+    // Enrich user info with Discord data
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(user);
+
+    res.json({
+      accessToken,
+      refreshToken: refreshToken.token,
+      expiresIn: 3600, // 1 hour in seconds
+      user: {
+        id: user.id,
+        nickname: user.nickname,
+        display_name,
+        puntos: user.puntos,
+        rol_id: user.rol_id,
+        discord_info,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
 // Redirect to Kick OAuth
 exports.redirectKick = (req, res) => {
-    try {
-        const { code_verifier, code_challenge } = generatePkce();
-        logger.info('[Kick OAuth][redirectKick] code_verifier:', code_verifier);
-        logger.info('[Kick OAuth][redirectKick] code_challenge:', code_challenge);
+  try {
+    const { code_verifier, code_challenge } = generatePkce();
+    logger.info("[Kick OAuth][redirectKick] code_verifier:", code_verifier);
+    logger.info("[Kick OAuth][redirectKick] code_challenge:", code_challenge);
 
-        const statePayload = {
-            cv: code_verifier,
-            ruri: config.kick.redirectUri,
-            iat: Math.floor(Date.now() / 1000)
-        };
-        const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
+    const statePayload = {
+      cv: code_verifier,
+      ruri: config.kick.redirectUri,
+      iat: Math.floor(Date.now() / 1000),
+    };
+    const state = jwt.sign(statePayload, config.jwtSecret, {
+      expiresIn: "10m",
+    });
 
-        logger.info('[Kick OAuth][redirectKick] statePayload:', statePayload);
-        logger.info('[Kick OAuth][redirectKick] state (JWT):', state);
+    logger.info("[Kick OAuth][redirectKick] statePayload:", statePayload);
+    logger.info("[Kick OAuth][redirectKick] state (JWT):", state);
 
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: String(config.kick.clientId || ''),
-            redirect_uri: String(config.kick.redirectUri || ''),
-            scope: 'user:read events:subscribe kicks:read',
-            code_challenge: code_challenge,
-            code_challenge_method: 'S256',
-            state
-        });
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: String(config.kick.clientId || ""),
+      redirect_uri: String(config.kick.redirectUri || ""),
+      scope: "user:read events:subscribe kicks:read",
+      code_challenge: code_challenge,
+      code_challenge_method: "S256",
+      state,
+    });
 
-        const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
-        logger.info('[Kick OAuth][redirectKick] Final redirect URL:', url);
-        return res.redirect(url);
-    } catch (err) {
-        logger.error('[Kick OAuth][redirectKick] Error:', err?.message || err);
-        return res.status(500).json({ error: 'Could not start the Kick OAuth flow' });
-    }
+    const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
+    logger.info("[Kick OAuth][redirectKick] Final redirect URL:", url);
+    return res.redirect(url);
+  } catch (err) {
+    logger.error("[Kick OAuth][redirectKick] Error:", err?.message || err);
+    return res
+      .status(500)
+      .json({ error: "Could not start the Kick OAuth flow" });
+  }
 };
 
 // Redirect to Kick OAuth (BOT)
 exports.redirectKickBot = (req, res) => {
-    try {
-        const { code_verifier, code_challenge } = generatePkce();
+  try {
+    const { code_verifier, code_challenge } = generatePkce();
 
-        const statePayload = {
-            cv: code_verifier,
-            ruri: config.kickBot.redirectUri,
-            iat: Math.floor(Date.now() / 1000)
-        };
-        const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
+    const statePayload = {
+      cv: code_verifier,
+      ruri: config.kickBot.redirectUri,
+      iat: Math.floor(Date.now() / 1000),
+    };
+    const state = jwt.sign(statePayload, config.jwtSecret, {
+      expiresIn: "10m",
+    });
 
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: String(config.kickBot.clientId || ''),
-            redirect_uri: String(config.kickBot.redirectUri || ''),
-            scope: 'user:read chat:write channel:read channel:write',
-            code_challenge: code_challenge,
-            code_challenge_method: 'S256',
-            state
-        });
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: String(config.kickBot.clientId || ""),
+      redirect_uri: String(config.kickBot.redirectUri || ""),
+      scope: "user:read chat:write channel:read channel:write",
+      code_challenge: code_challenge,
+      code_challenge_method: "S256",
+      state,
+    });
 
-        const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
-        return res.redirect(url);
-    } catch (err) {
-        logger.error('[Kick OAuth][redirectKickBot] Error:', err?.message || err);
-        return res.status(500).json({ error: 'Could not start the BOT OAuth flow' });
-    }
+    const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
+    return res.redirect(url);
+  } catch (err) {
+    logger.error("[Kick OAuth][redirectKickBot] Error:", err?.message || err);
+    return res
+      .status(500)
+      .json({ error: "Could not start the BOT OAuth flow" });
+  }
 };
 
 // Kick OAuth callback
 exports.callbackKick = async (req, res) => {
+  try {
+    const { code, state } = req.query || {};
+    logger.info("[Kick OAuth][callbackKick] Parameters received:", {
+      code,
+      state,
+    });
+
+    if (!code || !state) {
+      logger.info("[Kick OAuth][callbackKick] Missing code/state parameters:", {
+        code,
+        state,
+      });
+      return res.status(400).json({ error: "Missing code/state parameters" });
+    }
+
+    let decoded;
     try {
-        const { code, state } = req.query || {};
-        logger.info('[Kick OAuth][callbackKick] Parameters received:', { code, state });
+      decoded = jwt.verify(String(state), config.jwtSecret);
+      logger.info("[Kick OAuth][callbackKick] Decoded state:", decoded);
+    } catch (e) {
+      logger.info(
+        "[Kick OAuth][callbackKick] Invalid or expired state:",
+        e?.message || e
+      );
+      return res.status(400).json({ error: "Invalid or expired state" });
+    }
 
-        if (!code || !state) {
-            logger.info('[Kick OAuth][callbackKick] Missing code/state parameters:', { code, state });
-            return res.status(400).json({ error: 'Missing code/state parameters' });
-        }
+    const code_verifier = decoded?.cv;
+    const finalRedirectUri = decoded?.ruri || config.kick.redirectUri;
+    logger.info(
+      "[Kick OAuth][callbackKick] Recovered code_verifier:",
+      code_verifier
+    );
+    logger.info(
+      "[Kick OAuth][callbackKick] finalRedirectUri:",
+      finalRedirectUri
+    );
 
-        let decoded;
-        try {
-            decoded = jwt.verify(String(state), config.jwtSecret);
-            logger.info('[Kick OAuth][callbackKick] Decoded state:', decoded);
-        } catch (e) {
-            logger.info('[Kick OAuth][callbackKick] Invalid or expired state:', e?.message || e);
-            return res.status(400).json({ error: 'Invalid or expired state' });
-        }
+    if (!code_verifier || !finalRedirectUri) {
+      logger.info("[Kick OAuth][callbackKick] Invalid PKCE or redirect_uri:", {
+        code_verifier,
+        finalRedirectUri,
+      });
+      return res.status(400).json({ error: "Invalid PKCE or redirect_uri" });
+    }
 
-        const code_verifier = decoded?.cv;
-        const finalRedirectUri = decoded?.ruri || config.kick.redirectUri;
-        logger.info('[Kick OAuth][callbackKick] Recovered code_verifier:', code_verifier);
-        logger.info('[Kick OAuth][callbackKick] finalRedirectUri:', finalRedirectUri);
+    const tokenUrl = config.kick.oauthToken;
+    const clientId = config.kick.clientId;
+    const clientSecret = config.kick.clientSecret;
 
-        if (!code_verifier || !finalRedirectUri) {
-            logger.info('[Kick OAuth][callbackKick] Invalid PKCE or redirect_uri:', { code_verifier, finalRedirectUri });
-            return res.status(400).json({ error: 'Invalid PKCE or redirect_uri' });
-        }
+    logger.info("[Kick OAuth][callbackKick] tokenUrl:", tokenUrl);
+    logger.info("[Kick OAuth][callbackKick] clientId:", clientId);
+    logger.info("[Kick OAuth][callbackKick] clientSecret:", clientSecret);
 
-        const tokenUrl = config.kick.oauthToken;
-        const clientId = config.kick.clientId;
-        const clientSecret = config.kick.clientSecret;
+    if (!clientId || !clientSecret) {
+      logger.error(
+        "[Kick OAuth][callbackKick] Missing KICK_CLIENT_ID/KICK_CLIENT_SECRET configuration"
+      );
+      return res
+        .status(500)
+        .json({ error: "Incomplete provider configuration" });
+    }
 
-        logger.info('[Kick OAuth][callbackKick] tokenUrl:', tokenUrl);
-        logger.info('[Kick OAuth][callbackKick] clientId:', clientId);
-        logger.info('[Kick OAuth][callbackKick] clientSecret:', clientSecret);
+    const params = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: finalRedirectUri,
+      client_id: clientId,
+      client_secret: clientSecret,
+      code_verifier,
+    });
 
-        if (!clientId || !clientSecret) {
-            logger.error('[Kick OAuth][callbackKick] Missing KICK_CLIENT_ID/KICK_CLIENT_SECRET configuration');
-            return res.status(500).json({ error: 'Incomplete provider configuration' });
-        }
+    logger.info(
+      "[Kick OAuth][callbackKick] Parameters sent to token endpoint:",
+      params.toString()
+    );
 
-        const params = new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: finalRedirectUri,
-            client_id: clientId,
-            client_secret: clientSecret,
-            code_verifier
+    const tokenRes = await axios.post(tokenUrl, params.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 10000,
+    });
+
+    logger.info(
+      "[Kick OAuth][callbackKick] Token endpoint response:",
+      tokenRes.data
+    );
+
+    const tokenData = tokenRes.data;
+
+    const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, "");
+    const userUrl = `${userApiBase}/public/v1/users`;
+    logger.info(
+      "[Kick OAuth][callbackKick] URL to fetch user profile:",
+      userUrl
+    );
+
+    const userRes = await axios.get(userUrl, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      timeout: 10000,
+    });
+
+    logger.info(
+      "[Kick OAuth][callbackKick] User profile response:",
+      userRes.data
+    );
+
+    const kickUser = Array.isArray(userRes.data.data)
+      ? userRes.data.data[0]
+      : userRes.data;
+
+    // First, look up by user_id_ext (already linked user)
+    let usuario = await Usuario.findOne({
+      where: { user_id_ext: String(kickUser.user_id) },
+    });
+    let isNewUser = false;
+
+    if (!usuario) {
+      // If not found, search by nickname (case-insensitive) or email
+      const colision = await Usuario.findOne({
+        where: {
+          [Op.or]: [
+            { email: kickUser.email },
+            { nickname: kickUser.name },
+            // Case-insensitive lookup for nickname
+            sequelize.where(
+              sequelize.fn("LOWER", sequelize.col("nickname")),
+              sequelize.fn("LOWER", kickUser.name)
+            ),
+          ],
+        },
+      });
+
+      if (colision) {
+        logger.info(
+          "[Kick OAuth][callbackKick] Collision detected, linking existing user:",
+          {
+            usuario_id: colision.id,
+            usuario_nickname: colision.nickname,
+            kick_nickname: kickUser.name,
+            kick_email: kickUser.email,
+            kick_user_id: kickUser.user_id,
+          }
+        );
+
+        // Link the user_id_ext to the existing user
+        // Get Kick avatar
+        const kickAvatarUrl = await processKickAvatar(kickUser);
+
+        await colision.update({
+          user_id_ext: String(kickUser.user_id),
+          nickname: kickUser.name, // Update with exact Kick name
+          email: kickUser.email || colision.email, // Update email when provided by Kick
+          kick_data: {
+            avatar_url: kickAvatarUrl || kickUser.profile_picture,
+            username: kickUser.name,
+          },
         });
 
-        logger.info('[Kick OAuth][callbackKick] Parameters sent to token endpoint:', params.toString());
-
-        const tokenRes = await axios.post(tokenUrl, params.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 10000
-        });
-
-        logger.info('[Kick OAuth][callbackKick] Token endpoint response:', tokenRes.data);
-
-        const tokenData = tokenRes.data;
-
-        const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-        const userUrl = `${userApiBase}/public/v1/users`;
-        logger.info('[Kick OAuth][callbackKick] URL to fetch user profile:', userUrl);
-
-        const userRes = await axios.get(userUrl, {
-            headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-            timeout: 10000
-        });
-
-        logger.info('[Kick OAuth][callbackKick] User profile response:', userRes.data);
-
-        const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
-
-        // First, look up by user_id_ext (already linked user)
-        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
-        let isNewUser = false;
-
-        if (!usuario) {
-            // If not found, search by nickname (case-insensitive) or email
-            const colision = await Usuario.findOne({
-                where: {
-                    [Op.or]: [
-                        { email: kickUser.email },
-                        { nickname: kickUser.name },
-                        // Case-insensitive lookup for nickname
-                        sequelize.where(
-                            sequelize.fn('LOWER', sequelize.col('nickname')),
-                            sequelize.fn('LOWER', kickUser.name)
-                        )
-                    ]
-                }
-            });
-
-            if (colision) {
-                logger.info('[Kick OAuth][callbackKick] Collision detected, linking existing user:', {
-                    usuario_id: colision.id,
-                    usuario_nickname: colision.nickname,
-                    kick_nickname: kickUser.name,
-                    kick_email: kickUser.email,
-                    kick_user_id: kickUser.user_id
-                });
-
-                // Link the user_id_ext to the existing user
-                // Get Kick avatar
-                const kickAvatarUrl = await processKickAvatar(kickUser);
-
-                await colision.update({
-                    user_id_ext: String(kickUser.user_id),
-                    nickname: kickUser.name, // Update with exact Kick name
-                    email: kickUser.email || colision.email, // Update email when provided by Kick
-                    kick_data: {
-                        avatar_url: kickAvatarUrl || kickUser.profile_picture,
-                        username: kickUser.name
-                    }
-                });
-
-                usuario = colision;
-                isNewUser = false;
-            } else {
-                // Create new user
-                // Create the user first to obtain the ID
-                const newUserData = {
-                    nickname: kickUser.name,
-                    email: kickUser.email || `${kickUser.name}@kick.user`,
-                    puntos: 1000,
-                    rol_id: 1, // New users start as "basic user"
-                    user_id_ext: String(kickUser.user_id),
-                    password_hash: null,
-                    kick_data: {
-                        avatar_url: kickUser.profile_picture, // Temporary
-                        username: kickUser.name
-                    }
-                };
-
-                logger.info('[Kick OAuth][callbackKick] Data to create user:', newUserData);
-
-                usuario = await Usuario.create(newUserData);
-
-                // Get Kick avatar after creating the user
-                const kickAvatarUrl = await processKickAvatar(kickUser);
-
-                if (kickAvatarUrl) {
-                    await usuario.update({
-                        kick_data: {
-                            avatar_url: kickAvatarUrl,
-                            username: kickUser.name
-                        }
-                    });
-                }
-
-                isNewUser = true;
-                logger.info('[Kick OAuth][callbackKick] User created:', usuario.id);
-            }
-        } else {
-            const colision = await Usuario.findOne({
-                where: {
-                    [Op.or]: [
-                        { email: kickUser.email },
-                        { nickname: kickUser.name }
-                    ],
-                    id: { [Op.ne]: usuario.id }
-                }
-            });
-            if (colision) {
-                return res.status(409).json({ error: 'Email or nickname already in use by another user.' });
-            }
-
-            // Log data before updating user
-            logger.info('[Kick OAuth][callbackKick] Data to update user:', {
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                kick_data: {
-                    avatar_url: kickUser.profile_picture,
-                    username: kickUser.name
-                }
-            });
-
-            // Get Kick avatar
-            const kickAvatarUrl = await processKickAvatar(kickUser);
-
-            await usuario.update({
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                kick_data: {
-                    avatar_url: kickAvatarUrl || kickUser.profile_picture,
-                    username: kickUser.name
-                }
-            });
-            logger.info('[Kick OAuth][callbackKick] User updated:', usuario.id);
-        }
-
-        // Save broadcaster token and auto-subscribe to events
-        const kickUserId = String(kickUser.user_id);
-        const accessToken = tokenData.access_token;
-        const refreshToken = tokenData.refresh_token || null;
-        const expiresIn = tokenData.expires_in || null;
-
-        let tokenExpiresAt = null;
-        if (expiresIn) {
-            tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
-        }
-
-        // AUTOMATIC DETECTION: Is this the main broadcaster?
-        const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
-
-        if (isBroadcasterPrincipal) {
-            logger.info('[MAIN BROADCASTER] Luisardito authenticated - Setting up webhooks...');
-        }
-
-        // Save or update token
-        const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate({
-            where: { kick_user_id: kickUserId },
-            defaults: {
-                kick_user_id: kickUserId,
-                kick_username: kickUser.name,
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                token_expires_at: tokenExpiresAt,
-                is_active: true,
-                auto_subscribed: false
-            }
-        });
-
-        if (!created) {
-            await broadcasterToken.update({
-                kick_username: kickUser.name,
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                token_expires_at: tokenExpiresAt,
-                is_active: true
-            });
-        }
-
-        logger.info('[Kick OAuth][callbackKick] Token saved:', created ? 'new' : 'updated');
-
-        let autoSubscribeResult = null;
-
-        // ONLY the main broadcaster should subscribe to events
-        if (isBroadcasterPrincipal) {
-            logger.info('[MAIN BROADCASTER] Setting up webhook subscriptions...');
-
-            try {
-                // Use ITS OWN token to subscribe to ITS OWN channel events
-                autoSubscribeResult = await autoSubscribeToEvents(accessToken, kickUserId, kickUserId);
-
-                await broadcasterToken.update({
-                    auto_subscribed: autoSubscribeResult.success,
-                    last_subscription_attempt: new Date(),
-                    subscription_error: autoSubscribeResult.success ? null : JSON.stringify(autoSubscribeResult.error)
-                });
-
-                if (autoSubscribeResult.success) {
-                    logger.info(`[MAIN BROADCASTER] ${autoSubscribeResult.totalSubscribed} events configured. System ready.`);
-                } else {
-                    logger.error('[MAIN BROADCASTER] Configuration error:', autoSubscribeResult.error);
-                }
-            } catch (subscribeError) {
-                logger.error('[MAIN BROADCASTER] Critical error:', subscribeError.message);
-                await broadcasterToken.update({
-                    auto_subscribed: false,
-                    last_subscription_attempt: new Date(),
-                    subscription_error: subscribeError.message
-                });
-            }
-        } else {
-            logger.info('[NORMAL USER] Authenticated, no webhook configuration required');
-        }
-
-        // Generate access token and refresh token
-        const jwtAccessToken = generateAccessToken({
-            userId: usuario.id,
-            rolId: usuario.rol_id,
-            nickname: usuario.nickname,
-            kick_id: usuario.user_id
-        });
-
-        const ipAddress = req.ip || req.connection.remoteAddress;
-        const userAgent = req.headers['user-agent'];
-
-        const refreshTokenObj = await createRefreshToken(usuario.id, ipAddress, userAgent);
-
-        logger.info('[Kick OAuth][callbackKick] JWT issued (access + refresh)');
-
-        // Set cross-domain cookies
-        setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
-
-        // Enrich user info with Discord data
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
-
-        const frontendUrl = config.frontendUrl || 'http://localhost:5173';
-        const callbackData = {
-            token: jwtAccessToken, // Backward compatibility
-            accessToken: jwtAccessToken,
-            refreshToken: refreshTokenObj.token,
-            expiresIn: 3600, // 1 hour in seconds
-            usuario: {
-                id: usuario.id,
-                nickname: usuario.nickname,
-                display_name,
-                puntos: usuario.puntos,
-                rol_id: usuario.rol_id,
-                user_id_ext: usuario.user_id_ext,
-                kick_data: usuario.kick_data,
-                discord_info,
-                createdAt: usuario.createdAt,
-                updatedAt: usuario.updatedAt
-            },
-            isNewUser,
-            kickProfile: {
-                username: kickUser.name,
-                id: kickUser.user_id,
-                avatar_url: kickUser.profile_picture
-            },
-            broadcasterConnected: true,
-            autoSubscribed: autoSubscribeResult?.success || false,
-            subscriptionInfo: autoSubscribeResult ? {
-                totalSubscribed: autoSubscribeResult.totalSubscribed,
-                totalErrors: autoSubscribeResult.totalErrors
-            } : null
+        usuario = colision;
+        isNewUser = false;
+      } else {
+        // Create new user
+        // Create the user first to obtain the ID
+        const newUserData = {
+          nickname: kickUser.name,
+          email: kickUser.email || `${kickUser.name}@kick.user`,
+          puntos: 1000,
+          rol_id: 1, // New users start as "basic user"
+          user_id_ext: String(kickUser.user_id),
+          password_hash: null,
+          kick_data: {
+            avatar_url: kickUser.profile_picture, // Temporary
+            username: kickUser.name,
+          },
         };
 
-        const encodedData = Buffer.from(JSON.stringify(callbackData)).toString('base64');
-        const redirectUrl = `${frontendUrl}/auth/callback?data=${encodeURIComponent(encodedData)}`;
+        logger.info(
+          "[Kick OAuth][callbackKick] Data to create user:",
+          newUserData
+        );
 
-        logger.info('[Kick OAuth][callbackKick] Redirecting to frontend:', redirectUrl);
+        usuario = await Usuario.create(newUserData);
 
-        return res.redirect(redirectUrl);
+        // Get Kick avatar after creating the user
+        const kickAvatarUrl = await processKickAvatar(kickUser);
 
-    } catch (error) {
-        logger.error('[Kick OAuth][callbackKick] General error:', error?.message || error);
-
-        // Show Sequelize validation error details if present
-        if (error.errors) {
-            logger.error('[Kick OAuth][callbackKick] Validation error details:', error.errors);
-            // Respond with the validation message if it is a uniqueness collision
-            const uniqueError = error.errors.find(e => e.type === 'unique violation');
-            if (uniqueError) {
-                return res.status(409).json({ error: uniqueError.message, campo: uniqueError.path, valor: uniqueError.value });
-            }
+        if (kickAvatarUrl) {
+          await usuario.update({
+            kick_data: {
+              avatar_url: kickAvatarUrl,
+              username: kickUser.name,
+            },
+          });
         }
 
-        if (error.response) {
-            logger.info('[Kick OAuth][callbackKick] error.response.data:', error.response.data);
-            return res.status(error.response.status).json({
-                error: 'Error communicating with Kick',
-                provider_status: error.response.status,
-                details: error.response.data
-            });
-        }
+        isNewUser = true;
+        logger.info("[Kick OAuth][callbackKick] User created:", usuario.id);
+      }
+    } else {
+      const colision = await Usuario.findOne({
+        where: {
+          [Op.or]: [{ email: kickUser.email }, { nickname: kickUser.name }],
+          id: { [Op.ne]: usuario.id },
+        },
+      });
+      if (colision) {
+        return res
+          .status(409)
+          .json({ error: "Email or nickname already in use by another user." });
+      }
 
-        return res.status(502).json({
-            error: 'Provider network failure',
-            detalle: error.errors || error.message || error
-        });
+      // Log data before updating user
+      logger.info("[Kick OAuth][callbackKick] Data to update user:", {
+        nickname: kickUser.name,
+        email: kickUser.email || `${kickUser.name}@kick.user`,
+        kick_data: {
+          avatar_url: kickUser.profile_picture,
+          username: kickUser.name,
+        },
+      });
+
+      // Get Kick avatar
+      const kickAvatarUrl = await processKickAvatar(kickUser);
+
+      await usuario.update({
+        nickname: kickUser.name,
+        email: kickUser.email || `${kickUser.name}@kick.user`,
+        kick_data: {
+          avatar_url: kickAvatarUrl || kickUser.profile_picture,
+          username: kickUser.name,
+        },
+      });
+      logger.info("[Kick OAuth][callbackKick] User updated:", usuario.id);
     }
+
+    // Save broadcaster token and auto-subscribe to events
+    const kickUserId = String(kickUser.user_id);
+    const accessToken = tokenData.access_token;
+    const refreshToken = tokenData.refresh_token || null;
+    const expiresIn = tokenData.expires_in || null;
+
+    let tokenExpiresAt = null;
+    if (expiresIn) {
+      tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+    }
+
+    // AUTOMATIC DETECTION: Is this the main broadcaster?
+    const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
+
+    if (isBroadcasterPrincipal) {
+      logger.info(
+        "[MAIN BROADCASTER] Luisardito authenticated - Setting up webhooks..."
+      );
+    }
+
+    // Save or update token
+    const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate(
+      {
+        where: { kick_user_id: kickUserId },
+        defaults: {
+          kick_user_id: kickUserId,
+          kick_username: kickUser.name,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          token_expires_at: tokenExpiresAt,
+          is_active: true,
+          auto_subscribed: false,
+        },
+      }
+    );
+
+    if (!created) {
+      await broadcasterToken.update({
+        kick_username: kickUser.name,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        token_expires_at: tokenExpiresAt,
+        is_active: true,
+      });
+    }
+
+    logger.info(
+      "[Kick OAuth][callbackKick] Token saved:",
+      created ? "new" : "updated"
+    );
+
+    let autoSubscribeResult = null;
+
+    // ONLY the main broadcaster should subscribe to events
+    if (isBroadcasterPrincipal) {
+      logger.info("[MAIN BROADCASTER] Setting up webhook subscriptions...");
+
+      try {
+        // Use ITS OWN token to subscribe to ITS OWN channel events
+        autoSubscribeResult = await autoSubscribeToEvents(
+          accessToken,
+          kickUserId,
+          kickUserId
+        );
+
+        await broadcasterToken.update({
+          auto_subscribed: autoSubscribeResult.success,
+          last_subscription_attempt: new Date(),
+          subscription_error: autoSubscribeResult.success
+            ? null
+            : JSON.stringify(autoSubscribeResult.error),
+        });
+
+        if (autoSubscribeResult.success) {
+          logger.info(
+            `[MAIN BROADCASTER] ${autoSubscribeResult.totalSubscribed} events configured. System ready.`
+          );
+        } else {
+          logger.error(
+            "[MAIN BROADCASTER] Configuration error:",
+            autoSubscribeResult.error
+          );
+        }
+      } catch (subscribeError) {
+        logger.error(
+          "[MAIN BROADCASTER] Critical error:",
+          subscribeError.message
+        );
+        await broadcasterToken.update({
+          auto_subscribed: false,
+          last_subscription_attempt: new Date(),
+          subscription_error: subscribeError.message,
+        });
+      }
+    } else {
+      logger.info(
+        "[NORMAL USER] Authenticated, no webhook configuration required"
+      );
+    }
+
+    // Generate access token and refresh token
+    const jwtAccessToken = generateAccessToken({
+      userId: usuario.id,
+      rolId: usuario.rol_id,
+      nickname: usuario.nickname,
+      kick_id: usuario.user_id,
+    });
+
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers["user-agent"];
+
+    const refreshTokenObj = await createRefreshToken(
+      usuario.id,
+      ipAddress,
+      userAgent
+    );
+
+    logger.info("[Kick OAuth][callbackKick] JWT issued (access + refresh)");
+
+    // Set cross-domain cookies
+    setAuthCookies(res, jwtAccessToken, refreshTokenObj.token);
+
+    // Enrich user info with Discord data
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(usuario);
+
+    const frontendUrl = config.frontendUrl || "http://localhost:5173";
+    const callbackData = {
+      token: jwtAccessToken, // Backward compatibility
+      accessToken: jwtAccessToken,
+      refreshToken: refreshTokenObj.token,
+      expiresIn: 3600, // 1 hour in seconds
+      usuario: {
+        id: usuario.id,
+        nickname: usuario.nickname,
+        display_name,
+        puntos: usuario.puntos,
+        rol_id: usuario.rol_id,
+        user_id_ext: usuario.user_id_ext,
+        kick_data: usuario.kick_data,
+        discord_info,
+        createdAt: usuario.createdAt,
+        updatedAt: usuario.updatedAt,
+      },
+      isNewUser,
+      kickProfile: {
+        username: kickUser.name,
+        id: kickUser.user_id,
+        avatar_url: kickUser.profile_picture,
+      },
+      broadcasterConnected: true,
+      autoSubscribed: autoSubscribeResult?.success || false,
+      subscriptionInfo: autoSubscribeResult
+        ? {
+            totalSubscribed: autoSubscribeResult.totalSubscribed,
+            totalErrors: autoSubscribeResult.totalErrors,
+          }
+        : null,
+    };
+
+    const encodedData = Buffer.from(JSON.stringify(callbackData)).toString(
+      "base64"
+    );
+    const redirectUrl = `${frontendUrl}/auth/callback?data=${encodeURIComponent(encodedData)}`;
+
+    logger.info(
+      "[Kick OAuth][callbackKick] Redirecting to frontend:",
+      redirectUrl
+    );
+
+    return res.redirect(redirectUrl);
+  } catch (error) {
+    logger.error(
+      "[Kick OAuth][callbackKick] General error:",
+      error?.message || error
+    );
+
+    // Show Sequelize validation error details if present
+    if (error.errors) {
+      logger.error(
+        "[Kick OAuth][callbackKick] Validation error details:",
+        error.errors
+      );
+      // Respond with the validation message if it is a uniqueness collision
+      const uniqueError = error.errors.find(
+        (e) => e.type === "unique violation"
+      );
+      if (uniqueError) {
+        return res.status(409).json({
+          error: uniqueError.message,
+          campo: uniqueError.path,
+          valor: uniqueError.value,
+        });
+      }
+    }
+
+    if (error.response) {
+      logger.info(
+        "[Kick OAuth][callbackKick] error.response.data:",
+        error.response.data
+      );
+      return res.status(error.response.status).json({
+        error: "Error communicating with Kick",
+        provider_status: error.response.status,
+        details: error.response.data,
+      });
+    }
+
+    return res.status(502).json({
+      error: "Provider network failure",
+      detalle: error.errors || error.message || error,
+    });
+  }
 };
 
 // Kick OAuth callback (BOT)
 exports.callbackKickBot = async (req, res) => {
-    try {
-        const { code, state } = req.query || {};
-        logger.info('[Kick OAuth][callbackKickBot] Parameters received:', { code, state });
+  try {
+    const { code, state } = req.query || {};
+    logger.info("[Kick OAuth][callbackKickBot] Parameters received:", {
+      code,
+      state,
+    });
 
-        if (!code || !state) {
-            logger.info('[Kick OAuth][callbackKickBot] Missing code/state parameters');
-            return res.status(400).json({ error: 'Missing code/state parameters' });
-        }
-
-        // Validate the state
-        let decodedState;
-        try {
-            decodedState = jwt.verify(state, config.jwtSecret);
-            logger.info('[Kick OAuth][callbackKickBot] Decoded state:', decodedState);
-        } catch (err) {
-            logger.error('[Kick OAuth][callbackKickBot] Error decoding state:', err);
-            return res.status(400).json({ error: 'Invalid or expired state' });
-        }
-
-        // Obtain access tokens
-        const tokenResponse = await axios.post(
-            config.kick.oauthToken,
-            new URLSearchParams({
-                grant_type: 'authorization_code',
-                client_id: String(config.kickBot.clientId || ''),
-                client_secret: String(config.kickBot.clientSecret || ''),
-                code,
-                redirect_uri: String(decodedState.ruri || ''),
-                code_verifier: decodedState.cv
-            }),
-            {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            }
-        );
-
-        const { access_token, refresh_token, expires_in } = tokenResponse.data;
-        const tokenExpiresAt = new Date(Date.now() + (expires_in * 1000));
-
-        // Get bot data
-        const botUser = await getKickUserData(access_token);
-        if (!botUser || !botUser.id) {
-            throw new Error('Could not fetch bot data from Kick');
-        }
-
-        // Save bot token
-        await KickBotTokenService.saveBotToken({
-            kick_user_id: String(botUser.id),
-            kick_username: String(botUser.username || `bot-${botUser.id}`),
-            access_token,
-            refresh_token,
-            token_expires_at: tokenExpiresAt,
-            scopes: ['user:read', 'chat:write', 'channel:read', 'channel:write']
-        });
-
-        // Also save to tokens.json for auto-refresh
-        try {
-            const fs = require('fs').promises;
-            const path = require('path');
-            const tokensFile = path.join(__dirname, '../../tokens/tokens.json');
-            const fullPath = path.resolve(tokensFile);
-            logger.info('[Kick OAuth][callbackKickBot] Saving tokens to:', fullPath);
-            const tokensForFile = {
-                accessToken: access_token,
-                refreshToken: refresh_token,
-                expiresAt: Date.now() + (expires_in * 1000),
-                refreshExpiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // ~1 year
-                username: String(botUser.username || `bot-${botUser.id}`)
-            };
-            await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
-            logger.info('[Kick OAuth][callbackKickBot] Tokens saved to tokens.json');
-        } catch (error) {
-            logger.error('[Kick OAuth][callbackKickBot] Error saving tokens.json:', error.message);
-        }
-
-        // Redirect to frontend
-        const frontendUrl = config.frontendUrl || 'http://localhost:5173';
-        const message = encodeURIComponent('Bot connected successfully');
-        return res.redirect(`${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`);
-    } catch (err) {
-        logger.error('[Kick OAuth][callbackKickBot] Error:', err);
-        return res.status(500).json({ 
-            error: 'Error in the bot authentication callback',
-            details: err.message 
-        });
+    if (!code || !state) {
+      logger.info(
+        "[Kick OAuth][callbackKickBot] Missing code/state parameters"
+      );
+      return res.status(400).json({ error: "Missing code/state parameters" });
     }
+
+    // Validate the state
+    let decodedState;
+    try {
+      decodedState = jwt.verify(state, config.jwtSecret);
+      logger.info("[Kick OAuth][callbackKickBot] Decoded state:", decodedState);
+    } catch (err) {
+      logger.error("[Kick OAuth][callbackKickBot] Error decoding state:", err);
+      return res.status(400).json({ error: "Invalid or expired state" });
+    }
+
+    // Obtain access tokens
+    const tokenResponse = await axios.post(
+      config.kick.oauthToken,
+      new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: String(config.kickBot.clientId || ""),
+        client_secret: String(config.kickBot.clientSecret || ""),
+        code,
+        redirect_uri: String(decodedState.ruri || ""),
+        code_verifier: decodedState.cv,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+      }
+    );
+
+    const { access_token, refresh_token, expires_in } = tokenResponse.data;
+    const tokenExpiresAt = new Date(Date.now() + expires_in * 1000);
+
+    // Get bot data
+    const botUser = await getKickUserData(access_token);
+    if (!botUser || !botUser.id) {
+      throw new Error("Could not fetch bot data from Kick");
+    }
+
+    // Save bot token
+    await KickBotTokenService.saveBotToken({
+      kick_user_id: String(botUser.id),
+      kick_username: String(botUser.username || `bot-${botUser.id}`),
+      access_token,
+      refresh_token,
+      token_expires_at: tokenExpiresAt,
+      scopes: ["user:read", "chat:write", "channel:read", "channel:write"],
+    });
+
+    // Also save to tokens.json for auto-refresh
+    try {
+      const fs = require("fs").promises;
+      const path = require("path");
+      const tokensFile = path.join(__dirname, "../../tokens/tokens.json");
+      const fullPath = path.resolve(tokensFile);
+      logger.info("[Kick OAuth][callbackKickBot] Saving tokens to:", fullPath);
+      const tokensForFile = {
+        accessToken: access_token,
+        refreshToken: refresh_token,
+        expiresAt: Date.now() + expires_in * 1000,
+        refreshExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // ~1 year
+        username: String(botUser.username || `bot-${botUser.id}`),
+      };
+      await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
+      logger.info("[Kick OAuth][callbackKickBot] Tokens saved to tokens.json");
+    } catch (error) {
+      logger.error(
+        "[Kick OAuth][callbackKickBot] Error saving tokens.json:",
+        error.message
+      );
+    }
+
+    // Redirect to frontend
+    const frontendUrl = config.frontendUrl || "http://localhost:5173";
+    const message = encodeURIComponent("Bot connected successfully");
+    return res.redirect(
+      `${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`
+    );
+  } catch (err) {
+    logger.error("[Kick OAuth][callbackKickBot] Error:", err);
+    return res.status(500).json({
+      error: "Error in the bot authentication callback",
+      details: err.message,
+    });
+  }
 };
 
 /**
  * Endpoint to refresh the access token using the refresh token
  */
 exports.refreshToken = async (req, res) => {
-    try {
-        const { refreshToken } = req.body;
+  try {
+    const { refreshToken } = req.body;
 
-        if (!refreshToken) {
-            return res.status(400).json({ error: 'refreshToken required' });
-        }
-
-        // Validate the refresh token
-        const tokenRecord = await validateRefreshToken(refreshToken);
-
-        if (!tokenRecord) {
-            return res.status(401).json({ error: 'Invalid or expired refresh token' });
-        }
-
-        // Get user data
-        const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
-
-        if (!usuario) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Rotate the refresh token (higher security)
-        const ipAddress = req.ip || req.connection.remoteAddress;
-        const userAgent = req.headers['user-agent'];
-
-        const newRefreshToken = await rotateRefreshToken(
-            refreshToken,
-            ipAddress,
-            userAgent
-        );
-
-        // Generate new access token
-        const newAccessToken = generateAccessToken({
-            userId: usuario.id,
-            rolId: usuario.rol_id,
-            nickname: usuario.nickname,
-            kick_id: usuario.user_id_ext
-        });
-
-        logger.info(`[Auth][refreshToken] Token renewed for user ${usuario.nickname}`);
-
-        // Set cookies with the new tokens
-        setAuthCookies(res, newAccessToken, newRefreshToken.token);
-
-        // Enrich user info with Discord data
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
-
-        return res.json({
-            accessToken: newAccessToken,
-            refreshToken: newRefreshToken.token,
-            expiresIn: 3600, // 1 hour in seconds
-            user: {
-                id: usuario.id,
-                nickname: usuario.nickname,
-                display_name,
-                puntos: usuario.puntos,
-                rol_id: usuario.rol_id,
-                discord_info
-            }
-        });
-
-    } catch (error) {
-        logger.error('[Auth][refreshToken] Error:', error.message);
-        return res.status(500).json({ error: 'Error refreshing token' });
+    if (!refreshToken) {
+      return res.status(400).json({ error: "refreshToken required" });
     }
+
+    // Validate the refresh token
+    const tokenRecord = await validateRefreshToken(refreshToken);
+
+    if (!tokenRecord) {
+      return res
+        .status(401)
+        .json({ error: "Invalid or expired refresh token" });
+    }
+
+    // Get user data
+    const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
+
+    if (!usuario) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Rotate the refresh token (higher security)
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.headers["user-agent"];
+
+    const newRefreshToken = await rotateRefreshToken(
+      refreshToken,
+      ipAddress,
+      userAgent
+    );
+
+    // Generate new access token
+    const newAccessToken = generateAccessToken({
+      userId: usuario.id,
+      rolId: usuario.rol_id,
+      nickname: usuario.nickname,
+      kick_id: usuario.user_id_ext,
+    });
+
+    logger.info(
+      `[Auth][refreshToken] Token renewed for user ${usuario.nickname}`
+    );
+
+    // Set cookies with the new tokens
+    setAuthCookies(res, newAccessToken, newRefreshToken.token);
+
+    // Enrich user info with Discord data
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(usuario);
+
+    return res.json({
+      accessToken: newAccessToken,
+      refreshToken: newRefreshToken.token,
+      expiresIn: 3600, // 1 hour in seconds
+      user: {
+        id: usuario.id,
+        nickname: usuario.nickname,
+        display_name,
+        puntos: usuario.puntos,
+        rol_id: usuario.rol_id,
+        discord_info,
+      },
+    });
+  } catch (error) {
+    logger.error("[Auth][refreshToken] Error:", error.message);
+    return res.status(500).json({ error: "Error refreshing token" });
+  }
 };
 
 /**
  * Endpoint to log out (revoke refresh token)
  */
 exports.logout = async (req, res) => {
-    try {
-        const { refreshToken } = req.body;
+  try {
+    const { refreshToken } = req.body;
 
-        if (!refreshToken) {
-            return res.status(400).json({ error: 'refreshToken required' });
-        }
-
-        // Revoke the refresh token
-        const revoked = await revokeRefreshToken(refreshToken);
-
-        if (!revoked) {
-            return res.status(404).json({ error: 'Refresh token not found' });
-        }
-
-        // Clear cross-domain cookies
-        clearAuthCookies(res);
-
-        logger.info('[Auth][logout] Session closed successfully');
-
-        return res.json({ message: 'Session closed successfully' });
-
-    } catch (error) {
-        logger.error('[Auth][logout] Error:', error.message);
-        return res.status(500).json({ error: 'Error closing session' });
+    if (!refreshToken) {
+      return res.status(400).json({ error: "refreshToken required" });
     }
+
+    // Revoke the refresh token
+    const revoked = await revokeRefreshToken(refreshToken);
+
+    if (!revoked) {
+      return res.status(404).json({ error: "Refresh token not found" });
+    }
+
+    // Clear cross-domain cookies
+    clearAuthCookies(res);
+
+    logger.info("[Auth][logout] Session closed successfully");
+
+    return res.json({ message: "Session closed successfully" });
+  } catch (error) {
+    logger.error("[Auth][logout] Error:", error.message);
+    return res.status(500).json({ error: "Error closing session" });
+  }
 };
 
 /**
  * Endpoint to close all sessions for a user
  */
 exports.logoutAll = async (req, res) => {
-    try {
-        // Get userId from the current token (assumes auth middleware)
-        const { userId } = req.user || req.body;
+  try {
+    // Get userId from the current token (assumes auth middleware)
+    const { userId } = req.user || req.body;
 
-        if (!userId) {
-            return res.status(400).json({ error: 'userId required' });
-        }
-
-        // Revoke all refresh tokens for the user
-        const revokedCount = await revokeAllUserTokens(userId);
-
-        // Clear cross-domain cookies
-        clearAuthCookies(res);
-
-        logger.info(`[Auth][logoutAll] ${revokedCount} sessions closed for user ${userId}`);
-
-        return res.json({
-            message: `${revokedCount} session(s) closed successfully`,
-            revokedCount
-        });
-
-    } catch (error) {
-        logger.error('[Auth][logoutAll] Error:', error.message);
-        return res.status(500).json({ error: 'Error closing sessions' });
+    if (!userId) {
+      return res.status(400).json({ error: "userId required" });
     }
+
+    // Revoke all refresh tokens for the user
+    const revokedCount = await revokeAllUserTokens(userId);
+
+    // Clear cross-domain cookies
+    clearAuthCookies(res);
+
+    logger.info(
+      `[Auth][logoutAll] ${revokedCount} sessions closed for user ${userId}`
+    );
+
+    return res.json({
+      message: `${revokedCount} session(s) closed successfully`,
+      revokedCount,
+    });
+  } catch (error) {
+    logger.error("[Auth][logoutAll] Error:", error.message);
+    return res.status(500).json({ error: "Error closing sessions" });
+  }
 };
 
 // Receive tokens from the frontend (token exchange done in the browser)
 exports.storeTokens = async (req, res) => {
-    try {
-        const { accessToken } = req.body || {};
-        if (!accessToken) {
-            return res.status(400).json({ error: 'accessToken required' });
-        }
-
-        const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, '');
-        const userUrl = `${userApiBase}/public/v1/users`;
-
-        // Get user data with the received access token
-        const userRes = await axios.get(userUrl, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`
-            },
-            timeout: 10000
-        });
-
-        const kickUser = Array.isArray(userRes.data.data) ? userRes.data.data[0] : userRes.data;
-
-        // Upsert local user
-        let usuario = await Usuario.findOne({ where: { user_id_ext: String(kickUser.user_id) } });
-        let isNewUser = false;
-        if (!usuario) {
-            // Create new user
-            const newUserData = {
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                puntos: 1000,
-                rol_id: 1, // New users start as "basic user"
-                user_id_ext: String(kickUser.user_id),
-                password_hash: null,
-                kick_data: {
-                    avatar_url: kickUser.profile_picture, // Temporary
-                    username: kickUser.name
-                }
-            };
-
-            usuario = await Usuario.create(newUserData);
-
-            // Get Kick avatar after creating the user
-            const kickAvatarUrl = await processKickAvatar(kickUser);
-
-            if (kickAvatarUrl) {
-                await usuario.update({
-                    kick_data: {
-                        avatar_url: kickAvatarUrl,
-                        username: kickUser.name
-                    }
-                });
-            }
-
-            isNewUser = true;
-        } else {
-            // Get Kick avatar
-            const kickAvatarUrl = await processKickAvatar(kickUser);
-
-            await usuario.update({
-                nickname: kickUser.name,
-                email: kickUser.email || `${kickUser.name}@kick.user`,
-                kick_data: {
-                    avatar_url: kickAvatarUrl || kickUser.profile_picture,
-                    username: kickUser.name
-                }
-            });
-        }
-
-        // Issue our JWT
-        const token = jwt.sign({
-            userId: usuario.id,
-            rolId: usuario.rol_id,
-            nickname: usuario.nickname,
-            kick_id: kickUser.user_id
-        }, config.jwtSecret, { expiresIn: '30d' });
-
-        // Set cookies (although this endpoint is used less, for compatibility)
-        setAuthCookies(res, token, 'no-refresh-token-provided');
-
-        // Enrich user info with Discord data
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
-
-        return res.json({
-            token,
-            usuario: {
-                id: usuario.id,
-                nickname: usuario.nickname,
-                display_name,
-                puntos: usuario.puntos,
-                rol_id: usuario.rol_id,
-                user_id_ext: usuario.user_id_ext,
-                kick_data: usuario.kick_data,
-                discord_info,
-                createdAt: usuario.createdAt,
-                updatedAt: usuario.updatedAt
-            },
-            isNewUser,
-            kickProfile: {
-                username: kickUser.name,
-                id: kickUser.user_id,
-                avatar_url: kickUser.profile_picture
-            }
-        });
-    } catch (error) {
-        logger.error('Error in storeTokens:', error?.message || error);
-        if (error.response) {
-            return res.status(400).json({ error: 'Error fetching Kick profile', details: error.response.data });
-        }
-        return res.status(500).json({ error: 'Internal server error' });
+  try {
+    const { accessToken } = req.body || {};
+    if (!accessToken) {
+      return res.status(400).json({ error: "accessToken required" });
     }
+
+    const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, "");
+    const userUrl = `${userApiBase}/public/v1/users`;
+
+    // Get user data with the received access token
+    const userRes = await axios.get(userUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      timeout: 10000,
+    });
+
+    const kickUser = Array.isArray(userRes.data.data)
+      ? userRes.data.data[0]
+      : userRes.data;
+
+    // Upsert local user
+    let usuario = await Usuario.findOne({
+      where: { user_id_ext: String(kickUser.user_id) },
+    });
+    let isNewUser = false;
+    if (!usuario) {
+      // Create new user
+      const newUserData = {
+        nickname: kickUser.name,
+        email: kickUser.email || `${kickUser.name}@kick.user`,
+        puntos: 1000,
+        rol_id: 1, // New users start as "basic user"
+        user_id_ext: String(kickUser.user_id),
+        password_hash: null,
+        kick_data: {
+          avatar_url: kickUser.profile_picture, // Temporary
+          username: kickUser.name,
+        },
+      };
+
+      usuario = await Usuario.create(newUserData);
+
+      // Get Kick avatar after creating the user
+      const kickAvatarUrl = await processKickAvatar(kickUser);
+
+      if (kickAvatarUrl) {
+        await usuario.update({
+          kick_data: {
+            avatar_url: kickAvatarUrl,
+            username: kickUser.name,
+          },
+        });
+      }
+
+      isNewUser = true;
+    } else {
+      // Get Kick avatar
+      const kickAvatarUrl = await processKickAvatar(kickUser);
+
+      await usuario.update({
+        nickname: kickUser.name,
+        email: kickUser.email || `${kickUser.name}@kick.user`,
+        kick_data: {
+          avatar_url: kickAvatarUrl || kickUser.profile_picture,
+          username: kickUser.name,
+        },
+      });
+    }
+
+    // Issue our JWT
+    const token = jwt.sign(
+      {
+        userId: usuario.id,
+        rolId: usuario.rol_id,
+        nickname: usuario.nickname,
+        kick_id: kickUser.user_id,
+      },
+      config.jwtSecret,
+      { expiresIn: "30d" }
+    );
+
+    // Set cookies (although this endpoint is used less, for compatibility)
+    setAuthCookies(res, token, "no-refresh-token-provided");
+
+    // Enrich user info with Discord data
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(usuario);
+
+    return res.json({
+      token,
+      usuario: {
+        id: usuario.id,
+        nickname: usuario.nickname,
+        display_name,
+        puntos: usuario.puntos,
+        rol_id: usuario.rol_id,
+        user_id_ext: usuario.user_id_ext,
+        kick_data: usuario.kick_data,
+        discord_info,
+        createdAt: usuario.createdAt,
+        updatedAt: usuario.updatedAt,
+      },
+      isNewUser,
+      kickProfile: {
+        username: kickUser.name,
+        id: kickUser.user_id,
+        avatar_url: kickUser.profile_picture,
+      },
+    });
+  } catch (error) {
+    logger.error("Error in storeTokens:", error?.message || error);
+    if (error.response) {
+      return res.status(400).json({
+        error: "Error fetching Kick profile",
+        details: error.response.data,
+      });
+    }
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 /**
  * Endpoint to check cookie status (debugging)
  */
 exports.cookieStatus = async (req, res) => {
-    try {
-        const cookies = req.headers.cookie;
-        const authToken = req.cookies?.auth_token;
-        const refreshToken = req.cookies?.refresh_token;
+  try {
+    const cookies = req.headers.cookie;
+    const authToken = req.cookies?.auth_token;
+    const refreshToken = req.cookies?.refresh_token;
 
-        return res.json({
-            hasCookies: !!cookies,
-            authToken: authToken ? 'present' : 'absent',
-            refreshToken: refreshToken ? 'present' : 'absent',
-            environment: process.env.NODE_ENV,
-            domain: process.env.NODE_ENV === 'production' ? '.luisardito.com' : 'localhost',
-            userAgent: req.headers['user-agent'],
-            origin: req.headers.origin,
-            allCookies: req.cookies
-        });
-    } catch (error) {
-        logger.error('[Auth][cookieStatus] Error:', error.message);
-        return res.status(500).json({ error: 'Internal server error' });
-    }
+    return res.json({
+      hasCookies: !!cookies,
+      authToken: authToken ? "present" : "absent",
+      refreshToken: refreshToken ? "present" : "absent",
+      environment: process.env.NODE_ENV,
+      domain:
+        process.env.NODE_ENV === "production" ? ".luisardito.com" : "localhost",
+      userAgent: req.headers["user-agent"],
+      origin: req.headers.origin,
+      allCookies: req.cookies,
+    });
+  } catch (error) {
+    logger.error("[Auth][cookieStatus] Error:", error.message);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 // ==========================================
@@ -946,271 +1097,318 @@ exports.cookieStatus = async (req, res) => {
  * Starts the Discord OAuth flow
  */
 exports.redirectDiscord = (req, res) => {
-    try {
-        logger.info('[Discord OAuth][redirectDiscord] Starting Discord OAuth flow');
+  try {
+    logger.info("[Discord OAuth][redirectDiscord] Starting Discord OAuth flow");
 
-        // Verify the user is authenticated
-        const userId = req.user?.id;
-        if (!userId) {
-            logger.warn('[Discord OAuth][redirectDiscord] User not authenticated');
-            return res.status(401).json({ error: 'User not authenticated' });
-        }
-
-        const { code_verifier, code_challenge } = generatePkce();
-        logger.info('[Discord OAuth][redirectDiscord] code_verifier generated');
-
-        const statePayload = {
-            cv: code_verifier,
-            ruri: config.discord.redirectUri,
-            userId: userId,
-            iat: Math.floor(Date.now() / 1000)
-        };
-        const state = jwt.sign(statePayload, config.jwtSecret, { expiresIn: '10m' });
-
-        logger.info('[Discord OAuth][redirectDiscord] state created for userId:', userId);
-
-        const params = new URLSearchParams({
-            response_type: 'code',
-            client_id: String(config.discord.clientId || ''),
-            redirect_uri: String(config.discord.redirectUri || ''),
-            scope: 'identify guilds.join',
-            code_challenge: code_challenge,
-            code_challenge_method: 'S256',
-            state
-        });
-
-        const url = `${config.discord.oauthAuthorize}?${params.toString()}`;
-        logger.info('[Discord OAuth][redirectDiscord] Redirect URL:', url);
-
-        return res.redirect(url);
-    } catch (err) {
-        logger.error('[Discord OAuth][redirectDiscord] Error:', err?.message || err);
-        return res.status(500).json({ error: 'Could not start the Discord OAuth flow' });
+    // Verify the user is authenticated
+    const userId = req.user?.id;
+    if (!userId) {
+      logger.warn("[Discord OAuth][redirectDiscord] User not authenticated");
+      return res.status(401).json({ error: "User not authenticated" });
     }
+
+    const { code_verifier, code_challenge } = generatePkce();
+    logger.info("[Discord OAuth][redirectDiscord] code_verifier generated");
+
+    const statePayload = {
+      cv: code_verifier,
+      ruri: config.discord.redirectUri,
+      userId: userId,
+      iat: Math.floor(Date.now() / 1000),
+    };
+    const state = jwt.sign(statePayload, config.jwtSecret, {
+      expiresIn: "10m",
+    });
+
+    logger.info(
+      "[Discord OAuth][redirectDiscord] state created for userId:",
+      userId
+    );
+
+    const params = new URLSearchParams({
+      response_type: "code",
+      client_id: String(config.discord.clientId || ""),
+      redirect_uri: String(config.discord.redirectUri || ""),
+      scope: "identify guilds.join",
+      code_challenge: code_challenge,
+      code_challenge_method: "S256",
+      state,
+    });
+
+    const url = `${config.discord.oauthAuthorize}?${params.toString()}`;
+    logger.info("[Discord OAuth][redirectDiscord] Redirect URL:", url);
+
+    return res.redirect(url);
+  } catch (err) {
+    logger.error(
+      "[Discord OAuth][redirectDiscord] Error:",
+      err?.message || err
+    );
+    return res
+      .status(500)
+      .json({ error: "Could not start the Discord OAuth flow" });
+  }
 };
 
 /**
  * Discord OAuth callback
  */
 exports.callbackDiscord = async (req, res) => {
-    try {
-        const { code, state } = req.query || {};
-        logger.info('[Discord OAuth][callbackDiscord] Parameters received:', { code, state });
+  try {
+    const { code, state } = req.query || {};
+    logger.info("[Discord OAuth][callbackDiscord] Parameters received:", {
+      code,
+      state,
+    });
 
-        if (!code || !state) {
-            logger.warn('[Discord OAuth][callbackDiscord] Missing code/state parameters');
-            return res.status(400).json({ error: 'Missing code/state parameters' });
-        }
-
-        let decoded;
-        try {
-            decoded = jwt.verify(String(state), config.jwtSecret);
-            logger.info('[Discord OAuth][callbackDiscord] Decoded state:', decoded);
-        } catch (e) {
-            logger.error('[Discord OAuth][callbackDiscord] Invalid or expired state:', e?.message || e);
-            return res.status(400).json({ error: 'Invalid or expired state' });
-        }
-
-        const code_verifier = decoded?.cv;
-        const finalRedirectUri = decoded?.ruri || config.discord.redirectUri;
-        const userId = decoded?.userId;
-
-        logger.info('[Discord OAuth][callbackDiscord] Extracted data:', {
-            code_verifier: !!code_verifier,
-            finalRedirectUri,
-            userId
-        });
-
-        if (!code_verifier || !finalRedirectUri || !userId) {
-            logger.error('[Discord OAuth][callbackDiscord] Invalid data in state');
-            return res.status(400).json({ error: 'Invalid data in state' });
-        }
-
-        // Verify the user exists
-        const usuario = await Usuario.findByPk(userId);
-        if (!usuario) {
-            logger.error('[Discord OAuth][callbackDiscord] User not found:', userId);
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Exchange code for tokens
-        const tokenUrl = config.discord.oauthToken;
-        const clientId = config.discord.clientId;
-        const clientSecret = config.discord.clientSecret;
-
-        if (!clientId || !clientSecret) {
-            logger.error('[Discord OAuth][callbackDiscord] Missing DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET configuration');
-            return res.status(500).json({ error: 'Incomplete provider configuration' });
-        }
-
-        const params = new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            redirect_uri: finalRedirectUri,
-            client_id: clientId,
-            client_secret: clientSecret,
-            code_verifier
-        });
-
-        logger.info('[Discord OAuth][callbackDiscord] Exchanging code for tokens...');
-
-        const tokenRes = await axios.post(tokenUrl, params.toString(), {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            timeout: 10000
-        });
-
-        const tokenData = tokenRes.data;
-        logger.info('[Discord OAuth][callbackDiscord] Tokens obtained successfully');
-
-        // Get Discord user info
-        const userUrl = `${config.discord.apiBaseUrl}/users/@me`;
-        const userRes = await axios.get(userUrl, {
-            headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
-            timeout: 10000
-        });
-
-        const discordUser = userRes.data;
-        logger.info('[Discord OAuth][callbackDiscord] Discord user obtained:', {
-            id: discordUser.id,
-            username: discordUser.username,
-            discriminator: discordUser.discriminator
-        });
-
-        // Check if a link already exists
-        const existingLink = await DiscordUserLink.findOne({
-            where: { discord_user_id: discordUser.id }
-        });
-
-        if (existingLink) {
-            if (existingLink.tienda_user_id === userId) {
-                logger.info('[Discord OAuth][callbackDiscord] User already linked, updating tokens');
-                // Update tokens
-                await existingLink.update({
-                    discord_username: discordUser.username,
-                    discord_discriminator: discordUser.discriminator,
-                    discord_avatar: discordUser.avatar,
-                    access_token: tokenData.access_token,
-                    refresh_token: tokenData.refresh_token || null,
-                    token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null
-                });
-            } else {
-                logger.warn('[Discord OAuth][callbackDiscord] Discord ID already linked to another user');
-                return res.status(409).json({ error: 'This Discord account is already linked to another user' });
-            }
-        } else {
-            // Create new link
-            logger.info('[Discord OAuth][callbackDiscord] Creating new link');
-            await DiscordUserLink.create({
-                discord_user_id: discordUser.id,
-                discord_username: discordUser.username,
-                discord_discriminator: discordUser.discriminator,
-                discord_avatar: discordUser.avatar,
-                tienda_user_id: userId,
-                kick_user_id: usuario.user_id_ext,
-                access_token: tokenData.access_token,
-                refresh_token: tokenData.refresh_token || null,
-                token_expires_at: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null
-            });
-        }
-
-        // Update discord_username on the user if missing
-        if (!usuario.discord_username) {
-            await usuario.update({
-                discord_username: `${discordUser.username}#${discordUser.discriminator}`
-            });
-        }
-
-        logger.info('[Discord OAuth][callbackDiscord] Linking completed successfully');
-
-        // Redirect to frontend with success
-        const frontendUrl = config.frontendUrl || 'https://luisardito.com';
-        return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
-
-    } catch (error) {
-        logger.error('[Discord OAuth][callbackDiscord] Error:', error);
-        const frontendUrl = config.frontendUrl || 'https://luisardito.com';
-        return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
+    if (!code || !state) {
+      logger.warn(
+        "[Discord OAuth][callbackDiscord] Missing code/state parameters"
+      );
+      return res.status(400).json({ error: "Missing code/state parameters" });
     }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(String(state), config.jwtSecret);
+      logger.info("[Discord OAuth][callbackDiscord] Decoded state:", decoded);
+    } catch (e) {
+      logger.error(
+        "[Discord OAuth][callbackDiscord] Invalid or expired state:",
+        e?.message || e
+      );
+      return res.status(400).json({ error: "Invalid or expired state" });
+    }
+
+    const code_verifier = decoded?.cv;
+    const finalRedirectUri = decoded?.ruri || config.discord.redirectUri;
+    const userId = decoded?.userId;
+
+    logger.info("[Discord OAuth][callbackDiscord] Extracted data:", {
+      code_verifier: !!code_verifier,
+      finalRedirectUri,
+      userId,
+    });
+
+    if (!code_verifier || !finalRedirectUri || !userId) {
+      logger.error("[Discord OAuth][callbackDiscord] Invalid data in state");
+      return res.status(400).json({ error: "Invalid data in state" });
+    }
+
+    // Verify the user exists
+    const usuario = await Usuario.findByPk(userId);
+    if (!usuario) {
+      logger.error("[Discord OAuth][callbackDiscord] User not found:", userId);
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Exchange code for tokens
+    const tokenUrl = config.discord.oauthToken;
+    const clientId = config.discord.clientId;
+    const clientSecret = config.discord.clientSecret;
+
+    if (!clientId || !clientSecret) {
+      logger.error(
+        "[Discord OAuth][callbackDiscord] Missing DISCORD_CLIENT_ID/DISCORD_CLIENT_SECRET configuration"
+      );
+      return res
+        .status(500)
+        .json({ error: "Incomplete provider configuration" });
+    }
+
+    const params = new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: finalRedirectUri,
+      client_id: clientId,
+      client_secret: clientSecret,
+      code_verifier,
+    });
+
+    logger.info(
+      "[Discord OAuth][callbackDiscord] Exchanging code for tokens..."
+    );
+
+    const tokenRes = await axios.post(tokenUrl, params.toString(), {
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      timeout: 10000,
+    });
+
+    const tokenData = tokenRes.data;
+    logger.info(
+      "[Discord OAuth][callbackDiscord] Tokens obtained successfully"
+    );
+
+    // Get Discord user info
+    const userUrl = `${config.discord.apiBaseUrl}/users/@me`;
+    const userRes = await axios.get(userUrl, {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      timeout: 10000,
+    });
+
+    const discordUser = userRes.data;
+    logger.info("[Discord OAuth][callbackDiscord] Discord user obtained:", {
+      id: discordUser.id,
+      username: discordUser.username,
+      discriminator: discordUser.discriminator,
+    });
+
+    // Check if a link already exists
+    const existingLink = await DiscordUserLink.findOne({
+      where: { discord_user_id: discordUser.id },
+    });
+
+    if (existingLink) {
+      if (existingLink.tienda_user_id === userId) {
+        logger.info(
+          "[Discord OAuth][callbackDiscord] User already linked, updating tokens"
+        );
+        // Update tokens
+        await existingLink.update({
+          discord_username: discordUser.username,
+          discord_discriminator: discordUser.discriminator,
+          discord_avatar: discordUser.avatar,
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token || null,
+          token_expires_at: tokenData.expires_in
+            ? new Date(Date.now() + tokenData.expires_in * 1000)
+            : null,
+        });
+      } else {
+        logger.warn(
+          "[Discord OAuth][callbackDiscord] Discord ID already linked to another user"
+        );
+        return res.status(409).json({
+          error: "This Discord account is already linked to another user",
+        });
+      }
+    } else {
+      // Create new link
+      logger.info("[Discord OAuth][callbackDiscord] Creating new link");
+      await DiscordUserLink.create({
+        discord_user_id: discordUser.id,
+        discord_username: discordUser.username,
+        discord_discriminator: discordUser.discriminator,
+        discord_avatar: discordUser.avatar,
+        tienda_user_id: userId,
+        kick_user_id: usuario.user_id_ext,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || null,
+        token_expires_at: tokenData.expires_in
+          ? new Date(Date.now() + tokenData.expires_in * 1000)
+          : null,
+      });
+    }
+
+    // Update discord_username on the user if missing
+    if (!usuario.discord_username) {
+      await usuario.update({
+        discord_username: `${discordUser.username}#${discordUser.discriminator}`,
+      });
+    }
+
+    logger.info(
+      "[Discord OAuth][callbackDiscord] Linking completed successfully"
+    );
+
+    // Redirect to frontend with success
+    const frontendUrl = config.frontendUrl || "https://luisardito.com";
+    return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
+  } catch (error) {
+    logger.error("[Discord OAuth][callbackDiscord] Error:", error);
+    const frontendUrl = config.frontendUrl || "https://luisardito.com";
+    return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
+  }
 };
 
 /**
  * Manual Discord linking (via temporary code)
  */
 exports.linkDiscordManual = async (req, res) => {
-    try {
-        const { code } = req.body;
-        const userId = req.user?.id;
+  try {
+    const { code } = req.body;
+    const userId = req.user?.id;
 
-        if (!userId) {
-            return res.status(401).json({ error: 'User not authenticated' });
-        }
-
-        if (!code) {
-            return res.status(400).json({ error: 'Code required' });
-        }
-
-        // Here we would implement the temporary code logic
-        // For now, return that it is not implemented
-        logger.info('[Discord OAuth][linkDiscordManual] Method not implemented yet');
-        return res.status(501).json({ error: 'Method not implemented' });
-
-    } catch (error) {
-        logger.error('[Discord OAuth][linkDiscordManual] Error:', error);
-        return res.status(500).json({ error: 'Internal server error' });
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
     }
+
+    if (!code) {
+      return res.status(400).json({ error: "Code required" });
+    }
+
+    // Here we would implement the temporary code logic
+    // For now, return that it is not implemented
+    logger.info(
+      "[Discord OAuth][linkDiscordManual] Method not implemented yet"
+    );
+    return res.status(501).json({ error: "Method not implemented" });
+  } catch (error) {
+    logger.error("[Discord OAuth][linkDiscordManual] Error:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 /**
  * Unlink Discord account
  */
 exports.unlinkDiscord = async (req, res) => {
-    try {
-        const userId = req.user?.id;
+  try {
+    const userId = req.user?.id;
 
-        if (!userId) {
-            return res.status(401).json({ error: 'User not authenticated' });
-        }
-
-        logger.info('[Discord OAuth][unlinkDiscord] Unlinking Discord for user:', userId);
-
-        // Find and delete the Discord link
-        const discordLink = await DiscordUserLink.findOne({
-            where: { tienda_user_id: userId }
-        });
-
-        if (!discordLink) {
-            logger.warn('[Discord OAuth][unlinkDiscord] No Discord link found for user:', userId);
-            return res.status(404).json({ error: 'No linked Discord account' });
-        }
-
-        // Delete the link
-        await discordLink.destroy();
-
-        // Clear discord_username on the user if present
-        const usuario = await Usuario.findByPk(userId);
-        if (usuario && usuario.discord_username) {
-            await usuario.update({ discord_username: null });
-        }
-
-        logger.info('[Discord OAuth][unlinkDiscord] Discord unlinked successfully for user:', userId);
-
-        // Enrich user info with Discord data (should now be null)
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
-
-        return res.json({
-            message: 'Discord account unlinked successfully',
-            user: {
-                id: usuario.id,
-                nickname: usuario.nickname,
-                display_name,
-                puntos: usuario.puntos,
-                rol_id: usuario.rol_id,
-                discord_info
-            }
-        });
-
-    } catch (error) {
-        logger.error('[Discord OAuth][unlinkDiscord] Error:', error);
-        return res.status(500).json({ error: 'Error unlinking Discord account' });
+    if (!userId) {
+      return res.status(401).json({ error: "User not authenticated" });
     }
+
+    logger.info(
+      "[Discord OAuth][unlinkDiscord] Unlinking Discord for user:",
+      userId
+    );
+
+    // Find and delete the Discord link
+    const discordLink = await DiscordUserLink.findOne({
+      where: { tienda_user_id: userId },
+    });
+
+    if (!discordLink) {
+      logger.warn(
+        "[Discord OAuth][unlinkDiscord] No Discord link found for user:",
+        userId
+      );
+      return res.status(404).json({ error: "No linked Discord account" });
+    }
+
+    // Delete the link
+    await discordLink.destroy();
+
+    // Clear discord_username on the user if present
+    const usuario = await Usuario.findByPk(userId);
+    if (usuario && usuario.discord_username) {
+      await usuario.update({ discord_username: null });
+    }
+
+    logger.info(
+      "[Discord OAuth][unlinkDiscord] Discord unlinked successfully for user:",
+      userId
+    );
+
+    // Enrich user info with Discord data (should now be null)
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(usuario);
+
+    return res.json({
+      message: "Discord account unlinked successfully",
+      user: {
+        id: usuario.id,
+        nickname: usuario.nickname,
+        display_name,
+        puntos: usuario.puntos,
+        rol_id: usuario.rol_id,
+        discord_info,
+      },
+    });
+  } catch (error) {
+    logger.error("[Discord OAuth][unlinkDiscord] Error:", error);
+    return res.status(500).json({ error: "Error unlinking Discord account" });
+  }
 };

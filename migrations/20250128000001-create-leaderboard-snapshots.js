@@ -70,7 +70,7 @@ module.exports = {
       ["usuario_id", "snapshot_date"],
       {
         name: "idx_leaderboard_usuario_date",
-      },
+      }
     );
 
     await queryInterface.addIndex("leaderboard_snapshots", ["snapshot_date"], {
@@ -82,7 +82,7 @@ module.exports = {
       ["position", "snapshot_date"],
       {
         name: "idx_leaderboard_position_date",
-      },
+      }
     );
   },
 

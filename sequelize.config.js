@@ -1,7 +1,7 @@
-require('dotenv').config();
-const fs = require('fs');
-if (fs.existsSync('.env.development')) {
-  require('dotenv').config({ path: '.env.development', override: true });
+require("dotenv").config();
+const fs = require("fs");
+if (fs.existsSync(".env.development")) {
+  require("dotenv").config({ path: ".env.development", override: true });
 }
 
 const toBool = (val, def = false) => {
@@ -15,20 +15,23 @@ const base = {
   database: process.env.DB_NAME,
   host: process.env.DB_HOST,
   port: Number(process.env.DB_PORT || 3306),
-  dialect: 'mysql',
+  dialect: "mysql",
   logging: false,
   dialectOptions: toBool(process.env.DB_SSL, false)
     ? {
         ssl: {
           require: true,
-          rejectUnauthorized: toBool(process.env.DB_SSL_REJECT_UNAUTHORIZED, false)
-        }
+          rejectUnauthorized: toBool(
+            process.env.DB_SSL_REJECT_UNAUTHORIZED,
+            false
+          ),
+        },
       }
-    : {}
+    : {},
 };
 
 module.exports = {
   development: { ...base },
   test: { ...base },
-  production: { ...base }
+  production: { ...base },
 };

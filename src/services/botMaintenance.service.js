@@ -13,7 +13,7 @@ class BotMaintenanceService {
     this.intervalId = null;
     this.isRunning = false;
     this.intervalMinutes = parseInt(
-      process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60",
+      process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60"
     ); // Default every 60 minutes
   }
 
@@ -27,7 +27,7 @@ class BotMaintenanceService {
     }
 
     logger.info(
-      `[BOT-MAINTENANCE] Starting automatic maintenance every ${this.intervalMinutes} minutes`,
+      `[BOT-MAINTENANCE] Starting automatic maintenance every ${this.intervalMinutes} minutes`
     );
 
     // Run immediately on start
@@ -76,10 +76,7 @@ class BotMaintenanceService {
 
       logger.info("[BOT-MAINTENANCE] Maintenance completed successfully");
     } catch (error) {
-      logger.error(
-        "[BOT-MAINTENANCE] Error in maintenance:",
-        error.message,
-      );
+      logger.error("[BOT-MAINTENANCE] Error in maintenance:", error.message);
     }
   }
 
@@ -104,21 +101,16 @@ class BotMaintenanceService {
               is_active: true,
               token_expires_at: { [Op.lt]: now },
             },
-          },
+          }
         );
         logger.info(
-          `[BOT-MAINTENANCE] ${expiredTokens.length} expired tokens marked as inactive`,
+          `[BOT-MAINTENANCE] ${expiredTokens.length} expired tokens marked as inactive`
         );
       } else {
-        logger.info(
-          "[BOT-MAINTENANCE] No expired tokens to clean up",
-        );
+        logger.info("[BOT-MAINTENANCE] No expired tokens to clean up");
       }
     } catch (error) {
-      logger.error(
-        "[BOT-MAINTENANCE] Error cleaning tokens:",
-        error.message,
-      );
+      logger.error("[BOT-MAINTENANCE] Error cleaning tokens:", error.message);
     }
   }
 
@@ -127,9 +119,7 @@ class BotMaintenanceService {
    */
   async refreshExpiringTokens() {
     try {
-      logger.info(
-        "[BOT-MAINTENANCE] Checking tokens expiring soon...",
-      );
+      logger.info("[BOT-MAINTENANCE] Checking tokens expiring soon...");
       const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
       const tokens = await KickBotToken.findAll({
         where: {
@@ -144,16 +134,13 @@ class BotMaintenanceService {
 
       if (tokens.length > 0) {
         logger.info(
-          `[BOT-MAINTENANCE] ${tokens.length} tokens renewed successfully`,
+          `[BOT-MAINTENANCE] ${tokens.length} tokens renewed successfully`
         );
       } else {
         logger.info("[BOT-MAINTENANCE] No tokens close to expiry");
       }
     } catch (error) {
-      logger.error(
-        "[BOT-MAINTENANCE] Error renewing tokens:",
-        error.message,
-      );
+      logger.error("[BOT-MAINTENANCE] Error renewing tokens:", error.message);
     }
   }
 
@@ -176,12 +163,12 @@ class BotMaintenanceService {
       // Commands are now dynamic from the database
       // If you need to simulate activity, use the dynamic !tienda command from the DB
       logger.info(
-        "[BOT-MAINTENANCE] Activity simulation disabled - commands are now dynamic",
+        "[BOT-MAINTENANCE] Activity simulation disabled - commands are now dynamic"
       );
     } catch (error) {
       logger.error(
         "[BOT-MAINTENANCE] Error in activity simulation:",
-        error.message,
+        error.message
       );
     }
   }

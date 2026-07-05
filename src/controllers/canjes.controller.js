@@ -1,9 +1,17 @@
-const { Canje, Producto, Usuario, HistorialPunto, KickUserTracking, DiscordUserLink, Op } = require('../models');
-const VipService = require('../services/vip.service');
-const KickBotService = require('../services/kickBot.service');
-const promocionService = require('../services/promocion.service');
-const NotificacionService = require('../services/notificacion.service');
-const logger = require('../utils/logger');
+const {
+  Canje,
+  Producto,
+  Usuario,
+  HistorialPunto,
+  KickUserTracking,
+  DiscordUserLink,
+  Op,
+} = require("../models");
+const VipService = require("../services/vip.service");
+const KickBotService = require("../services/kickBot.service");
+const promocionService = require("../services/promocion.service");
+const NotificacionService = require("../services/notificacion.service");
+const logger = require("../utils/logger");
 
 /**
  * Helper to enrich user info with Discord data
@@ -13,7 +21,7 @@ const logger = require('../utils/logger');
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
   const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id }
+    where: { tienda_user_id: user.id },
   });
 
   if (discordLink) {
@@ -24,517 +32,608 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
-        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-        : discordLink.discord_username
+      display_name:
+        discordLink.discord_discriminator &&
+        discordLink.discord_discriminator !== "0"
+          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+          : discordLink.discord_username,
     };
   }
 
   return {
     discord_info: discordInfo,
-    display_name: discordInfo?.display_name || user.nickname
+    display_name: discordInfo?.display_name || user.nickname,
   };
 }
 
 exports.crear = async (req, res) => {
-    const t = await Canje.sequelize.transaction();
-    try {
-        const { producto_id } = req.body;
-        const usuarioId = req.user.id;
+  const t = await Canje.sequelize.transaction();
+  try {
+    const { producto_id } = req.body;
+    const usuarioId = req.user.id;
 
-        const producto = await Producto.findByPk(producto_id, { transaction: t, lock: t.LOCK.UPDATE });
-        if (!producto || producto.estado !== 'publicado') {
-            await t.rollback();
-            return res.status(404).json({ error: 'Product not available' });
-        }
-        const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
-        if (stockActual <= 0) {
-            await t.rollback();
-            return res.status(400).json({ error: 'No stock available for this product' });
-        }
-
-        const usuario = await Usuario.findByPk(usuarioId, { transaction: t, lock: t.LOCK.UPDATE });
-        if (!usuario) {
-            await t.rollback();
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        // Calculate price with discount if there is a promotion
-        const infoDescuento = await promocionService.calcularMejorDescuento(
-            producto.id,
-            producto.precio,
-            usuarioId
-        );
-
-        const precioFinal = infoDescuento.precioFinal;
-        const promocionAplicada = infoDescuento.promocion;
-
-        if (usuario.puntos < precioFinal) {
-            await t.rollback();
-            return res.status(400).json({ 
-                error: 'Insufficient points',
-                precio_requerido: precioFinal,
-                puntos_disponibles: usuario.puntos
-            });
-        }
-
-        // 2) Create canje with historical price and promotion
-        const canje = await Canje.create({ 
-            usuario_id: usuario.id, 
-            producto_id,
-            precio_al_canje: precioFinal  // Save FINAL price (with discount) at canje time
-        }, { transaction: t });
-
-        // 3) Decrement product stock
-        await producto.update({ stock: stockActual - 1 }, { transaction: t });
-
-        // 4) Subtract points from the user
-        const puntosNuevos = usuario.puntos - precioFinal;
-        await usuario.update({ puntos: puntosNuevos }, { transaction: t });
-
-        // 5) Record promotion usage if one was applied
-        if (promocionAplicada) {
-            await promocionService.aplicarPromocion(
-                promocionAplicada.id,
-                usuarioId,
-                producto_id,
-                canje.id,
-                t  // Pass the existing transaction
-            );
-        }
-
-        // 6) Record points history
-        const conceptoCanje = promocionAplicada 
-            ? `Product redemption: ${producto.nombre} (Promotion: ${promocionAplicada.titulo} - Savings: ${infoDescuento.descuento} pts)`
-            : `Product redemption: ${producto.nombre}`;
-
-        await HistorialPunto.create({
-            usuario_id: usuario.id,
-            puntos: -precioFinal,
-            cambio: -precioFinal,
-            tipo: 'gastado',
-            concepto: conceptoCanje,
-            motivo: conceptoCanje
-        }, { transaction: t });
-
-        // 7) Create canje-created notification
-        await NotificacionService.crearNotificacionCanjeCreado(
-            usuario.id,
-            {
-                canje_id: canje.id,
-                nombre_producto: producto.nombre,
-                precio: precioFinal,
-                promocion_aplicada: promocionAplicada ? {
-                    id: promocionAplicada.id,
-                    titulo: promocionAplicada.titulo,
-                    descuento: infoDescuento.descuento
-                } : null
-            },
-            t
-        );
-
-        await t.commit();
-
-        // Send automatic message to Kick chat
-        try {
-            const mensajeDescuento = promocionAplicada 
-                ? ` with ${infoDescuento.porcentajeDescuento}% discount (${promocionAplicada.titulo})`
-                : '';
-            const mensaje = `${usuario.nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
-            await KickBotService.sendMessage(mensaje);
-            logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
-        } catch (botError) {
-            logger.error('[Canje] Error sending message to chat:', botError.message);
-            // Do not fail the response if the bot message fails
-        }
-
-        res.status(201).json({
-            ...canje.toJSON(),
-            precio_original: producto.precio,
-            precio_pagado: precioFinal,
-            descuento_aplicado: infoDescuento.descuento,
-            promocion: promocionAplicada ? {
-                id: promocionAplicada.id,
-                titulo: promocionAplicada.titulo,
-                tipo: promocionAplicada.tipo_descuento,
-                valor: promocionAplicada.valor_descuento
-            } : null
-        });
-    } catch (err) {
-        await t.rollback();
-        res.status(500).json({ error: err.message });
+    const producto = await Producto.findByPk(producto_id, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!producto || producto.estado !== "publicado") {
+      await t.rollback();
+      return res.status(404).json({ error: "Product not available" });
     }
+    const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
+    if (stockActual <= 0) {
+      await t.rollback();
+      return res
+        .status(400)
+        .json({ error: "No stock available for this product" });
+    }
+
+    const usuario = await Usuario.findByPk(usuarioId, {
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!usuario) {
+      await t.rollback();
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Calculate price with discount if there is a promotion
+    const infoDescuento = await promocionService.calcularMejorDescuento(
+      producto.id,
+      producto.precio,
+      usuarioId
+    );
+
+    const precioFinal = infoDescuento.precioFinal;
+    const promocionAplicada = infoDescuento.promocion;
+
+    if (usuario.puntos < precioFinal) {
+      await t.rollback();
+      return res.status(400).json({
+        error: "Insufficient points",
+        precio_requerido: precioFinal,
+        puntos_disponibles: usuario.puntos,
+      });
+    }
+
+    // 2) Create canje with historical price and promotion
+    const canje = await Canje.create(
+      {
+        usuario_id: usuario.id,
+        producto_id,
+        precio_al_canje: precioFinal, // Save FINAL price (with discount) at canje time
+      },
+      { transaction: t }
+    );
+
+    // 3) Decrement product stock
+    await producto.update({ stock: stockActual - 1 }, { transaction: t });
+
+    // 4) Subtract points from the user
+    const puntosNuevos = usuario.puntos - precioFinal;
+    await usuario.update({ puntos: puntosNuevos }, { transaction: t });
+
+    // 5) Record promotion usage if one was applied
+    if (promocionAplicada) {
+      await promocionService.aplicarPromocion(
+        promocionAplicada.id,
+        usuarioId,
+        producto_id,
+        canje.id,
+        t // Pass the existing transaction
+      );
+    }
+
+    // 6) Record points history
+    const conceptoCanje = promocionAplicada
+      ? `Product redemption: ${producto.nombre} (Promotion: ${promocionAplicada.titulo} - Savings: ${infoDescuento.descuento} pts)`
+      : `Product redemption: ${producto.nombre}`;
+
+    await HistorialPunto.create(
+      {
+        usuario_id: usuario.id,
+        puntos: -precioFinal,
+        cambio: -precioFinal,
+        tipo: "gastado",
+        concepto: conceptoCanje,
+        motivo: conceptoCanje,
+      },
+      { transaction: t }
+    );
+
+    // 7) Create canje-created notification
+    await NotificacionService.crearNotificacionCanjeCreado(
+      usuario.id,
+      {
+        canje_id: canje.id,
+        nombre_producto: producto.nombre,
+        precio: precioFinal,
+        promocion_aplicada: promocionAplicada
+          ? {
+              id: promocionAplicada.id,
+              titulo: promocionAplicada.titulo,
+              descuento: infoDescuento.descuento,
+            }
+          : null,
+      },
+      t
+    );
+
+    await t.commit();
+
+    // Send automatic message to Kick chat
+    try {
+      const mensajeDescuento = promocionAplicada
+        ? ` with ${infoDescuento.porcentajeDescuento}% discount (${promocionAplicada.titulo})`
+        : "";
+      const mensaje = `${usuario.nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
+      await KickBotService.sendMessage(mensaje);
+      logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
+    } catch (botError) {
+      logger.error("[Canje] Error sending message to chat:", botError.message);
+      // Do not fail the response if the bot message fails
+    }
+
+    res.status(201).json({
+      ...canje.toJSON(),
+      precio_original: producto.precio,
+      precio_pagado: precioFinal,
+      descuento_aplicado: infoDescuento.descuento,
+      promocion: promocionAplicada
+        ? {
+            id: promocionAplicada.id,
+            titulo: promocionAplicada.titulo,
+            tipo: promocionAplicada.tipo_descuento,
+            valor: promocionAplicada.valor_descuento,
+          }
+        : null,
+    });
+  } catch (err) {
+    await t.rollback();
+    res.status(500).json({ error: err.message });
+  }
 };
 
 exports.listar = async (req, res) => {
-    // Route protected by permiso('gestionar_canjes'): return all canjes
-    const search = req.query.search ? req.query.search.trim() : undefined;
-    const estado = req.query.estado ? req.query.estado.trim() : undefined;
+  // Route protected by permiso('gestionar_canjes'): return all canjes
+  const search = req.query.search ? req.query.search.trim() : undefined;
+  const estado = req.query.estado ? req.query.estado.trim() : undefined;
 
-    // Build where clause
-    const whereClause = {};
-    if (estado) {
-        whereClause.estado = estado;
-    }
-    if (search) {
-        // Search by user nickname
-        whereClause['$Usuario.nickname$'] = { [Op.iLike]: `%${search}%` };
-    }
+  // Build where clause
+  const whereClause = {};
+  if (estado) {
+    whereClause.estado = estado;
+  }
+  if (search) {
+    // Search by user nickname
+    whereClause["$Usuario.nickname$"] = { [Op.iLike]: `%${search}%` };
+  }
 
-    const canjes = await Canje.findAll({
-        where: whereClause,
-        include: [Usuario, Producto],
-        order: [['fecha', 'DESC']]
-    });
+  const canjes = await Canje.findAll({
+    where: whereClause,
+    include: [Usuario, Producto],
+    order: [["fecha", "DESC"]],
+  });
 
-    // Add VIP and subscriber info to each user
-    const now = new Date();
-    for (const canje of canjes) {
-        if (canje.Usuario) {
-            // Discord info
-            const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
-            canje.Usuario.dataValues.display_name = display_name;
-            canje.Usuario.dataValues.discord_info = discord_info;
+  // Add VIP and subscriber info to each user
+  const now = new Date();
+  for (const canje of canjes) {
+    if (canje.Usuario) {
+      // Discord info
+      const { discord_info, display_name } = await enrichUserWithDiscordInfo(
+        canje.Usuario
+      );
+      canje.Usuario.dataValues.display_name = display_name;
+      canje.Usuario.dataValues.discord_info = discord_info;
 
-            // VIP info
-            canje.Usuario.dataValues.vip_status = {
-                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
-                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-                expires_soon: canje.Usuario.vip_expires_at &&
-                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            };
+      // VIP info
+      canje.Usuario.dataValues.vip_status = {
+        is_active:
+          canje.Usuario.is_vip &&
+          (!canje.Usuario.vip_expires_at ||
+            new Date(canje.Usuario.vip_expires_at) > now),
+        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+        expires_soon:
+          canje.Usuario.vip_expires_at &&
+          new Date(canje.Usuario.vip_expires_at) <=
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
 
-            // Subscriber info
-            if (canje.Usuario.user_id_ext) {
-                const userTracking = await KickUserTracking.findOne({
-                    where: { kick_user_id: canje.Usuario.user_id_ext }
-                });
+      // Subscriber info
+      if (canje.Usuario.user_id_ext) {
+        const userTracking = await KickUserTracking.findOne({
+          where: { kick_user_id: canje.Usuario.user_id_ext },
+        });
 
-                let subscriberInfo = {
-                    is_active: false,
-                    expires_soon: false
-                };
+        let subscriberInfo = {
+          is_active: false,
+          expires_soon: false,
+        };
 
-                if (userTracking?.is_subscribed) {
-                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                    subscriberInfo = {
-                        is_active: !expiresAt || expiresAt > now,
-                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                    };
-                }
-
-                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-            } else {
-                canje.Usuario.dataValues.subscriber_status = {
-                    is_active: false,
-                    expires_soon: false
-                };
-            }
+        if (userTracking?.is_subscribed) {
+          const expiresAt = userTracking.subscription_expires_at
+            ? new Date(userTracking.subscription_expires_at)
+            : null;
+          subscriberInfo = {
+            is_active: !expiresAt || expiresAt > now,
+            expires_soon:
+              expiresAt &&
+              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          };
         }
-    }
 
-    res.json(canjes);
+        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+      } else {
+        canje.Usuario.dataValues.subscriber_status = {
+          is_active: false,
+          expires_soon: false,
+        };
+      }
+    }
+  }
+
+  res.json(canjes);
 };
 
 // List only the authenticated user's canjes (for "My Canjes")
 exports.listarMios = async (req, res) => {
-    const canjes = await Canje.findAll({
-        where: { usuario_id: req.user.id },
-        include: [Usuario, Producto],
-        order: [['fecha', 'DESC']]
-    });
+  const canjes = await Canje.findAll({
+    where: { usuario_id: req.user.id },
+    include: [Usuario, Producto],
+    order: [["fecha", "DESC"]],
+  });
 
-    // Add VIP and subscriber info to the user (same user, for consistency)
-    const now = new Date();
-    for (const canje of canjes) {
-        if (canje.Usuario) {
-            // VIP info
-            canje.Usuario.dataValues.vip_status = {
-                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
-                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-                expires_soon: canje.Usuario.vip_expires_at &&
-                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            };
+  // Add VIP and subscriber info to the user (same user, for consistency)
+  const now = new Date();
+  for (const canje of canjes) {
+    if (canje.Usuario) {
+      // VIP info
+      canje.Usuario.dataValues.vip_status = {
+        is_active:
+          canje.Usuario.is_vip &&
+          (!canje.Usuario.vip_expires_at ||
+            new Date(canje.Usuario.vip_expires_at) > now),
+        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+        expires_soon:
+          canje.Usuario.vip_expires_at &&
+          new Date(canje.Usuario.vip_expires_at) <=
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
 
-            // Subscriber info
-            if (canje.Usuario.user_id_ext) {
-                const userTracking = await KickUserTracking.findOne({
-                    where: { kick_user_id: canje.Usuario.user_id_ext }
-                });
+      // Subscriber info
+      if (canje.Usuario.user_id_ext) {
+        const userTracking = await KickUserTracking.findOne({
+          where: { kick_user_id: canje.Usuario.user_id_ext },
+        });
 
-                let subscriberInfo = {
-                    is_active: false,
-                    expires_soon: false
-                };
+        let subscriberInfo = {
+          is_active: false,
+          expires_soon: false,
+        };
 
-                if (userTracking?.is_subscribed) {
-                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                    subscriberInfo = {
-                        is_active: !expiresAt || expiresAt > now,
-                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                    };
-                }
-
-                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-            } else {
-                canje.Usuario.dataValues.subscriber_status = {
-                    is_active: false,
-                    expires_soon: false
-                };
-            }
+        if (userTracking?.is_subscribed) {
+          const expiresAt = userTracking.subscription_expires_at
+            ? new Date(userTracking.subscription_expires_at)
+            : null;
+          subscriberInfo = {
+            is_active: !expiresAt || expiresAt > now,
+            expires_soon:
+              expiresAt &&
+              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          };
         }
-    }
 
-    res.json(canjes);
+        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+      } else {
+        canje.Usuario.dataValues.subscriber_status = {
+          is_active: false,
+          expires_soon: false,
+        };
+      }
+    }
+  }
+
+  res.json(canjes);
 };
 
 // List canjes for a specific user (admin/management view)
 exports.listarPorUsuario = async (req, res) => {
-    const { usuarioId } = req.params;
-    const id = Number(usuarioId);
-    if (!Number.isInteger(id) || id <= 0) {
-        return res.status(400).json({ error: 'Invalid usuarioId' });
-    }
-    const canjes = await Canje.findAll({
-        where: { usuario_id: id },
-        include: [Usuario, Producto],
-        order: [['fecha', 'DESC']]
-    });
+  const { usuarioId } = req.params;
+  const id = Number(usuarioId);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Invalid usuarioId" });
+  }
+  const canjes = await Canje.findAll({
+    where: { usuario_id: id },
+    include: [Usuario, Producto],
+    order: [["fecha", "DESC"]],
+  });
 
-    // Add VIP and subscriber info to the user
-    const now = new Date();
-    for (const canje of canjes) {
-        if (canje.Usuario) {
-            // Discord info
-            const { discord_info, display_name } = await enrichUserWithDiscordInfo(canje.Usuario);
-            canje.Usuario.dataValues.display_name = display_name;
-            canje.Usuario.dataValues.discord_info = discord_info;
+  // Add VIP and subscriber info to the user
+  const now = new Date();
+  for (const canje of canjes) {
+    if (canje.Usuario) {
+      // Discord info
+      const { discord_info, display_name } = await enrichUserWithDiscordInfo(
+        canje.Usuario
+      );
+      canje.Usuario.dataValues.display_name = display_name;
+      canje.Usuario.dataValues.discord_info = discord_info;
 
-            // VIP info
-            canje.Usuario.dataValues.vip_status = {
-                is_active: canje.Usuario.is_vip && (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now),
-                is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-                expires_soon: canje.Usuario.vip_expires_at &&
-                    new Date(canje.Usuario.vip_expires_at) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            };
+      // VIP info
+      canje.Usuario.dataValues.vip_status = {
+        is_active:
+          canje.Usuario.is_vip &&
+          (!canje.Usuario.vip_expires_at ||
+            new Date(canje.Usuario.vip_expires_at) > now),
+        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
+        expires_soon:
+          canje.Usuario.vip_expires_at &&
+          new Date(canje.Usuario.vip_expires_at) <=
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      };
 
-            // Subscriber info
-            if (canje.Usuario.user_id_ext) {
-                const userTracking = await KickUserTracking.findOne({
-                    where: { kick_user_id: canje.Usuario.user_id_ext }
-                });
+      // Subscriber info
+      if (canje.Usuario.user_id_ext) {
+        const userTracking = await KickUserTracking.findOne({
+          where: { kick_user_id: canje.Usuario.user_id_ext },
+        });
 
-                let subscriberInfo = {
-                    is_active: false,
-                    expires_soon: false
-                };
+        let subscriberInfo = {
+          is_active: false,
+          expires_soon: false,
+        };
 
-                if (userTracking?.is_subscribed) {
-                    const expiresAt = userTracking.subscription_expires_at ? new Date(userTracking.subscription_expires_at) : null;
-                    subscriberInfo = {
-                        is_active: !expiresAt || expiresAt > now,
-                        expires_soon: expiresAt && expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-                    };
-                }
-
-                canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-            } else {
-                canje.Usuario.dataValues.subscriber_status = {
-                    is_active: false,
-                    expires_soon: false
-                };
-            }
+        if (userTracking?.is_subscribed) {
+          const expiresAt = userTracking.subscription_expires_at
+            ? new Date(userTracking.subscription_expires_at)
+            : null;
+          subscriberInfo = {
+            is_active: !expiresAt || expiresAt > now,
+            expires_soon:
+              expiresAt &&
+              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          };
         }
-    }
 
-    res.json(canjes);
+        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
+      } else {
+        canje.Usuario.dataValues.subscriber_status = {
+          is_active: false,
+          expires_soon: false,
+        };
+      }
+    }
+  }
+
+  res.json(canjes);
 };
 
 exports.actualizarEstado = async (req, res) => {
-    const t = await Canje.sequelize.transaction();
-    try {
-        const { id } = req.params;
-        const { estado } = req.body;
-        const estadosPermitidos = ['pendiente', 'entregado', 'cancelado'];
+  const t = await Canje.sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+    const estadosPermitidos = ["pendiente", "entregado", "cancelado"];
 
-        if (!estadosPermitidos.includes(estado)) {
-            await t.rollback();
-            return res.status(400).json({
-                error: `Invalid state. Allowed: ${estadosPermitidos.join(', ')}. To return use PUT /api/canjes/:id/devolver.`
-            });
-        }
-
-        const canje = await Canje.findByPk(id, {
-            include: [
-                { model: Usuario, attributes: ['id', 'nickname', 'is_vip'] },
-                { model: Producto, attributes: ['id', 'nombre', 'descripcion'] }
-            ],
-            transaction: t
-        });
-
-        if (!canje) {
-            await t.rollback();
-            return res.status(404).json({ error: 'Not found' });
-        }
-
-        // Update canje state
-        await canje.update({ estado }, { transaction: t });
-
-        // Create notifications based on the new state
-        if (estado === 'entregado') {
-            await NotificacionService.crearNotificacionCanjeEntregado(
-                canje.usuario_id,
-                {
-                    canje_id: canje.id,
-                    nombre_producto: canje.Producto.nombre
-                },
-                t
-            );
-        } else if (estado === 'cancelado') {
-            await NotificacionService.crearNotificacionCanjeCancelado(
-                canje.usuario_id,
-                {
-                    canje_id: canje.id,
-                    nombre_producto: canje.Producto.nombre,
-                    motivo: 'Cancelled by administrator'
-                },
-                t
-            );
-        }
-
-        // VIP FEATURE: If marked as delivered and the product contains "VIP"
-        if (estado === 'entregado' && canje.Producto && canje.Producto.nombre.toLowerCase().includes('vip')) {
-            logger.info(`[VIP GRANT] VIP product delivered detected: ${canje.Producto.nombre}`);
-
-            // Check if the user is already an active VIP
-            const now = new Date();
-            const isAlreadyVip = canje.Usuario.is_vip &&
-                (!canje.Usuario.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > now);
-
-            if (!isAlreadyVip) {
-                try {
-                    // Default VIP config (adjust per product as needed)
-                    const vipConfig = {
-                        duration_days: null // Permanent VIP by default, adjust as needed
-                    };
-
-                    await VipService.grantVipFromCanje(canje.id, canje.usuario_id, vipConfig);
-                    logger.info(`[VIP GRANT] VIP granted to ${canje.Usuario.nickname} for canje #${canje.id}`);
-                } catch (vipError) {
-                    logger.error(`[VIP GRANT] Error granting VIP:`, vipError);
-                }
-            } else {
-                logger.warn(`[VIP GRANT] ${canje.Usuario.nickname} is already an active VIP, not granting again`);
-            }
-        }
-
-        await t.commit();
-
-        // Check if VIP should be granted for the response
-        const shouldGrantVip = estado === 'entregado' &&
-            canje.Producto?.nombre.toLowerCase().includes('vip');
-
-        const isAlreadyVip = canje.Usuario?.is_vip &&
-            (!canje.Usuario?.vip_expires_at || new Date(canje.Usuario.vip_expires_at) > new Date());
-
-        res.json({
-            message: 'State updated',
-            id: canje.id,
-            estado: canje.estado,
-            vip_info: shouldGrantVip ? {
-                product_grants_vip: true,
-                user_already_vip: isAlreadyVip,
-                vip_granted: shouldGrantVip && !isAlreadyVip
-            } : null
-        });
-
-    } catch (err) {
-        await t.rollback();
-        logger.error('Error updating canje state:', err);
-        res.status(400).json({ error: err.message });
+    if (!estadosPermitidos.includes(estado)) {
+      await t.rollback();
+      return res.status(400).json({
+        error: `Invalid state. Allowed: ${estadosPermitidos.join(", ")}. To return use PUT /api/canjes/:id/devolver.`,
+      });
     }
+
+    const canje = await Canje.findByPk(id, {
+      include: [
+        { model: Usuario, attributes: ["id", "nickname", "is_vip"] },
+        { model: Producto, attributes: ["id", "nombre", "descripcion"] },
+      ],
+      transaction: t,
+    });
+
+    if (!canje) {
+      await t.rollback();
+      return res.status(404).json({ error: "Not found" });
+    }
+
+    // Update canje state
+    await canje.update({ estado }, { transaction: t });
+
+    // Create notifications based on the new state
+    if (estado === "entregado") {
+      await NotificacionService.crearNotificacionCanjeEntregado(
+        canje.usuario_id,
+        {
+          canje_id: canje.id,
+          nombre_producto: canje.Producto.nombre,
+        },
+        t
+      );
+    } else if (estado === "cancelado") {
+      await NotificacionService.crearNotificacionCanjeCancelado(
+        canje.usuario_id,
+        {
+          canje_id: canje.id,
+          nombre_producto: canje.Producto.nombre,
+          motivo: "Cancelled by administrator",
+        },
+        t
+      );
+    }
+
+    // VIP FEATURE: If marked as delivered and the product contains "VIP"
+    if (
+      estado === "entregado" &&
+      canje.Producto &&
+      canje.Producto.nombre.toLowerCase().includes("vip")
+    ) {
+      logger.info(
+        `[VIP GRANT] VIP product delivered detected: ${canje.Producto.nombre}`
+      );
+
+      // Check if the user is already an active VIP
+      const now = new Date();
+      const isAlreadyVip =
+        canje.Usuario.is_vip &&
+        (!canje.Usuario.vip_expires_at ||
+          new Date(canje.Usuario.vip_expires_at) > now);
+
+      if (!isAlreadyVip) {
+        try {
+          // Default VIP config (adjust per product as needed)
+          const vipConfig = {
+            duration_days: null, // Permanent VIP by default, adjust as needed
+          };
+
+          await VipService.grantVipFromCanje(
+            canje.id,
+            canje.usuario_id,
+            vipConfig
+          );
+          logger.info(
+            `[VIP GRANT] VIP granted to ${canje.Usuario.nickname} for canje #${canje.id}`
+          );
+        } catch (vipError) {
+          logger.error(`[VIP GRANT] Error granting VIP:`, vipError);
+        }
+      } else {
+        logger.warn(
+          `[VIP GRANT] ${canje.Usuario.nickname} is already an active VIP, not granting again`
+        );
+      }
+    }
+
+    await t.commit();
+
+    // Check if VIP should be granted for the response
+    const shouldGrantVip =
+      estado === "entregado" &&
+      canje.Producto?.nombre.toLowerCase().includes("vip");
+
+    const isAlreadyVip =
+      canje.Usuario?.is_vip &&
+      (!canje.Usuario?.vip_expires_at ||
+        new Date(canje.Usuario.vip_expires_at) > new Date());
+
+    res.json({
+      message: "State updated",
+      id: canje.id,
+      estado: canje.estado,
+      vip_info: shouldGrantVip
+        ? {
+            product_grants_vip: true,
+            user_already_vip: isAlreadyVip,
+            vip_granted: shouldGrantVip && !isAlreadyVip,
+          }
+        : null,
+    });
+  } catch (err) {
+    await t.rollback();
+    logger.error("Error updating canje state:", err);
+    res.status(400).json({ error: err.message });
+  }
 };
 
 // Return a canje: mark as 'devuelto', refund points and restock
 exports.devolverCanje = async (req, res) => {
-    const t = await Canje.sequelize.transaction();
-    try {
-        const { id } = req.params;
-        const { motivo } = req.body;
-        const adminNickname = req.user.nickname;
+  const t = await Canje.sequelize.transaction();
+  try {
+    const { id } = req.params;
+    const { motivo } = req.body;
+    const adminNickname = req.user.nickname;
 
-        if (!motivo || String(motivo).trim() === '') {
-            await t.rollback();
-            return res.status(400).json({ error: 'Return reason is required' });
-        }
-
-        const canje = await Canje.findByPk(id, { include: [Usuario, Producto], transaction: t, lock: t.LOCK.UPDATE });
-        if (!canje) {
-            await t.rollback();
-            return res.status(404).json({ error: 'Canje not found' });
-        }
-
-        if (canje.estado === 'devuelto') {
-            await t.rollback();
-            return res.status(400).json({ error: 'Canje is already returned' });
-        }
-
-        if (!['pendiente', 'entregado'].includes(canje.estado)) {
-            await t.rollback();
-            return res.status(400).json({ error: 'Only pending or delivered canjes can be returned' });
-        }
-
-        const usuario = canje.Usuario;
-        const producto = canje.Producto;
-        
-        // Use the historical canje price, with fallback to the current product price
-        const puntosADevolver = canje.precio_al_canje || producto.precio;
-        const puntosAnteriores = usuario.puntos;
-
-        // 1. Mark canje as returned
-        await canje.update({ estado: 'devuelto' }, { transaction: t });
-
-        // 2. Refund points to the user
-        const puntosNuevos = puntosAnteriores + puntosADevolver;
-        await usuario.update({ puntos: puntosNuevos }, { transaction: t });
-
-        // 3. Record history
-        await HistorialPunto.create({
-            usuario_id: usuario.id,
-            puntos: puntosADevolver,  // Positive amount because points are refunded
-            cambio: puntosADevolver,  // Legacy field for compatibility
-            tipo: 'ganado',
-            concepto: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`,
-            motivo: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`  // Legacy field for compatibility
-        }, { transaction: t });
-
-        // 4. Restock the product (if applicable)
-        const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
-        await producto.update({ stock: stockActual + 1 }, { transaction: t });
-
-        // 5) Create canje-returned notification
-        await NotificacionService.crearNotificacionCanjeDevuelto(
-            usuario.id,
-            {
-                canje_id: canje.id,
-                nombre_producto: producto.nombre,
-                puntos_devueltos: puntosADevolver,
-                motivo: motivo
-            },
-            t
-        );
-
-        await t.commit();
-
-        res.json({
-            message: 'Canje returned successfully',
-            canje: { id: canje.id, estado: 'devuelto' },
-            usuario: { id: usuario.id, nickname: usuario.nickname, puntosAnteriores, puntosNuevos },
-            producto: { id: producto.id, nombre: producto.nombre, stockNuevo: stockActual + 1 }
-        });
-    } catch (error) {
-        await t.rollback();
-        logger.error('Error returning canje:', error);
-        res.status(500).json({ error: 'Internal server error', message: error.message });
+    if (!motivo || String(motivo).trim() === "") {
+      await t.rollback();
+      return res.status(400).json({ error: "Return reason is required" });
     }
+
+    const canje = await Canje.findByPk(id, {
+      include: [Usuario, Producto],
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
+    if (!canje) {
+      await t.rollback();
+      return res.status(404).json({ error: "Canje not found" });
+    }
+
+    if (canje.estado === "devuelto") {
+      await t.rollback();
+      return res.status(400).json({ error: "Canje is already returned" });
+    }
+
+    if (!["pendiente", "entregado"].includes(canje.estado)) {
+      await t.rollback();
+      return res
+        .status(400)
+        .json({ error: "Only pending or delivered canjes can be returned" });
+    }
+
+    const usuario = canje.Usuario;
+    const producto = canje.Producto;
+
+    // Use the historical canje price, with fallback to the current product price
+    const puntosADevolver = canje.precio_al_canje || producto.precio;
+    const puntosAnteriores = usuario.puntos;
+
+    // 1. Mark canje as returned
+    await canje.update({ estado: "devuelto" }, { transaction: t });
+
+    // 2. Refund points to the user
+    const puntosNuevos = puntosAnteriores + puntosADevolver;
+    await usuario.update({ puntos: puntosNuevos }, { transaction: t });
+
+    // 3. Record history
+    await HistorialPunto.create(
+      {
+        usuario_id: usuario.id,
+        puntos: puntosADevolver, // Positive amount because points are refunded
+        cambio: puntosADevolver, // Legacy field for compatibility
+        tipo: "ganado",
+        concepto: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`,
+        motivo: `Canje return: ${producto.nombre} - ${motivo} (Admin: ${adminNickname})`, // Legacy field for compatibility
+      },
+      { transaction: t }
+    );
+
+    // 4. Restock the product (if applicable)
+    const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
+    await producto.update({ stock: stockActual + 1 }, { transaction: t });
+
+    // 5) Create canje-returned notification
+    await NotificacionService.crearNotificacionCanjeDevuelto(
+      usuario.id,
+      {
+        canje_id: canje.id,
+        nombre_producto: producto.nombre,
+        puntos_devueltos: puntosADevolver,
+        motivo: motivo,
+      },
+      t
+    );
+
+    await t.commit();
+
+    res.json({
+      message: "Canje returned successfully",
+      canje: { id: canje.id, estado: "devuelto" },
+      usuario: {
+        id: usuario.id,
+        nickname: usuario.nickname,
+        puntosAnteriores,
+        puntosNuevos,
+      },
+      producto: {
+        id: producto.id,
+        nombre: producto.nombre,
+        stockNuevo: stockActual + 1,
+      },
+    });
+  } catch (error) {
+    await t.rollback();
+    logger.error("Error returning canje:", error);
+    res
+      .status(500)
+      .json({ error: "Internal server error", message: error.message });
+  }
 };

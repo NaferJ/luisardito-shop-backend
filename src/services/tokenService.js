@@ -1,8 +1,8 @@
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const config = require('../../config');
-const { RefreshToken } = require('../models');
-const { Op } = require('sequelize');
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const config = require("../../config");
+const { RefreshToken } = require("../models");
+const { Op } = require("sequelize");
 
 /**
  * Token durations
@@ -12,8 +12,8 @@ const { Op } = require('sequelize');
  * - Refresh token: 90 days (allows renewing access)
  */
 const TOKEN_EXPIRATION = {
-    ACCESS_TOKEN: '30d',     // 30 days (was 1h)
-    REFRESH_TOKEN: 90        // 90 days
+  ACCESS_TOKEN: "30d", // 30 days (was 1h)
+  REFRESH_TOKEN: 90, // 90 days
 };
 
 /**
@@ -22,9 +22,9 @@ const TOKEN_EXPIRATION = {
  * @returns {string} Access token
  */
 function generateAccessToken(payload) {
-    return jwt.sign(payload, config.jwtSecret, {
-        expiresIn: TOKEN_EXPIRATION.ACCESS_TOKEN
-    });
+  return jwt.sign(payload, config.jwtSecret, {
+    expiresIn: TOKEN_EXPIRATION.ACCESS_TOKEN,
+  });
 }
 
 /**
@@ -32,7 +32,7 @@ function generateAccessToken(payload) {
  * @returns {string} Refresh token
  */
 function generateRefreshTokenString() {
-    return crypto.randomBytes(64).toString('hex');
+  return crypto.randomBytes(64).toString("hex");
 }
 
 /**
@@ -42,20 +42,24 @@ function generateRefreshTokenString() {
  * @param {string} userAgent - Browser user agent
  * @returns {Promise<Object>} Created refresh token
  */
-async function createRefreshToken(usuarioId, ipAddress = null, userAgent = null) {
-    const token = generateRefreshTokenString();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + TOKEN_EXPIRATION.REFRESH_TOKEN);
+async function createRefreshToken(
+  usuarioId,
+  ipAddress = null,
+  userAgent = null
+) {
+  const token = generateRefreshTokenString();
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + TOKEN_EXPIRATION.REFRESH_TOKEN);
 
-    const refreshToken = await RefreshToken.create({
-        usuario_id: usuarioId,
-        token,
-        expires_at: expiresAt,
-        ip_address: ipAddress,
-        user_agent: userAgent
-    });
+  const refreshToken = await RefreshToken.create({
+    usuario_id: usuarioId,
+    token,
+    expires_at: expiresAt,
+    ip_address: ipAddress,
+    user_agent: userAgent,
+  });
 
-    return refreshToken;
+  return refreshToken;
 }
 
 /**
@@ -64,15 +68,15 @@ async function createRefreshToken(usuarioId, ipAddress = null, userAgent = null)
  * @returns {Promise<Object|null>} Refresh token if valid, null otherwise
  */
 async function validateRefreshToken(token) {
-    const refreshToken = await RefreshToken.findOne({
-        where: {
-            token,
-            is_revoked: false,
-            expires_at: { [Op.gt]: new Date() }
-        }
-    });
+  const refreshToken = await RefreshToken.findOne({
+    where: {
+      token,
+      is_revoked: false,
+      expires_at: { [Op.gt]: new Date() },
+    },
+  });
 
-    return refreshToken;
+  return refreshToken;
 }
 
 /**
@@ -81,18 +85,18 @@ async function validateRefreshToken(token) {
  * @returns {Promise<boolean>} true if revoked, false if it did not exist
  */
 async function revokeRefreshToken(token) {
-    const refreshToken = await RefreshToken.findOne({ where: { token } });
+  const refreshToken = await RefreshToken.findOne({ where: { token } });
 
-    if (!refreshToken) {
-        return false;
-    }
+  if (!refreshToken) {
+    return false;
+  }
 
-    await refreshToken.update({
-        is_revoked: true,
-        revoked_at: new Date()
-    });
+  await refreshToken.update({
+    is_revoked: true,
+    revoked_at: new Date(),
+  });
 
-    return true;
+  return true;
 }
 
 /**
@@ -101,20 +105,20 @@ async function revokeRefreshToken(token) {
  * @returns {Promise<number>} Number of revoked tokens
  */
 async function revokeAllUserTokens(usuarioId) {
-    const result = await RefreshToken.update(
-        {
-            is_revoked: true,
-            revoked_at: new Date()
-        },
-        {
-            where: {
-                usuario_id: usuarioId,
-                is_revoked: false
-            }
-        }
-    );
+  const result = await RefreshToken.update(
+    {
+      is_revoked: true,
+      revoked_at: new Date(),
+    },
+    {
+      where: {
+        usuario_id: usuarioId,
+        is_revoked: false,
+      },
+    }
+  );
 
-    return result[0]; // Number of updated rows
+  return result[0]; // Number of updated rows
 }
 
 /**
@@ -124,28 +128,34 @@ async function revokeAllUserTokens(usuarioId) {
  * @param {string} userAgent - User agent
  * @returns {Promise<Object>} New refresh token
  */
-async function rotateRefreshToken(oldToken, ipAddress = null, userAgent = null) {
-    const oldRefreshToken = await RefreshToken.findOne({ where: { token: oldToken } });
+async function rotateRefreshToken(
+  oldToken,
+  ipAddress = null,
+  userAgent = null
+) {
+  const oldRefreshToken = await RefreshToken.findOne({
+    where: { token: oldToken },
+  });
 
-    if (!oldRefreshToken) {
-        throw new Error('Refresh token not found');
-    }
+  if (!oldRefreshToken) {
+    throw new Error("Refresh token not found");
+  }
 
-    // Create new token
-    const newRefreshToken = await createRefreshToken(
-        oldRefreshToken.usuario_id,
-        ipAddress,
-        userAgent
-    );
+  // Create new token
+  const newRefreshToken = await createRefreshToken(
+    oldRefreshToken.usuario_id,
+    ipAddress,
+    userAgent
+  );
 
-    // Revoke the old one and link to the new one
-    await oldRefreshToken.update({
-        is_revoked: true,
-        revoked_at: new Date(),
-        replaced_by_token: newRefreshToken.token
-    });
+  // Revoke the old one and link to the new one
+  await oldRefreshToken.update({
+    is_revoked: true,
+    revoked_at: new Date(),
+    replaced_by_token: newRefreshToken.token,
+  });
 
-    return newRefreshToken;
+  return newRefreshToken;
 }
 
 /**
@@ -153,13 +163,13 @@ async function rotateRefreshToken(oldToken, ipAddress = null, userAgent = null) 
  * @returns {Promise<number>} Number of deleted tokens
  */
 async function cleanupExpiredTokens() {
-    const result = await RefreshToken.destroy({
-        where: {
-            expires_at: { [Op.lt]: new Date() }
-        }
-    });
+  const result = await RefreshToken.destroy({
+    where: {
+      expires_at: { [Op.lt]: new Date() },
+    },
+  });
 
-    return result;
+  return result;
 }
 
 /**
@@ -168,22 +178,22 @@ async function cleanupExpiredTokens() {
  * @returns {Object|null} Payload if valid, null otherwise
  */
 function verifyAccessToken(token) {
-    try {
-        return jwt.verify(token, config.jwtSecret);
-    } catch (_error) {
-        return null;
-    }
+  try {
+    return jwt.verify(token, config.jwtSecret);
+  } catch (_error) {
+    return null;
+  }
 }
 
 module.exports = {
-    TOKEN_EXPIRATION,
-    generateAccessToken,
-    generateRefreshTokenString,
-    createRefreshToken,
-    validateRefreshToken,
-    revokeRefreshToken,
-    revokeAllUserTokens,
-    rotateRefreshToken,
-    cleanupExpiredTokens,
-    verifyAccessToken
+  TOKEN_EXPIRATION,
+  generateAccessToken,
+  generateRefreshTokenString,
+  createRefreshToken,
+  validateRefreshToken,
+  revokeRefreshToken,
+  revokeAllUserTokens,
+  rotateRefreshToken,
+  cleanupExpiredTokens,
+  verifyAccessToken,
 };

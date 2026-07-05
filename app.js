@@ -35,7 +35,7 @@ const notificacionesRoutes = require("./src/routes/notificaciones.routes");
 const app = express();
 
 // Disable X-Powered-By header to avoid revealing framework info
-app.disable('x-powered-by');
+app.disable("x-powered-by");
 
 app.get("/", (req, res) => {
   res.json({ service: "luisardito-shop-backend", status: "ok" });
@@ -47,20 +47,16 @@ app.use(cookieParser()); // Parse cookies
 app.use(express.json());
 
 // Serve static files from assets
-app.use('/assets', express.static('assets'));
+app.use("/assets", express.static("assets"));
 
 // Webhook-specific middleware with optimized logging
 app.use("/api/kick-webhook", (req, res, next) => {
   const hasKickHeaders = Object.keys(req.headers).some((key) =>
-    key.toLowerCase().startsWith("kick-event"),
+    key.toLowerCase().startsWith("kick-event")
   );
 
   if (hasKickHeaders) {
-    logger.info(
-      "[WEBHOOK] New Kick request:",
-      req.method,
-      req.originalUrl,
-    );
+    logger.info("[WEBHOOK] New Kick request:", req.method, req.originalUrl);
   }
   next();
 });
@@ -101,7 +97,7 @@ const start = async () => {
     } catch (err) {
       const code = err?.parent?.code || err?.name || "UNKNOWN_ERROR";
       logger.error(
-        `DB connection failed (attempt ${attempt}/${retries}) [${code}]. Retrying in ${delayMs}ms...`,
+        `DB connection failed (attempt ${attempt}/${retries}) [${code}]. Retrying in ${delayMs}ms...`
       );
       await new Promise((r) => setTimeout(r, delayMs));
     }
@@ -109,7 +105,7 @@ const start = async () => {
 
   if (!connected) {
     logger.error(
-      "Could not connect to the database after multiple attempts. Exiting...",
+      "Could not connect to the database after multiple attempts. Exiting..."
     );
     process.exit(1);
   }
@@ -139,7 +135,6 @@ const start = async () => {
     // Start Discord bot
     await discordBotService.initialize();
 
-
     // Start auto-send commands service
     kickBotAutoSendService.start();
 
@@ -152,14 +147,12 @@ const start = async () => {
       if (isDocker) {
         logger.info(`Server listening on:`);
         logger.info(
-          `   - Internal (container): http://localhost:${config.port}`,
+          `   - Internal (container): http://localhost:${config.port}`
         );
         logger.info(`   - External (host machine): http://localhost:3001`);
         logger.info(`   Use http://localhost:3001 from your browser`);
       } else {
-        logger.info(
-          `Server listening on http://localhost:${config.port}`,
-        );
+        logger.info(`Server listening on http://localhost:${config.port}`);
       }
     });
   } catch (err) {

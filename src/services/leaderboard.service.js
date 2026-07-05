@@ -14,7 +14,7 @@ const { Op } = require("sequelize");
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
   const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id }
+    where: { tienda_user_id: user.id },
   });
 
   if (discordLink) {
@@ -25,15 +25,17 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
-        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-        : discordLink.discord_username
+      display_name:
+        discordLink.discord_discriminator &&
+        discordLink.discord_discriminator !== "0"
+          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+          : discordLink.discord_username,
     };
   }
 
   return {
     discord_info: discordInfo,
-    display_name: discordInfo?.display_name || user.nickname
+    display_name: discordInfo?.display_name || user.nickname,
   };
 }
 
@@ -57,14 +59,14 @@ class LeaderboardService {
       // 3. Combine current data with historical to detect changes
       const leaderboardWithChanges = this._calculatePositionChanges(
         currentRanking,
-        lastSnapshot,
+        lastSnapshot
       );
 
       // 4. If a specific user is requested, include their position even if outside the top
       let userPosition = null;
       if (userId) {
         userPosition = leaderboardWithChanges.find(
-          (u) => u.usuario_id === userId,
+          (u) => u.usuario_id === userId
         );
         if (!userPosition) {
           // User is outside the current ranking, find them manually
@@ -77,8 +79,8 @@ class LeaderboardService {
                 as: "watchtime",
                 attributes: ["total_watchtime_minutes", "message_count"],
                 required: false,
-              }
-            ]
+              },
+            ],
           });
 
           if (usuario) {
@@ -104,7 +106,8 @@ class LeaderboardService {
             }
 
             // Enrich with Discord info
-            const { discord_info, display_name } = await enrichUserWithDiscordInfo(usuario);
+            const { discord_info, display_name } =
+              await enrichUserWithDiscordInfo(usuario);
 
             userPosition = {
               usuario_id: usuario.id,
@@ -112,7 +115,8 @@ class LeaderboardService {
               display_name,
               puntos: usuario.puntos,
               max_puntos: usuario.max_puntos || 0,
-              watchtime_minutes: usuario.watchtime?.total_watchtime_minutes || 0,
+              watchtime_minutes:
+                usuario.watchtime?.total_watchtime_minutes || 0,
               message_count: usuario.watchtime?.message_count || 0,
               position: position || currentRanking.length + 1,
               position_change: 0,
@@ -129,7 +133,7 @@ class LeaderboardService {
       // 5. Apply pagination
       const paginatedData = leaderboardWithChanges.slice(
         offset,
-        offset + limit,
+        offset + limit
       );
 
       // 6. Get next reset info
@@ -185,7 +189,7 @@ class LeaderboardService {
           as: "watchtime",
           attributes: ["total_watchtime_minutes", "message_count"],
           required: false,
-        }
+        },
       ],
       order: [
         ["puntos", "DESC"],
@@ -223,7 +227,7 @@ class LeaderboardService {
         // Enrich with Discord info
         const { discord_info, display_name } = await enrichUserWithDiscordInfo({
           id: usuario.id,
-          nickname: usuario.nickname
+          nickname: usuario.nickname,
         });
 
         return {
@@ -240,7 +244,7 @@ class LeaderboardService {
           kick_data: usuario.kick_data,
           discord_info,
         };
-      }),
+      })
     );
 
     return usuariosConPosicion;
@@ -282,7 +286,9 @@ class LeaderboardService {
    */
   async _getNextResetDate() {
     try {
-      const RESET_INTERVAL_HOURS = parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336);
+      const RESET_INTERVAL_HOURS = parseInt(
+        process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336
+      );
 
       const lastSnapshotDate = await LeaderboardSnapshot.max("snapshot_date");
 
@@ -293,7 +299,7 @@ class LeaderboardService {
         return {
           next_reset_date: nextReset,
           days_until_reset: Math.ceil(RESET_INTERVAL_HOURS / 24),
-          hours_until_reset: RESET_INTERVAL_HOURS
+          hours_until_reset: RESET_INTERVAL_HOURS,
         };
       }
 
@@ -310,14 +316,14 @@ class LeaderboardService {
       return {
         next_reset_date: nextReset,
         days_until_reset: Math.max(0, daysUntilReset),
-        hours_until_reset: Math.max(0, hoursUntilReset)
+        hours_until_reset: Math.max(0, hoursUntilReset),
       };
     } catch (error) {
       logger.error("Error calculating next reset:", error);
       return {
         next_reset_date: null,
         days_until_reset: null,
-        hours_until_reset: null
+        hours_until_reset: null,
       };
     }
   }
@@ -387,7 +393,7 @@ class LeaderboardService {
       await transaction.commit();
 
       logger.info(
-        `Snapshot created successfully: ${snapshotRecords.length} users registered`,
+        `Snapshot created successfully: ${snapshotRecords.length} users registered`
       );
 
       return {
@@ -419,9 +425,7 @@ class LeaderboardService {
         },
       });
 
-      logger.info(
-        `Snapshot cleanup: ${deleted} old records removed`,
-      );
+      logger.info(`Snapshot cleanup: ${deleted} old records removed`);
 
       return {
         success: true,
@@ -485,10 +489,7 @@ class LeaderboardService {
         history,
       };
     } catch (error) {
-      logger.error(
-        `Error getting history for user ${userId}:`,
-        error,
-      );
+      logger.error(`Error getting history for user ${userId}:`, error);
       throw error;
     }
   }

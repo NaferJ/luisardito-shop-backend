@@ -1,6 +1,6 @@
-const { KickBotCommand } = require('../models');
-const logger = require('../utils/logger');
-const { Op } = require('sequelize');
+const { KickBotCommand } = require("../models");
+const logger = require("../utils/logger");
+const { Op } = require("sequelize");
 
 /**
  * ==========================================
@@ -19,14 +19,14 @@ const { Op } = require('sequelize');
 
 // List of protected commands that CANNOT be deleted
 const PROTECTED_COMMANDS = [
-  'comandos',
-  'puntos',
-  'top',
-  'tienda',
-  'shop',
-  'leaderboard',
-  'rank',
-  'ranking'
+  "comandos",
+  "puntos",
+  "top",
+  "tienda",
+  "shop",
+  "leaderboard",
+  "rank",
+  "ranking",
 ];
 
 /**
@@ -43,8 +43,8 @@ function isModerator(sender, broadcaster) {
 
   // Check if user has moderator badge
   const badges = sender.identity?.badges || [];
-  return badges.some(badge =>
-    badge.type === 'moderator' || badge.type === 'broadcaster'
+  return badges.some(
+    (badge) => badge.type === "moderator" || badge.type === "broadcaster"
   );
 }
 
@@ -60,15 +60,20 @@ function parseModeratorCommand(content) {
   const command = parts[0]?.toLowerCase();
 
   // Check if it is a valid moderator command
-  const validCommands = ['!addcmd', '!editcmd', '!delcmd', '!cmdinfo'];
+  const validCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
   if (!validCommands.includes(command)) {
     return null;
   }
 
-  const name = parts[1]?.toLowerCase().replace(/^!/, '');
+  const name = parts[1]?.toLowerCase().replace(/^!/, "");
 
   if (!name) {
-    return { command, name: null, flags: {}, error: 'You must specify the command name' };
+    return {
+      command,
+      name: null,
+      flags: {},
+      error: "You must specify the command name",
+    };
   }
 
   const flags = {};
@@ -78,12 +83,12 @@ function parseModeratorCommand(content) {
   while (i < parts.length) {
     const part = parts[i];
 
-    if (part.startsWith('--')) {
+    if (part.startsWith("--")) {
       const flagName = part.substring(2);
       i++;
 
       // Handle quoted values
-      let flagValue = '';
+      let flagValue = "";
       if (i < parts.length) {
         if (parts[i].startsWith('"')) {
           // Quoted value
@@ -96,7 +101,7 @@ function parseModeratorCommand(content) {
             }
             i++;
           }
-          flagValue = quotedParts.join(' ').replace(/^"|"$/g, '');
+          flagValue = quotedParts.join(" ").replace(/^"|"$/g, "");
         } else {
           // Simple value
           flagValue = parts[i];
@@ -104,13 +109,16 @@ function parseModeratorCommand(content) {
         }
       }
 
-      if (flagName === 'aliases') {
-        flags.aliases = flagValue.split(',').map(a => a.trim().toLowerCase().replace(/^!/, '')).filter(a => a);
-      } else if (flagName === 'cooldown') {
+      if (flagName === "aliases") {
+        flags.aliases = flagValue
+          .split(",")
+          .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
+          .filter((a) => a);
+      } else if (flagName === "cooldown") {
         flags.cooldown = parseInt(flagValue) || 3;
-      } else if (flagName === 'desc') {
+      } else if (flagName === "desc") {
         flags.desc = flagValue;
-      } else if (flagName === 'response') {
+      } else if (flagName === "response") {
         flags.response = flagValue;
       }
     } else {
@@ -122,7 +130,7 @@ function parseModeratorCommand(content) {
 
   // If there are loose response words (without --response), assign them as the response
   if (responseWords.length > 0 && !flags.response) {
-    flags.response = responseWords.join(' ');
+    flags.response = responseWords.join(" ");
   }
 
   return { command, name, flags };
@@ -142,7 +150,7 @@ async function processModeratorCommand(payload) {
       return {
         success: false,
         processed: false,
-        message: null // Do not respond to avoid spam
+        message: null, // Do not respond to avoid spam
       };
     }
 
@@ -157,7 +165,7 @@ async function processModeratorCommand(payload) {
       return {
         success: false,
         processed: true,
-        message: parsed.error
+        message: parsed.error,
       };
     }
 
@@ -167,28 +175,27 @@ async function processModeratorCommand(payload) {
 
     // Execute command based on type
     switch (command) {
-      case '!addcmd':
+      case "!addcmd":
         return await handleAddCommand(name, flags, sender);
 
-      case '!editcmd':
+      case "!editcmd":
         return await handleEditCommand(name, flags, sender);
 
-      case '!delcmd':
+      case "!delcmd":
         return await handleDeleteCommand(name, sender, broadcaster);
 
-      case '!cmdinfo':
+      case "!cmdinfo":
         return await handleCommandInfo(name);
 
       default:
         return { success: false, processed: false, message: null };
     }
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error processing moderator command:', error);
+    logger.error("[MOD-CMD] Error processing moderator command:", error);
     return {
       success: false,
       processed: true,
-      message: 'Could not process the command'
+      message: "Could not process the command",
     };
   }
 }
@@ -203,20 +210,20 @@ async function handleAddCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `You must specify a response for the command. Example: !addcmd ${name} Hello {username}`
+        message: `You must specify a response for the command. Example: !addcmd ${name} Hello {username}`,
       };
     }
 
     // Check that the command does not already exist
     const existing = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (existing) {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" already exists. Use !editcmd to modify it.`
+        message: `Command "!${name}" already exists. Use !editcmd to modify it.`,
       };
     }
 
@@ -224,16 +231,18 @@ async function handleAddCommand(name, flags, sender) {
     if (flags.aliases && flags.aliases.length > 0) {
       const existingAliases = await KickBotCommand.findAll({
         where: {
-          [Op.or]: flags.aliases.map(alias => ({ command: alias }))
-        }
+          [Op.or]: flags.aliases.map((alias) => ({ command: alias })),
+        },
       });
 
       if (existingAliases.length > 0) {
-        const conflictingNames = existingAliases.map(c => c.command).join(', ');
+        const conflictingNames = existingAliases
+          .map((c) => c.command)
+          .join(", ");
         return {
           success: false,
           processed: true,
-          message: `The following aliases already exist as commands: ${conflictingNames}`
+          message: `The following aliases already exist as commands: ${conflictingNames}`,
         };
       }
     }
@@ -244,13 +253,13 @@ async function handleAddCommand(name, flags, sender) {
       aliases: flags.aliases || [],
       response_message: flags.response,
       description: flags.desc || `Command created by @${sender.username}`,
-      command_type: 'simple',
+      command_type: "simple",
       enabled: true,
       requires_permission: false,
-      permission_level: 'viewer',
+      permission_level: "viewer",
       cooldown_seconds: flags.cooldown || 3,
       auto_send_interval_seconds: 0,
-      usage_count: 0
+      usage_count: 0,
     });
 
     logger.info(`[MOD-CMD] Command !${name} created by ${sender.username}`);
@@ -258,22 +267,21 @@ async function handleAddCommand(name, flags, sender) {
     // Build confirmation message
     let confirmMsg = `Command "!${name}" created successfully`;
     if (flags.aliases && flags.aliases.length > 0) {
-      confirmMsg += ` (Aliases: ${flags.aliases.join(', ')})`;
+      confirmMsg += ` (Aliases: ${flags.aliases.join(", ")})`;
     }
 
     return {
       success: true,
       processed: true,
       message: confirmMsg,
-      data: newCommand
+      data: newCommand,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error in handleAddCommand:', error);
+    logger.error("[MOD-CMD] Error in handleAddCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'Could not create the command'
+      message: "Could not create the command",
     };
   }
 }
@@ -285,14 +293,14 @@ async function handleEditCommand(name, flags, sender) {
   try {
     // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist. Use !addcmd to create it.`
+        message: `Command "!${name}" does not exist. Use !addcmd to create it.`,
       };
     }
 
@@ -301,7 +309,7 @@ async function handleEditCommand(name, flags, sender) {
       return {
         success: false,
         processed: true,
-        message: `You must specify at least one field to update. Example: !editcmd ${name} --response New response`
+        message: `You must specify at least one field to update. Example: !editcmd ${name} --response New response`,
       };
     }
 
@@ -311,12 +319,12 @@ async function handleEditCommand(name, flags, sender) {
 
     if (flags.response) {
       updates.response_message = flags.response;
-      changes.push('response');
+      changes.push("response");
     }
 
     if (flags.aliases) {
       updates.aliases = flags.aliases;
-      changes.push(`aliases (${flags.aliases.join(', ')})`);
+      changes.push(`aliases (${flags.aliases.join(", ")})`);
     }
 
     if (flags.cooldown !== undefined) {
@@ -326,27 +334,28 @@ async function handleEditCommand(name, flags, sender) {
 
     if (flags.desc) {
       updates.description = flags.desc;
-      changes.push('description');
+      changes.push("description");
     }
 
     // Update
     await command.update(updates);
 
-    logger.info(`[MOD-CMD] Command !${name} edited by ${sender.username}: ${changes.join(', ')}`);
+    logger.info(
+      `[MOD-CMD] Command !${name} edited by ${sender.username}: ${changes.join(", ")}`
+    );
 
     return {
       success: true,
       processed: true,
-      message: `Command "!${name}" updated: ${changes.join(', ')}`,
-      data: command
+      message: `Command "!${name}" updated: ${changes.join(", ")}`,
+      data: command,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error in handleEditCommand:', error);
+    logger.error("[MOD-CMD] Error in handleEditCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'Could not edit the command'
+      message: "Could not edit the command",
     };
   }
 }
@@ -361,7 +370,7 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" is protected and cannot be deleted`
+        message: `Command "!${name}" is protected and cannot be deleted`,
       };
     }
 
@@ -370,20 +379,20 @@ async function handleDeleteCommand(name, sender, broadcaster) {
       return {
         success: false,
         processed: true,
-        message: `Only @${broadcaster.username} can delete commands`
+        message: `Only @${broadcaster.username} can delete commands`,
       };
     }
 
     // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist`
+        message: `Command "!${name}" does not exist`,
       };
     }
 
@@ -395,15 +404,14 @@ async function handleDeleteCommand(name, sender, broadcaster) {
     return {
       success: true,
       processed: true,
-      message: `Command "!${name}" deleted successfully`
+      message: `Command "!${name}" deleted successfully`,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error in handleDeleteCommand:', error);
+    logger.error("[MOD-CMD] Error in handleDeleteCommand:", error);
     return {
       success: false,
       processed: true,
-      message: 'Could not delete the command'
+      message: "Could not delete the command",
     };
   }
 }
@@ -415,26 +423,28 @@ async function handleCommandInfo(name) {
   try {
     // Find the command
     const command = await KickBotCommand.findOne({
-      where: { command: name }
+      where: { command: name },
     });
 
     if (!command) {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist`
+        message: `Command "!${name}" does not exist`,
       };
     }
 
     // Build info message
-    const aliases = command.aliases && command.aliases.length > 0
-      ? command.aliases.join(', ')
-      : 'none';
+    const aliases =
+      command.aliases && command.aliases.length > 0
+        ? command.aliases.join(", ")
+        : "none";
 
-    const estado = command.enabled ? 'Active' : 'Disabled';
+    const estado = command.enabled ? "Active" : "Disabled";
 
     // Show the FULL response without truncation
-    const message = `Command info for "!${name}" | ` +
+    const message =
+      `Command info for "!${name}" | ` +
       `Response: ${command.response_message} | ` +
       `Aliases: ${aliases} | ` +
       `Cooldown: ${command.cooldown_seconds}s | ` +
@@ -445,15 +455,14 @@ async function handleCommandInfo(name) {
       success: true,
       processed: true,
       message,
-      data: command
+      data: command,
     };
-
   } catch (error) {
-    logger.error('[MOD-CMD] Error in handleCommandInfo:', error);
+    logger.error("[MOD-CMD] Error in handleCommandInfo:", error);
     return {
       success: false,
       processed: true,
-      message: 'Could not get command info'
+      message: "Could not get command info",
     };
   }
 }
@@ -461,6 +470,5 @@ async function handleCommandInfo(name) {
 module.exports = {
   processModeratorCommand,
   isModerator,
-  parseModeratorCommand
+  parseModeratorCommand,
 };
-

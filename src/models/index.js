@@ -76,34 +76,55 @@ Promocion.belongsToMany(Producto, {
   through: PromocionProducto,
   foreignKey: "promocion_id",
   otherKey: "producto_id",
-  as: "productos"
+  as: "productos",
 });
 Producto.belongsToMany(Promocion, {
   through: PromocionProducto,
   foreignKey: "producto_id",
   otherKey: "promocion_id",
-  as: "promociones"
+  as: "promociones",
 });
 
 // Asociaciones de PromocionProducto
-Promocion.hasMany(PromocionProducto, { foreignKey: "promocion_id", as: "promocionProductos" });
+Promocion.hasMany(PromocionProducto, {
+  foreignKey: "promocion_id",
+  as: "promocionProductos",
+});
 PromocionProducto.belongsTo(Promocion, { foreignKey: "promocion_id" });
-Producto.hasMany(PromocionProducto, { foreignKey: "producto_id", as: "productoPromociones" });
+Producto.hasMany(PromocionProducto, {
+  foreignKey: "producto_id",
+  as: "productoPromociones",
+});
 PromocionProducto.belongsTo(Producto, { foreignKey: "producto_id" });
 
 // Asociaciones de UsoPromocion
 Promocion.hasMany(UsoPromocion, { foreignKey: "promocion_id", as: "usos" });
 UsoPromocion.belongsTo(Promocion, { foreignKey: "promocion_id" });
-Usuario.hasMany(UsoPromocion, { foreignKey: "usuario_id", as: "usosPromociones" });
+Usuario.hasMany(UsoPromocion, {
+  foreignKey: "usuario_id",
+  as: "usosPromociones",
+});
 UsoPromocion.belongsTo(Usuario, { foreignKey: "usuario_id" });
-Canje.hasMany(UsoPromocion, { foreignKey: "canje_id", as: "promocionesAplicadas" });
+Canje.hasMany(UsoPromocion, {
+  foreignKey: "canje_id",
+  as: "promocionesAplicadas",
+});
 UsoPromocion.belongsTo(Canje, { foreignKey: "canje_id" });
-Producto.hasMany(UsoPromocion, { foreignKey: "producto_id", as: "promocionesUsadas" });
+Producto.hasMany(UsoPromocion, {
+  foreignKey: "producto_id",
+  as: "promocionesUsadas",
+});
 UsoPromocion.belongsTo(Producto, { foreignKey: "producto_id" });
 
 // Asociaciones de DiscordUserLink
-Usuario.hasMany(DiscordUserLink, { foreignKey: "tienda_user_id", as: "discordLinks" });
-DiscordUserLink.belongsTo(Usuario, { foreignKey: "tienda_user_id", as: "usuario" });
+Usuario.hasMany(DiscordUserLink, {
+  foreignKey: "tienda_user_id",
+  as: "discordLinks",
+});
+DiscordUserLink.belongsTo(Usuario, {
+  foreignKey: "tienda_user_id",
+  as: "usuario",
+});
 
 // Asociaciones de UserWatchtime
 Usuario.hasOne(UserWatchtime, { foreignKey: "usuario_id", as: "watchtime" });

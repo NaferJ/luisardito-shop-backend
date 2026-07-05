@@ -20,10 +20,7 @@ const permiso = require("../middleware/permisos.middleware");
  * - command_type: filtrar por tipo (simple/dynamic)
  * - search: buscar por nombre o descripción
  */
-router.get(
-  "/public",
-  kickBotCommandsController.getPublicCommands,
-);
+router.get("/public", kickBotCommandsController.getPublicCommands);
 
 // Middleware para todas las rutas (autenticación requerida)
 router.use(authRequired);
@@ -35,7 +32,7 @@ router.use(authRequired);
 router.get(
   "/stats",
   permiso("editar_puntos"),
-  kickBotCommandsController.getCommandsStats,
+  kickBotCommandsController.getCommandsStats
 );
 
 /**
@@ -44,7 +41,7 @@ router.get(
 router.post(
   "/test",
   permiso("editar_puntos"),
-  kickBotCommandsController.testCommand,
+  kickBotCommandsController.testCommand
 );
 
 /**
@@ -59,7 +56,7 @@ router.post(
 router.get(
   "/",
   permiso("editar_puntos"),
-  kickBotCommandsController.getAllCommands,
+  kickBotCommandsController.getAllCommands
 );
 
 /**
@@ -68,7 +65,7 @@ router.get(
 router.get(
   "/:id",
   permiso("editar_puntos"),
-  kickBotCommandsController.getCommandById,
+  kickBotCommandsController.getCommandById
 );
 
 /**
@@ -90,7 +87,7 @@ router.get(
 router.post(
   "/",
   permiso("editar_puntos"),
-  kickBotCommandsController.createCommand,
+  kickBotCommandsController.createCommand
 );
 
 /**
@@ -100,7 +97,7 @@ router.post(
 router.put(
   "/:id",
   permiso("editar_puntos"),
-  kickBotCommandsController.updateCommand,
+  kickBotCommandsController.updateCommand
 );
 
 /**
@@ -109,7 +106,7 @@ router.put(
 router.patch(
   "/:id/toggle",
   permiso("editar_puntos"),
-  kickBotCommandsController.toggleCommandStatus,
+  kickBotCommandsController.toggleCommandStatus
 );
 
 /**
@@ -118,7 +115,7 @@ router.patch(
 router.post(
   "/:id/duplicate",
   permiso("editar_puntos"),
-  kickBotCommandsController.duplicateCommand,
+  kickBotCommandsController.duplicateCommand
 );
 
 /**
@@ -127,7 +124,7 @@ router.post(
 router.delete(
   "/:id",
   permiso("editar_puntos"),
-  kickBotCommandsController.deleteCommand,
+  kickBotCommandsController.deleteCommand
 );
 
 module.exports = router;

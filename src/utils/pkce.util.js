@@ -1,21 +1,21 @@
-const crypto = require('crypto');
-const logger = require('./logger');
+const crypto = require("crypto");
+const logger = require("./logger");
 
 function base64url(input) {
   return Buffer.from(input)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replaceAll('=', '');
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replaceAll("=", "");
 }
 
 function generatePkce() {
   const code_verifier = base64url(crypto.randomBytes(32));
-  const challenge = crypto.createHash('sha256').update(code_verifier).digest();
+  const challenge = crypto.createHash("sha256").update(code_verifier).digest();
   const code_challenge = base64url(challenge);
   // Debug PKCE
-  logger.info('[PKCE][generatePkce] code_verifier generated:', code_verifier);
-  logger.info('[PKCE][generatePkce] code_challenge generated:', code_challenge);
+  logger.info("[PKCE][generatePkce] code_verifier generated:", code_verifier);
+  logger.info("[PKCE][generatePkce] code_challenge generated:", code_challenge);
   return { code_verifier, code_challenge };
 }
 

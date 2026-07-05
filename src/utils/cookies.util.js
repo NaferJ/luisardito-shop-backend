@@ -8,16 +8,16 @@
  * @returns {Object} Cookie options
  */
 function getCookieOptions(env = process.env.NODE_ENV) {
-    const isProduction = env === 'production';
+  const isProduction = env === "production";
 
-    return {
-        httpOnly: false,        // Allow frontend JavaScript access
-        secure: isProduction,   // HTTPS in production, HTTP in development
-        sameSite: 'lax',       // Allow cross-site for subdomains
-        domain: isProduction ? '.luisardito.com' : undefined, // Shared domain in production
-        path: '/',             // Available site-wide
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days by default
-    };
+  return {
+    httpOnly: false, // Allow frontend JavaScript access
+    secure: isProduction, // HTTPS in production, HTTP in development
+    sameSite: "lax", // Allow cross-site for subdomains
+    domain: isProduction ? ".luisardito.com" : undefined, // Shared domain in production
+    path: "/", // Available site-wide
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days by default
+  };
 }
 
 /**
@@ -26,10 +26,10 @@ function getCookieOptions(env = process.env.NODE_ENV) {
  * @returns {Object} Cookie options
  */
 function getRefreshCookieOptions(env = process.env.NODE_ENV) {
-    return {
-        ...getCookieOptions(env),
-        maxAge: 90 * 24 * 60 * 60 * 1000 // 90 days for refresh token
-    };
+  return {
+    ...getCookieOptions(env),
+    maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days for refresh token
+  };
 }
 
 /**
@@ -38,13 +38,13 @@ function getRefreshCookieOptions(env = process.env.NODE_ENV) {
  * @returns {Object} Options for clearCookie
  */
 function getClearCookieOptions(env = process.env.NODE_ENV) {
-    const isProduction = env === 'production';
+  const isProduction = env === "production";
 
-    return {
-        domain: isProduction ? '.luisardito.com' : undefined,
-        path: '/',
-        sameSite: 'lax'
-    };
+  return {
+    domain: isProduction ? ".luisardito.com" : undefined,
+    path: "/",
+    sameSite: "lax",
+  };
 }
 
 /**
@@ -54,12 +54,17 @@ function getClearCookieOptions(env = process.env.NODE_ENV) {
  * @param {string} refreshToken - Refresh token
  * @param {string} env - Environment
  */
-function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_ENV) {
-    const cookieOptions = getCookieOptions(env);
-    const refreshOptions = getRefreshCookieOptions(env);
+function setAuthCookies(
+  res,
+  accessToken,
+  refreshToken,
+  env = process.env.NODE_ENV
+) {
+  const cookieOptions = getCookieOptions(env);
+  const refreshOptions = getRefreshCookieOptions(env);
 
-    res.cookie('auth_token', accessToken, cookieOptions);
-    res.cookie('refresh_token', refreshToken, refreshOptions);
+  res.cookie("auth_token", accessToken, cookieOptions);
+  res.cookie("refresh_token", refreshToken, refreshOptions);
 }
 
 /**
@@ -68,16 +73,16 @@ function setAuthCookies(res, accessToken, refreshToken, env = process.env.NODE_E
  * @param {string} env - Environment
  */
 function clearAuthCookies(res, env = process.env.NODE_ENV) {
-    const clearOptions = getClearCookieOptions(env);
+  const clearOptions = getClearCookieOptions(env);
 
-    res.clearCookie('auth_token', clearOptions);
-    res.clearCookie('refresh_token', clearOptions);
+  res.clearCookie("auth_token", clearOptions);
+  res.clearCookie("refresh_token", clearOptions);
 }
 
 module.exports = {
-    getCookieOptions,
-    getRefreshCookieOptions,
-    getClearCookieOptions,
-    setAuthCookies,
-    clearAuthCookies
+  getCookieOptions,
+  getRefreshCookieOptions,
+  getClearCookieOptions,
+  setAuthCookies,
+  clearAuthCookies,
 };

@@ -17,7 +17,7 @@ const logger = require("../utils/logger");
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
   const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id }
+    where: { tienda_user_id: user.id },
   });
 
   if (discordLink) {
@@ -28,15 +28,17 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name: discordLink.discord_discriminator && discordLink.discord_discriminator !== '0'
-        ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-        : discordLink.discord_username
+      display_name:
+        discordLink.discord_discriminator &&
+        discordLink.discord_discriminator !== "0"
+          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
+          : discordLink.discord_username,
     };
   }
 
   return {
     discord_info: discordInfo,
-    display_name: discordInfo?.display_name || user.nickname
+    display_name: discordInfo?.display_name || user.nickname,
   };
 }
 
@@ -49,7 +51,8 @@ exports.me = async (req, res) => {
 
   const {
     id,
-    nickname, puntos,
+    nickname,
+    puntos,
     rol_id,
     kick_data,
     discord_username,
@@ -143,7 +146,7 @@ exports.updateMe = async (req, res) => {
       const bcrypt = require("bcryptjs");
       filteredUpdates.password_hash = await bcrypt.hash(
         filteredUpdates.password,
-        10,
+        10
       );
       delete filteredUpdates.password;
     }
@@ -171,7 +174,7 @@ exports.listarUsuarios = async (req, res) => {
     if (search) {
       whereClause[Op.or] = [
         { nickname: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } }
+        { email: { [Op.iLike]: `%${search}%` } },
       ];
     }
 
@@ -219,7 +222,8 @@ exports.listarUsuarios = async (req, res) => {
         const userInstance = Usuario.build(userData);
 
         // Get linked Discord info
-        const { discord_info, display_name } = await enrichUserWithDiscordInfo(userInstance);
+        const { discord_info, display_name } =
+          await enrichUserWithDiscordInfo(userInstance);
 
         // Calculate subscriber info
         let subscriberStatus = {
@@ -266,7 +270,7 @@ exports.listarUsuarios = async (req, res) => {
           },
           user_type: userInstance.getUserType(),
         };
-      }),
+      })
     );
 
     res.json(enrichedUsers);
@@ -512,7 +516,7 @@ exports.debugRolesPermisos = async (req, res) => {
           : null,
         tiene_permiso_historial: rolUsuario
           ? rolUsuario.RolPermisos.some(
-              (rp) => rp.Permiso.nombre === "ver_historial_puntos",
+              (rp) => rp.Permiso.nombre === "ver_historial_puntos"
             )
           : false,
       },
@@ -579,7 +583,7 @@ exports.syncKickInfo = async (req, res) => {
     }
 
     logger.info(
-      `[Sync Kick Info] Syncing data for user ${user.nickname} (ID: ${userId})`,
+      `[Sync Kick Info] Syncing data for user ${user.nickname} (ID: ${userId})`
     );
 
     // Get updated Kick data using the external ID
@@ -594,7 +598,7 @@ exports.syncKickInfo = async (req, res) => {
     } catch (kickError) {
       logger.error(
         "[Sync Kick Info] Error fetching Kick data:",
-        kickError.message,
+        kickError.message
       );
       return res.status(500).json({
         error: "Could not fetch updated Kick data",
@@ -613,9 +617,7 @@ exports.syncKickInfo = async (req, res) => {
     const kickAvatarUrl = extractAvatarUrl(kickUserData);
 
     if (!kickAvatarUrl) {
-      logger.info(
-        "[Sync Kick Info] No avatar found in Kick data",
-      );
+      logger.info("[Sync Kick Info] No avatar found in Kick data");
     }
 
     // Update user with synced data
@@ -668,23 +670,25 @@ exports.actualizarPuntos = async (req, res) => {
   const t = await Usuario.sequelize.transaction();
   try {
     const { id } = req.params;
-    const { puntos, motivo, operation = 'set' } = req.body; // operation: 'add' | 'set'
+    const { puntos, motivo, operation = "set" } = req.body; // operation: 'add' | 'set'
     const adminNickname = req.user.nickname;
 
     const puntosNum = Number(puntos);
-    
+
     // Validate operation
-    if (!['add', 'set'].includes(operation)) {
+    if (!["add", "set"].includes(operation)) {
       await t.rollback();
-      return res.status(400).json({ error: "Operation must be 'add' or 'set'" });
+      return res
+        .status(400)
+        .json({ error: "Operation must be 'add' or 'set'" });
     }
-    
+
     // For 'add', allow negatives (subtract); for 'set', do not allow negatives
-    if (!Number.isFinite(puntosNum) || (operation === 'set' && puntosNum < 0)) {
+    if (!Number.isFinite(puntosNum) || (operation === "set" && puntosNum < 0)) {
       await t.rollback();
       return res.status(400).json({ error: "Invalid points amount" });
     }
-    
+
     if (!motivo || String(motivo).trim() === "") {
       await t.rollback();
       return res.status(400).json({ error: "Reason is required" });
@@ -698,8 +702,8 @@ exports.actualizarPuntos = async (req, res) => {
 
     const puntosAnteriores = usuario.puntos;
     let puntosNuevos, cambio;
-    
-    if (operation === 'add') {
+
+    if (operation === "add") {
       // Add or subtract points
       cambio = puntosNum;
       puntosNuevos = Math.max(0, puntosAnteriores + puntosNum); // No permitir puntos negativos
@@ -720,7 +724,7 @@ exports.actualizarPuntos = async (req, res) => {
         concepto: `Points adjustment: ${motivo}`,
         motivo: motivo, // Campo legacy para compatibilidad
       },
-      { transaction: t },
+      { transaction: t }
     );
 
     await t.commit();
@@ -915,4 +919,3 @@ exports.debugRolesPermisos = async (req, res) => {
     });
   }
 };
-

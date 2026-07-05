@@ -1,7 +1,7 @@
-const jwt = require('jsonwebtoken');
-const config = require('../../config');
-const { Usuario, Rol } = require('../models');
-const logger = require('../utils/logger');
+const jwt = require("jsonwebtoken");
+const config = require("../../config");
+const { Usuario, Rol } = require("../models");
+const logger = require("../utils/logger");
 
 module.exports = async (req, res, next) => {
   try {
@@ -9,8 +9,8 @@ module.exports = async (req, res, next) => {
     let token = req.cookies?.auth_token;
 
     // 2. Fallback to Authorization header
-    if (!token && req.headers?.authorization?.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
+    if (!token && req.headers?.authorization?.startsWith("Bearer ")) {
+      token = req.headers.authorization.split(" ")[1];
     }
 
     // 3. If no token, allow passthrough (not an error)
@@ -30,12 +30,14 @@ module.exports = async (req, res, next) => {
 
     // User authenticated successfully
     req.user = user;
-    logger.info('[Auth Middleware] User authenticated:', user.nickname || user.id);
+    logger.info(
+      "[Auth Middleware] User authenticated:",
+      user.nickname || user.id
+    );
     next();
-
   } catch (error) {
     // 4. If verification fails, allow passthrough (not an error)
-    logger.error('[Auth Middleware] Error:', error.message);
+    logger.error("[Auth Middleware] Error:", error.message);
     req.user = null;
     next();
   }

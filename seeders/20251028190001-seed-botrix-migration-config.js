@@ -10,23 +10,31 @@ module.exports = {
       vip_follow_points: 100,
       vip_sub_points: 300,
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
     };
 
     // Usar ignoreDuplicates para evitar errores si ya existe
-    await queryInterface.bulkInsert('botrix_migration_config', [defaultConfig], {
-      ignoreDuplicates: true
-    });
+    await queryInterface.bulkInsert(
+      "botrix_migration_config",
+      [defaultConfig],
+      {
+        ignoreDuplicates: true,
+      }
+    );
 
-    console.log('✅ Seeder: Configuración de migración Botrix inicializada');
+    console.log("✅ Seeder: Configuración de migración Botrix inicializada");
   },
 
   async down(queryInterface, Sequelize) {
     // Eliminar la configuración
-    await queryInterface.bulkDelete('botrix_migration_config', {
-      id: 1
-    }, {});
+    await queryInterface.bulkDelete(
+      "botrix_migration_config",
+      {
+        id: 1,
+      },
+      {}
+    );
 
-    console.log('❌ Seeder: Configuración de migración Botrix eliminada');
-  }
+    console.log("❌ Seeder: Configuración de migración Botrix eliminada");
+  },
 };
