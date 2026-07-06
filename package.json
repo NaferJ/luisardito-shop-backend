@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "test": "echo \"No tests yet\"",
+    "test": "jest --runInBand --forceExit",
+    "test:watch": "jest --watch",
     "migrate": "npx sequelize db:migrate",
     "migrate:status": "npx sequelize db:migrate:status",
     "migrate:undo": "npx sequelize db:migrate:undo",
@@ -55,7 +56,9 @@
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.7.0",
+    "jest": "^30.4.2",
     "nodemon": "^3.1.10",
-    "prettier": "^3.9.4"
+    "prettier": "^3.9.4",
+    "supertest": "^7.2.2"
   }
 }

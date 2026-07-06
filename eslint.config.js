@@ -40,6 +40,14 @@ module.exports = [
     },
   },
   {
+    files: ["tests/**/*.test.js", "tests/**/*.js"],
+    languageOptions: {
+      globals: {
+        ...globals.jest,
+      },
+    },
+  },
+  {
     files: ["src/utils/logger.js"],
     rules: {
       "no-console": "off",
