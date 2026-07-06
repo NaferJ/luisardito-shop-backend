@@ -1,6 +1,10 @@
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const customCors = require("./src/middleware/cors.middleware");
+const {
+  notFoundHandler,
+  errorHandler,
+} = require("./src/middleware/errorHandler.middleware");
 const { sequelize } = require("./src/models");
 const config = require("./config");
 const logger = require("./src/utils/logger");
@@ -82,6 +86,10 @@ app.use("/api/notificaciones", notificacionesRoutes); // Notifications route
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "ok" });
 });
+
+// Centralized error handling (must be registered after all routes)
+app.use(notFoundHandler); // catches unmatched routes
+app.use(errorHandler); // last middleware, 4-arg error handler
 
 // Sync models and start server with DB connection retries
 const start = async () => {
