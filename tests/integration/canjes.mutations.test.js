@@ -65,19 +65,20 @@ const KickBotService = require("../../src/services/kickBot.service");
 const promocionService = require("../../src/services/promocion.service");
 const NotificacionService = require("../../src/services/notificacion.service");
 const controller = require("../../src/controllers/canjes.controller");
+const AppError = require("../../src/utils/AppError");
 
 function createRes() {
   const res = {
     statusCode: 200,
     body: null,
-    status(c) {
+    status: jest.fn(function (c) {
       this.statusCode = c;
       return this;
-    },
-    json(b) {
+    }),
+    json: jest.fn(function (b) {
       this.body = b;
       return this;
-    },
+    }),
   };
   return res;
 }
@@ -157,7 +158,7 @@ describe("canjes.controller mutations", () => {
       user: { id: 10 },
     };
 
-    test("product missing -> 404 Product not available", async () => {
+    test("product missing -> next(AppError) 404 Product not available", async () => {
       Producto.findByPk.mockResolvedValue(null);
       const req = { ...baseReq };
       const res = createRes();
@@ -165,12 +166,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.crear(req, res, next);
 
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: "Product not available" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(404);
+      expect(err.message).toBe("Product not available");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("product not publicado -> 404 Product not available", async () => {
+    test("product not publicado -> next(AppError) 404 Product not available", async () => {
       Producto.findByPk.mockResolvedValue(
         makeChainedProducto({ estado: "borrador" })
       );
@@ -180,12 +185,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.crear(req, res, next);
 
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: "Product not available" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(404);
+      expect(err.message).toBe("Product not available");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("stock <= 0 -> 400 No stock available", async () => {
+    test("stock <= 0 -> next(AppError) 400 No stock available", async () => {
       Producto.findByPk.mockResolvedValue(makeChainedProducto({ stock: 0 }));
       const req = { ...baseReq };
       const res = createRes();
@@ -193,14 +202,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.crear(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        error: "No stock available for this product",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("No stock available for this product");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("user missing -> 404 User not found", async () => {
+    test("user missing -> next(AppError) 404 User not found", async () => {
       Producto.findByPk.mockResolvedValue(makeChainedProducto());
       Usuario.findByPk.mockResolvedValue(null);
       const req = { ...baseReq };
@@ -209,12 +220,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.crear(req, res, next);
 
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: "User not found" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(404);
+      expect(err.message).toBe("User not found");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("points < precioFinal -> 400 Insufficient points", async () => {
+    test("points < precioFinal -> next(AppError) 400 Insufficient points", async () => {
       Producto.findByPk.mockResolvedValue(makeChainedProducto());
       Usuario.findByPk.mockResolvedValue(makeChainedUsuario({ puntos: 50 }));
       promocionService.calcularMejorDescuento.mockResolvedValue({
@@ -230,13 +245,13 @@ describe("canjes.controller mutations", () => {
 
       await controller.crear(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        error: "Insufficient points",
-        precio_requerido: 100,
-        puntos_disponibles: 50,
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Insufficient points");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
     test("success with promocion=null -> 201, body has price fields, KickBot called", async () => {
@@ -331,7 +346,7 @@ describe("canjes.controller mutations", () => {
       body: { estado: "entregado" },
     };
 
-    test("invalid estado -> 400, message starts with 'Invalid state. Allowed:'", async () => {
+    test("invalid estado -> next(AppError) 400, message starts with 'Invalid state. Allowed:'", async () => {
       const req = {
         ...baseReq,
         body: { estado: "bogus" },
@@ -341,12 +356,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.actualizarEstado(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body.error).toMatch(/^Invalid state\. Allowed:/);
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toMatch(/^Invalid state\. Allowed:/);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("canje missing -> 404 Not found", async () => {
+    test("canje missing -> next(AppError) 404 Not found", async () => {
       Canje.findByPk.mockResolvedValue(null);
       const req = { ...baseReq };
       const res = createRes();
@@ -354,9 +373,13 @@ describe("canjes.controller mutations", () => {
 
       await controller.actualizarEstado(req, res, next);
 
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: "Not found" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(404);
+      expect(err.message).toBe("Not found");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
     test("success estado entregado, non-VIP product -> 200, vip_info null", async () => {
@@ -393,7 +416,7 @@ describe("canjes.controller mutations", () => {
       user: { id: 1, nickname: "admin" },
     };
 
-    test("empty motivo -> 400 Return reason is required", async () => {
+    test("empty motivo -> next(AppError) 400 Return reason is required", async () => {
       const req = {
         ...baseReq,
         body: { motivo: "" },
@@ -403,12 +426,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.devolverCanje(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({ error: "Return reason is required" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Return reason is required");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("whitespace motivo -> 400 Return reason is required", async () => {
+    test("whitespace motivo -> next(AppError) 400 Return reason is required", async () => {
       const req = {
         ...baseReq,
         body: { motivo: "   " },
@@ -418,12 +445,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.devolverCanje(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({ error: "Return reason is required" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Return reason is required");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("canje missing -> 404 Canje not found", async () => {
+    test("canje missing -> next(AppError) 404 Canje not found", async () => {
       Canje.findByPk.mockResolvedValue(null);
       const req = { ...baseReq };
       const res = createRes();
@@ -431,12 +462,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.devolverCanje(req, res, next);
 
-      expect(res.statusCode).toBe(404);
-      expect(res.body).toEqual({ error: "Canje not found" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(404);
+      expect(err.message).toBe("Canje not found");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("estado devuelto -> 400 Canje is already returned", async () => {
+    test("estado devuelto -> next(AppError) 400 Canje is already returned", async () => {
       const canje = makeCanjeInstanceWithAssociations({
         estado: "devuelto",
       });
@@ -447,12 +482,16 @@ describe("canjes.controller mutations", () => {
 
       await controller.devolverCanje(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({ error: "Canje is already returned" });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe("Canje is already returned");
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
-    test("estado cancelado -> 400 Only pending or delivered", async () => {
+    test("estado cancelado -> next(AppError) 400 Only pending or delivered", async () => {
       const canje = makeCanjeInstanceWithAssociations({
         estado: "cancelado",
       });
@@ -463,11 +502,15 @@ describe("canjes.controller mutations", () => {
 
       await controller.devolverCanje(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        error: "Only pending or delivered canjes can be returned",
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledTimes(1);
+      const err = next.mock.calls[0][0];
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.statusCode).toBe(400);
+      expect(err.message).toBe(
+        "Only pending or delivered canjes can be returned"
+      );
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
 
     test("success estado entregado -> 200, stockNuevo = stock + 1", async () => {
