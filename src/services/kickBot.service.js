@@ -15,16 +15,44 @@ class KickBotService {
     this.botUsername = config.kickBot?.username || "Bot";
     this.tokensFile = path.join(__dirname, "../../tokens/tokens.json");
 
+    // In-flight refresh promises keyed by token identity (single-flight guard)
+    this._refreshInFlight = new Map();
+
     // Start background auto-refresh
     this.startAutoRefresh();
   }
 
   /**
-   * Renews an access token using the refresh token
+   * Renews an access token using the refresh token.
+   * Concurrent calls for the same token share a single in-flight network
+   * request (single-flight) to avoid race conditions caused by Kick's
+   * rotating refresh tokens.
    * @param {Object} tokenRecord - KickBotToken model instance
    * @returns {Promise<Object>} - Updated token
    */
-  async refreshToken(tokenRecord) {
+  refreshToken(tokenRecord) {
+    const key =
+      tokenRecord.id != null ? tokenRecord.id : tokenRecord.kick_username;
+
+    if (this._refreshInFlight.has(key)) {
+      return this._refreshInFlight.get(key);
+    }
+
+    const promise = this._performRefresh(tokenRecord).finally(() => {
+      this._refreshInFlight.delete(key);
+    });
+
+    this._refreshInFlight.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Internal refresh implementation. Callers should use refreshToken()
+   * which adds the single-flight guard.
+   * @param {Object} tokenRecord - KickBotToken model instance
+   * @returns {Promise<Object>} - Updated token
+   */
+  async _performRefresh(tokenRecord) {
     try {
       logger.info(
         `[KickBot] Attempting to renew token for ${tokenRecord.kick_username}`
@@ -237,8 +265,11 @@ class KickBotService {
           return await this.refreshAccessToken();
         }
       }
-    } catch (_fileError) {
-      logger.warn("[KickBot] tokens.json file not available or invalid");
+    } catch (fileError) {
+      logger.warn(
+        "[KickBot] tokens.json file not available or invalid:",
+        fileError.message
+      );
     }
 
     // If we get here, no tokens are available
@@ -266,7 +297,9 @@ class KickBotService {
     }
 
     const url = `${this.apiBase}/public/v1/chat`;
-    const broadcasterId = parseInt(config.kick.broadcasterId || "2771761"); // Luisardito channel ID
+    const broadcasterId = Number.parseInt(
+      config.kick.broadcasterId || "2771761"
+    ); // Luisardito channel ID
     const payload = {
       type: "user", // Use 'user' instead of 'bot' for better compatibility
       content: String(message).trim().substring(0, 500), // Ensure it does not exceed the limit
@@ -546,10 +579,32 @@ class KickBotService {
   }
 
   /**
-   * Renews the access token using the refresh token from the file
+   * Renews the access token using the refresh token from the file.
+   * Concurrent calls share a single in-flight network request
+   * (single-flight) to avoid rotating the file refresh token twice.
    * @returns {Promise<string>} New access token
    */
-  async refreshAccessToken() {
+  refreshAccessToken() {
+    const key = "__file__";
+
+    if (this._refreshInFlight.has(key)) {
+      return this._refreshInFlight.get(key);
+    }
+
+    const promise = this._performFileRefresh().finally(() => {
+      this._refreshInFlight.delete(key);
+    });
+
+    this._refreshInFlight.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Internal file-based refresh implementation. Callers should use
+   * refreshAccessToken() which adds the single-flight guard.
+   * @returns {Promise<string>} New access token
+   */
+  async _performFileRefresh() {
     try {
       const tokens = await this.readTokensFromFile();
       if (!tokens || !tokens.refreshToken) {

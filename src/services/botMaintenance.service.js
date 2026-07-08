@@ -65,11 +65,11 @@ class BotMaintenanceService {
     try {
       logger.info("[BOT-MAINTENANCE] Starting scheduled maintenance...");
 
-      // 1. Clean up expired tokens
-      await this.cleanupExpiredTokens();
-
-      // 2. Renew all tokens expiring soon
+      // 1. Renew all tokens expiring soon (before cleanup so expired access tokens are refreshed, not deactivated)
       await this.refreshExpiringTokens();
+
+      // 2. Report on expired access tokens (refresh owns deactivation)
+      await this.cleanupExpiredTokens();
 
       // 3. Optional: simulate chat activity
       await this.simulateChatActivity();
@@ -81,7 +81,9 @@ class BotMaintenanceService {
   }
 
   /**
-   * Cleans up expired tokens
+   * Reports on active tokens whose access token has expired.
+   * Deactivation is owned by the refresh flow (_performRefresh on REFRESH_TOKEN_EXPIRED),
+   * so this method is logging/reporting-only and does NOT mutate is_active.
    */
   async cleanupExpiredTokens() {
     try {
@@ -94,23 +96,14 @@ class BotMaintenanceService {
       });
 
       if (expiredTokens.length > 0) {
-        await KickBotToken.update(
-          { is_active: false },
-          {
-            where: {
-              is_active: true,
-              token_expires_at: { [Op.lt]: now },
-            },
-          }
-        );
         logger.info(
-          `[BOT-MAINTENANCE] ${expiredTokens.length} expired tokens marked as inactive`
+          `[BOT-MAINTENANCE] ${expiredTokens.length} tokens have an expired access token; refresh owns deactivation`
         );
       } else {
-        logger.info("[BOT-MAINTENANCE] No expired tokens to clean up");
+        logger.info("[BOT-MAINTENANCE] No expired access tokens to report");
       }
     } catch (error) {
-      logger.error("[BOT-MAINTENANCE] Error cleaning tokens:", error.message);
+      logger.error("[BOT-MAINTENANCE] Error reporting tokens:", error.message);
     }
   }
 
