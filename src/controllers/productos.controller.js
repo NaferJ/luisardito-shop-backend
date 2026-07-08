@@ -5,112 +5,70 @@ const logger = require("../utils/logger");
 const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
 
-// List all (with price sort; default DESC). For public, usually only published.
-exports.listar = asyncHandler(async (req, res) => {
-  const where = {};
+const CANJES_COUNT_ATTRIBUTES = {
+  include: [
+    [
+      sequelize.literal(
+        "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
+      ),
+      "canjes_count",
+    ],
+  ],
+};
 
-  if (!req.user || req.user.rol_id <= 2) {
-    // Non-logged-in or basic users (role 1-2) only see published products
-    where.estado = "publicado";
-  }
-
-  // Sort support: ?sort=price_desc | price_asc | precio_desc | precio_asc
-  const sortParam = (req.query.sort || "").toString().toLowerCase();
-  let order;
-  switch (sortParam) {
+function parseSortOrder(sortParam) {
+  switch ((sortParam || "").toString().toLowerCase()) {
     case "price_asc":
     case "precio_asc":
-      order = [["precio", "ASC"]];
-      break;
+      return [["precio", "ASC"]];
     case "price_desc":
     case "precio_desc":
     default:
-      order = [["precio", "DESC"]];
-      break;
+      return [["precio", "DESC"]];
   }
+}
 
-  const productos = await Producto.findAll({
-    where,
-    order,
-    attributes: {
-      include: [
-        [
-          sequelize.literal(
-            "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
-          ),
-          "canjes_count",
-        ],
-      ],
-    },
-  });
-
-  // Add discount info to each product
-  const usuarioId = req.user ? req.user.id : null;
-  const productosConDescuentos = await Promise.all(
-    productos.map(async (producto) => {
-      const infoDescuento = await promocionService.calcularMejorDescuento(
-        producto.id,
-        producto.precio,
-        usuarioId
-      );
-
-      const promocionesActivas =
-        await promocionService.obtenerPromocionesActivasProducto(
-          producto.id,
-          usuarioId
-        );
-
-      return {
-        ...producto.toJSON(),
-        descuento: infoDescuento,
-        promociones_activas: promocionesActivas.map((p) => ({
-          id: p.id,
-          codigo: p.codigo,
-          titulo: p.titulo,
-          tipo_descuento: p.tipo_descuento,
-          valor_descuento: p.valor_descuento,
-        })),
-        promocion_id: infoDescuento.promocion
-          ? infoDescuento.promocion.id
-          : null,
-      };
-    })
-  );
-
-  res.json(productosConDescuentos);
-});
-
-exports.obtener = asyncHandler(async (req, res) => {
-  const producto = await Producto.findByPk(req.params.id, {
-    attributes: {
-      include: [
-        [
-          sequelize.literal(
-            "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
-          ),
-          "canjes_count",
-        ],
-      ],
-    },
-  });
-  if (!producto) throw new AppError("Not found", 404);
-
-  // Add discount info
-  const usuarioId = req.user ? req.user.id : null;
+async function enrichProductoWithDiscounts(producto, usuarioId) {
   const infoDescuento = await promocionService.calcularMejorDescuento(
     producto.id,
     producto.precio,
     usuarioId
   );
 
-  // Get active promotions for the product
   const promocionesActivas =
     await promocionService.obtenerPromocionesActivasProducto(
       producto.id,
       usuarioId
     );
 
-  res.json({
+  return {
+    ...producto.toJSON(),
+    descuento: infoDescuento,
+    promociones_activas: promocionesActivas.map((p) => ({
+      id: p.id,
+      codigo: p.codigo,
+      titulo: p.titulo,
+      tipo_descuento: p.tipo_descuento,
+      valor_descuento: p.valor_descuento,
+    })),
+    promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null,
+  };
+}
+
+async function buildProductoDetailResponse(producto, usuarioId) {
+  const infoDescuento = await promocionService.calcularMejorDescuento(
+    producto.id,
+    producto.precio,
+    usuarioId
+  );
+
+  const promocionesActivas =
+    await promocionService.obtenerPromocionesActivasProducto(
+      producto.id,
+      usuarioId
+    );
+
+  return {
     ...producto.toJSON(),
     descuento: infoDescuento,
     promociones_activas: promocionesActivas.map((p) => ({
@@ -125,7 +83,45 @@ exports.obtener = asyncHandler(async (req, res) => {
       requiere_codigo: p.requiere_codigo,
     })),
     promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null,
+  };
+}
+
+// List all (with price sort; default DESC). For public, usually only published.
+exports.listar = asyncHandler(async (req, res) => {
+  const where = {};
+
+  if (!req.user || req.user.rol_id <= 2) {
+    // Non-logged-in or basic users (role 1-2) only see published products
+    where.estado = "publicado";
+  }
+
+  const order = parseSortOrder(req.query.sort);
+
+  const productos = await Producto.findAll({
+    where,
+    order,
+    attributes: CANJES_COUNT_ATTRIBUTES,
   });
+
+  // Add discount info to each product
+  const usuarioId = req.user ? req.user.id : null;
+  const productosConDescuentos = await Promise.all(
+    productos.map((producto) =>
+      enrichProductoWithDiscounts(producto, usuarioId)
+    )
+  );
+
+  res.json(productosConDescuentos);
+});
+
+exports.obtener = asyncHandler(async (req, res) => {
+  const producto = await Producto.findByPk(req.params.id, {
+    attributes: CANJES_COUNT_ATTRIBUTES,
+  });
+  if (!producto) throw new AppError("Not found", 404);
+
+  const usuarioId = req.user ? req.user.id : null;
+  res.json(await buildProductoDetailResponse(producto, usuarioId));
 });
 
 exports.obtenerPorSlug = asyncHandler(async (req, res) => {
@@ -140,51 +136,13 @@ exports.obtenerPorSlug = asyncHandler(async (req, res) => {
 
   const producto = await Producto.findOne({
     where,
-    attributes: {
-      include: [
-        [
-          sequelize.literal(
-            "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
-          ),
-          "canjes_count",
-        ],
-      ],
-    },
+    attributes: CANJES_COUNT_ATTRIBUTES,
   });
 
   if (!producto) throw new AppError("Product not found", 404);
 
-  // Add discount info
   const usuarioId = req.user ? req.user.id : null;
-  const infoDescuento = await promocionService.calcularMejorDescuento(
-    producto.id,
-    producto.precio,
-    usuarioId
-  );
-
-  // Get active promotions for the product
-  const promocionesActivas =
-    await promocionService.obtenerPromocionesActivasProducto(
-      producto.id,
-      usuarioId
-    );
-
-  res.json({
-    ...producto.toJSON(),
-    descuento: infoDescuento,
-    promociones_activas: promocionesActivas.map((p) => ({
-      id: p.id,
-      codigo: p.codigo,
-      titulo: p.titulo,
-      descripcion: p.descripcion,
-      tipo_descuento: p.tipo_descuento,
-      valor_descuento: p.valor_descuento,
-      fecha_fin: p.fecha_fin,
-      metadata_visual: p.metadata_visual,
-      requiere_codigo: p.requiere_codigo,
-    })),
-    promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null,
-  });
+  res.json(await buildProductoDetailResponse(producto, usuarioId));
 });
 
 exports.crear = async (req, res) => {
@@ -277,16 +235,7 @@ exports.debugListar = async (req, res) => {
   try {
     const productos = await Producto.findAll({
       order: [["id", "ASC"]],
-      attributes: {
-        include: [
-          [
-            sequelize.literal(
-              "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
-            ),
-            "canjes_count",
-          ],
-        ],
-      },
+      attributes: CANJES_COUNT_ATTRIBUTES,
     });
 
     res.json({
@@ -310,66 +259,17 @@ exports.debugListar = async (req, res) => {
 
 // ADMIN endpoint: lists all products with canjes_count (requires auth/permission at route level)
 exports.listarAdmin = asyncHandler(async (req, res) => {
-  // Sort support as in public
-  const sortParam = (req.query.sort || "").toString().toLowerCase();
-  let order;
-  switch (sortParam) {
-    case "price_asc":
-    case "precio_asc":
-      order = [["precio", "ASC"]];
-      break;
-    case "price_desc":
-    case "precio_desc":
-    default:
-      order = [["precio", "DESC"]];
-      break;
-  }
+  const order = parseSortOrder(req.query.sort);
 
   const productos = await Producto.findAll({
     order,
-    attributes: {
-      include: [
-        [
-          sequelize.literal(
-            "(SELECT COUNT(*) FROM canjes c WHERE c.producto_id = Producto.id AND c.estado != 'devuelto')"
-          ),
-          "canjes_count",
-        ],
-      ],
-    },
+    attributes: CANJES_COUNT_ATTRIBUTES,
   });
 
   // Add discount info to each product
   // ADMIN: Do not filter by user - show all product promotions
   const productosConDescuentos = await Promise.all(
-    productos.map(async (producto) => {
-      const infoDescuento = await promocionService.calcularMejorDescuento(
-        producto.id,
-        producto.precio,
-        null // null = no user filter
-      );
-
-      const promocionesActivas =
-        await promocionService.obtenerPromocionesActivasProducto(
-          producto.id,
-          null
-        );
-
-      return {
-        ...producto.toJSON(),
-        descuento: infoDescuento,
-        promociones_activas: promocionesActivas.map((p) => ({
-          id: p.id,
-          codigo: p.codigo,
-          titulo: p.titulo,
-          tipo_descuento: p.tipo_descuento,
-          valor_descuento: p.valor_descuento,
-        })),
-        promocion_id: infoDescuento.promocion
-          ? infoDescuento.promocion.id
-          : null,
-      };
-    })
+    productos.map((producto) => enrichProductoWithDiscounts(producto, null))
   );
 
   res.json(productosConDescuentos);

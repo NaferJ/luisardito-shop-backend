@@ -48,6 +48,56 @@ async function enrichUserWithDiscordInfo(user) {
   };
 }
 
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function enrichUsuarioWithStatus(usuario, now, includeDiscord = false) {
+  if (includeDiscord) {
+    const { discord_info, display_name } =
+      await enrichUserWithDiscordInfo(usuario);
+    usuario.dataValues.display_name = display_name;
+    usuario.dataValues.discord_info = discord_info;
+  }
+
+  usuario.dataValues.vip_status = {
+    is_active:
+      usuario.is_vip &&
+      (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > now),
+    is_permanent: usuario.is_vip && !usuario.vip_expires_at,
+    expires_soon:
+      usuario.vip_expires_at &&
+      new Date(usuario.vip_expires_at) <= new Date(Date.now() + SEVEN_DAYS_MS),
+  };
+
+  if (usuario.user_id_ext) {
+    const userTracking = await KickUserTracking.findOne({
+      where: { kick_user_id: usuario.user_id_ext },
+    });
+
+    let subscriberInfo = {
+      is_active: false,
+      expires_soon: false,
+    };
+
+    if (userTracking?.is_subscribed) {
+      const expiresAt = userTracking.subscription_expires_at
+        ? new Date(userTracking.subscription_expires_at)
+        : null;
+      subscriberInfo = {
+        is_active: !expiresAt || expiresAt > now,
+        expires_soon:
+          expiresAt && expiresAt <= new Date(Date.now() + SEVEN_DAYS_MS),
+      };
+    }
+
+    usuario.dataValues.subscriber_status = subscriberInfo;
+  } else {
+    usuario.dataValues.subscriber_status = {
+      is_active: false,
+      expires_soon: false,
+    };
+  }
+}
+
 exports.crear = asyncHandler(async (req, res) => {
   const { producto_id } = req.body;
   const usuarioId = req.user.id;
@@ -221,56 +271,7 @@ exports.listar = asyncHandler(async (req, res) => {
   const now = new Date();
   for (const canje of canjes) {
     if (canje.Usuario) {
-      // Discord info
-      const { discord_info, display_name } = await enrichUserWithDiscordInfo(
-        canje.Usuario
-      );
-      canje.Usuario.dataValues.display_name = display_name;
-      canje.Usuario.dataValues.discord_info = discord_info;
-
-      // VIP info
-      canje.Usuario.dataValues.vip_status = {
-        is_active:
-          canje.Usuario.is_vip &&
-          (!canje.Usuario.vip_expires_at ||
-            new Date(canje.Usuario.vip_expires_at) > now),
-        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-        expires_soon:
-          canje.Usuario.vip_expires_at &&
-          new Date(canje.Usuario.vip_expires_at) <=
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      };
-
-      // Subscriber info
-      if (canje.Usuario.user_id_ext) {
-        const userTracking = await KickUserTracking.findOne({
-          where: { kick_user_id: canje.Usuario.user_id_ext },
-        });
-
-        let subscriberInfo = {
-          is_active: false,
-          expires_soon: false,
-        };
-
-        if (userTracking?.is_subscribed) {
-          const expiresAt = userTracking.subscription_expires_at
-            ? new Date(userTracking.subscription_expires_at)
-            : null;
-          subscriberInfo = {
-            is_active: !expiresAt || expiresAt > now,
-            expires_soon:
-              expiresAt &&
-              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          };
-        }
-
-        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-      } else {
-        canje.Usuario.dataValues.subscriber_status = {
-          is_active: false,
-          expires_soon: false,
-        };
-      }
+      await enrichUsuarioWithStatus(canje.Usuario, now, true);
     }
   }
 
@@ -289,49 +290,7 @@ exports.listarMios = asyncHandler(async (req, res) => {
   const now = new Date();
   for (const canje of canjes) {
     if (canje.Usuario) {
-      // VIP info
-      canje.Usuario.dataValues.vip_status = {
-        is_active:
-          canje.Usuario.is_vip &&
-          (!canje.Usuario.vip_expires_at ||
-            new Date(canje.Usuario.vip_expires_at) > now),
-        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-        expires_soon:
-          canje.Usuario.vip_expires_at &&
-          new Date(canje.Usuario.vip_expires_at) <=
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      };
-
-      // Subscriber info
-      if (canje.Usuario.user_id_ext) {
-        const userTracking = await KickUserTracking.findOne({
-          where: { kick_user_id: canje.Usuario.user_id_ext },
-        });
-
-        let subscriberInfo = {
-          is_active: false,
-          expires_soon: false,
-        };
-
-        if (userTracking?.is_subscribed) {
-          const expiresAt = userTracking.subscription_expires_at
-            ? new Date(userTracking.subscription_expires_at)
-            : null;
-          subscriberInfo = {
-            is_active: !expiresAt || expiresAt > now,
-            expires_soon:
-              expiresAt &&
-              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          };
-        }
-
-        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-      } else {
-        canje.Usuario.dataValues.subscriber_status = {
-          is_active: false,
-          expires_soon: false,
-        };
-      }
+      await enrichUsuarioWithStatus(canje.Usuario, now, false);
     }
   }
 
@@ -355,56 +314,7 @@ exports.listarPorUsuario = asyncHandler(async (req, res) => {
   const now = new Date();
   for (const canje of canjes) {
     if (canje.Usuario) {
-      // Discord info
-      const { discord_info, display_name } = await enrichUserWithDiscordInfo(
-        canje.Usuario
-      );
-      canje.Usuario.dataValues.display_name = display_name;
-      canje.Usuario.dataValues.discord_info = discord_info;
-
-      // VIP info
-      canje.Usuario.dataValues.vip_status = {
-        is_active:
-          canje.Usuario.is_vip &&
-          (!canje.Usuario.vip_expires_at ||
-            new Date(canje.Usuario.vip_expires_at) > now),
-        is_permanent: canje.Usuario.is_vip && !canje.Usuario.vip_expires_at,
-        expires_soon:
-          canje.Usuario.vip_expires_at &&
-          new Date(canje.Usuario.vip_expires_at) <=
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      };
-
-      // Subscriber info
-      if (canje.Usuario.user_id_ext) {
-        const userTracking = await KickUserTracking.findOne({
-          where: { kick_user_id: canje.Usuario.user_id_ext },
-        });
-
-        let subscriberInfo = {
-          is_active: false,
-          expires_soon: false,
-        };
-
-        if (userTracking?.is_subscribed) {
-          const expiresAt = userTracking.subscription_expires_at
-            ? new Date(userTracking.subscription_expires_at)
-            : null;
-          subscriberInfo = {
-            is_active: !expiresAt || expiresAt > now,
-            expires_soon:
-              expiresAt &&
-              expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          };
-        }
-
-        canje.Usuario.dataValues.subscriber_status = subscriberInfo;
-      } else {
-        canje.Usuario.dataValues.subscriber_status = {
-          is_active: false,
-          expires_soon: false,
-        };
-      }
+      await enrichUsuarioWithStatus(canje.Usuario, now, true);
     }
   }
 
