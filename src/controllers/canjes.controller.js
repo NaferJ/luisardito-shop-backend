@@ -12,6 +12,8 @@ const KickBotService = require("../services/kickBot.service");
 const promocionService = require("../services/promocion.service");
 const NotificacionService = require("../services/notificacion.service");
 const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Helper to enrich user info with Discord data
@@ -194,7 +196,7 @@ exports.crear = async (req, res) => {
   }
 };
 
-exports.listar = async (req, res) => {
+exports.listar = asyncHandler(async (req, res) => {
   // Route protected by permiso('gestionar_canjes'): return all canjes
   const search = req.query.search ? req.query.search.trim() : undefined;
   const estado = req.query.estado ? req.query.estado.trim() : undefined;
@@ -273,10 +275,10 @@ exports.listar = async (req, res) => {
   }
 
   res.json(canjes);
-};
+});
 
 // List only the authenticated user's canjes (for "My Canjes")
-exports.listarMios = async (req, res) => {
+exports.listarMios = asyncHandler(async (req, res) => {
   const canjes = await Canje.findAll({
     where: { usuario_id: req.user.id },
     include: [Usuario, Producto],
@@ -334,14 +336,14 @@ exports.listarMios = async (req, res) => {
   }
 
   res.json(canjes);
-};
+});
 
 // List canjes for a specific user (admin/management view)
-exports.listarPorUsuario = async (req, res) => {
+exports.listarPorUsuario = asyncHandler(async (req, res) => {
   const { usuarioId } = req.params;
   const id = Number(usuarioId);
   if (!Number.isInteger(id) || id <= 0) {
-    return res.status(400).json({ error: "Invalid usuarioId" });
+    throw new AppError("Invalid usuarioId", 400);
   }
   const canjes = await Canje.findAll({
     where: { usuario_id: id },
@@ -407,7 +409,7 @@ exports.listarPorUsuario = async (req, res) => {
   }
 
   res.json(canjes);
-};
+});
 
 exports.actualizarEstado = async (req, res) => {
   const t = await Canje.sequelize.transaction();
