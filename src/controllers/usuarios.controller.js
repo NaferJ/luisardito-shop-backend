@@ -14,7 +14,7 @@ const AppError = require("../utils/AppError");
 /**
  * Helper function to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @returns {Promise<Object>} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
