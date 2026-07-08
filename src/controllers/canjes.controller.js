@@ -48,26 +48,28 @@ async function enrichUserWithDiscordInfo(user) {
   };
 }
 
-exports.crear = async (req, res) => {
-  const t = await Canje.sequelize.transaction();
-  try {
-    const { producto_id } = req.body;
-    const usuarioId = req.user.id;
+exports.crear = asyncHandler(async (req, res) => {
+  const { producto_id } = req.body;
+  const usuarioId = req.user.id;
 
+  const {
+    canje,
+    producto,
+    precioFinal,
+    infoDescuento,
+    promocionAplicada,
+    nickname,
+  } = await Canje.sequelize.transaction(async (t) => {
     const producto = await Producto.findByPk(producto_id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
     if (!producto || producto.estado !== "publicado") {
-      await t.rollback();
-      return res.status(404).json({ error: "Product not available" });
+      throw new AppError("Product not available", 404);
     }
     const stockActual = Number.isFinite(producto.stock) ? producto.stock : 0;
     if (stockActual <= 0) {
-      await t.rollback();
-      return res
-        .status(400)
-        .json({ error: "No stock available for this product" });
+      throw new AppError("No stock available for this product", 400);
     }
 
     const usuario = await Usuario.findByPk(usuarioId, {
@@ -75,8 +77,7 @@ exports.crear = async (req, res) => {
       lock: t.LOCK.UPDATE,
     });
     if (!usuario) {
-      await t.rollback();
-      return res.status(404).json({ error: "User not found" });
+      throw new AppError("User not found", 404);
     }
 
     // Calculate price with discount if there is a promotion
@@ -90,12 +91,7 @@ exports.crear = async (req, res) => {
     const promocionAplicada = infoDescuento.promocion;
 
     if (usuario.puntos < precioFinal) {
-      await t.rollback();
-      return res.status(400).json({
-        error: "Insufficient points",
-        precio_requerido: precioFinal,
-        puntos_disponibles: usuario.puntos,
-      });
+      throw new AppError("Insufficient points", 400);
     }
 
     // 2) Create canje with historical price and promotion
@@ -161,40 +157,44 @@ exports.crear = async (req, res) => {
       t
     );
 
-    await t.commit();
+    return {
+      canje,
+      producto,
+      precioFinal,
+      infoDescuento,
+      promocionAplicada,
+      nickname: usuario.nickname,
+    };
+  });
 
-    // Send automatic message to Kick chat
-    try {
-      const mensajeDescuento = promocionAplicada
-        ? ` with ${infoDescuento.porcentajeDescuento}% discount (${promocionAplicada.titulo})`
-        : "";
-      const mensaje = `${usuario.nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
-      await KickBotService.sendMessage(mensaje);
-      logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
-    } catch (botError) {
-      logger.error("[Canje] Error sending message to chat:", botError.message);
-      // Do not fail the response if the bot message fails
-    }
-
-    res.status(201).json({
-      ...canje.toJSON(),
-      precio_original: producto.precio,
-      precio_pagado: precioFinal,
-      descuento_aplicado: infoDescuento.descuento,
-      promocion: promocionAplicada
-        ? {
-            id: promocionAplicada.id,
-            titulo: promocionAplicada.titulo,
-            tipo: promocionAplicada.tipo_descuento,
-            valor: promocionAplicada.valor_descuento,
-          }
-        : null,
-    });
-  } catch (err) {
-    await t.rollback();
-    res.status(500).json({ error: err.message });
+  // Send automatic message to Kick chat
+  try {
+    const mensajeDescuento = promocionAplicada
+      ? ` with ${infoDescuento.porcentajeDescuento}% discount (${promocionAplicada.titulo})`
+      : "";
+    const mensaje = `${nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
+    await KickBotService.sendMessage(mensaje);
+    logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
+  } catch (botError) {
+    logger.error("[Canje] Error sending message to chat:", botError.message);
+    // Do not fail the response if the bot message fails
   }
-};
+
+  res.status(201).json({
+    ...canje.toJSON(),
+    precio_original: producto.precio,
+    precio_pagado: precioFinal,
+    descuento_aplicado: infoDescuento.descuento,
+    promocion: promocionAplicada
+      ? {
+          id: promocionAplicada.id,
+          titulo: promocionAplicada.titulo,
+          tipo: promocionAplicada.tipo_descuento,
+          valor: promocionAplicada.valor_descuento,
+        }
+      : null,
+  });
+});
 
 exports.listar = asyncHandler(async (req, res) => {
   // Route protected by permiso('gestionar_canjes'): return all canjes
