@@ -28,6 +28,63 @@ const DEFAULT_EVENTS = [
  * @param {string} tokenProviderId - ID of the user providing the token (optional, defaults to broadcaster)
  * @returns {Promise<Object>} Subscription result
  */
+async function processSubscriptionResults(
+  subscriptionsData,
+  broadcasterUserId
+) {
+  const createdSubscriptions = [];
+  const errors = [];
+
+  logger.info(
+    `[Auto Subscribe] Processing ${subscriptionsData.length} subscriptions received from Kick`
+  );
+
+  for (const sub of subscriptionsData) {
+    if (sub.subscription_id && !sub.error) {
+      try {
+        let localSub = await KickEventSubscription.findOne({
+          where: { subscription_id: sub.subscription_id },
+        });
+
+        if (localSub) {
+          await localSub.update({
+            broadcaster_user_id: parseInt(broadcasterUserId),
+            event_type: sub.name,
+            event_version: sub.version,
+            method: "webhook",
+            status: "active",
+          });
+          logger.info(
+            `[Auto Subscribe] ${sub.name} updated (ID: ${localSub.id})`
+          );
+        } else {
+          localSub = await KickEventSubscription.create({
+            subscription_id: sub.subscription_id,
+            broadcaster_user_id: parseInt(broadcasterUserId),
+            event_type: sub.name,
+            event_version: sub.version,
+            method: "webhook",
+            status: "active",
+          });
+          logger.info(
+            `[Auto Subscribe] ${sub.name} created (ID: ${localSub.id})`
+          );
+        }
+
+        createdSubscriptions.push(localSub);
+      } catch (dbError) {
+        logger.error(`[Auto Subscribe] DB error ${sub.name}:`, dbError.message);
+        errors.push({ event: sub.name, error: dbError.message });
+      }
+    } else if (sub.error) {
+      errors.push({ event: sub.name, error: sub.error });
+      logger.error(`[Auto Subscribe] ${sub.name}:`, sub.error);
+    }
+  }
+
+  return { createdSubscriptions, errors };
+}
+
 async function autoSubscribeToEvents(
   accessToken,
   broadcasterUserId,
@@ -65,63 +122,11 @@ async function autoSubscribeToEvents(
       timeout: 15000,
     });
 
-    // Process successful subscriptions
     const subscriptionsData = response.data.data || [];
-    const createdSubscriptions = [];
-    const errors = [];
-
-    logger.info(
-      `[Auto Subscribe] Processing ${subscriptionsData.length} subscriptions received from Kick`
+    const { createdSubscriptions, errors } = await processSubscriptionResults(
+      subscriptionsData,
+      broadcasterUserId
     );
-
-    for (const sub of subscriptionsData) {
-      if (sub.subscription_id && !sub.error) {
-        try {
-          // First check if it already exists
-          let localSub = await KickEventSubscription.findOne({
-            where: { subscription_id: sub.subscription_id },
-          });
-
-          if (localSub) {
-            // If it exists, update the data
-            await localSub.update({
-              broadcaster_user_id: parseInt(broadcasterUserId),
-              event_type: sub.name,
-              event_version: sub.version,
-              method: "webhook",
-              status: "active",
-            });
-            logger.info(
-              `[Auto Subscribe] ${sub.name} updated (ID: ${localSub.id})`
-            );
-          } else {
-            // If it does not exist, create new
-            localSub = await KickEventSubscription.create({
-              subscription_id: sub.subscription_id,
-              broadcaster_user_id: parseInt(broadcasterUserId),
-              event_type: sub.name,
-              event_version: sub.version,
-              method: "webhook",
-              status: "active",
-            });
-            logger.info(
-              `[Auto Subscribe] ${sub.name} created (ID: ${localSub.id})`
-            );
-          }
-
-          createdSubscriptions.push(localSub);
-        } catch (dbError) {
-          logger.error(
-            `[Auto Subscribe] DB error ${sub.name}:`,
-            dbError.message
-          );
-          errors.push({ event: sub.name, error: dbError.message });
-        }
-      } else if (sub.error) {
-        errors.push({ event: sub.name, error: sub.error });
-        logger.error(`[Auto Subscribe] ${sub.name}:`, sub.error);
-      }
-    }
 
     // Update token provider record
     await KickBroadcasterToken.update(

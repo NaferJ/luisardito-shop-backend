@@ -104,6 +104,12 @@ class TokenRefreshService {
           logger.error(
             `[Token Refresh Service] Could not refresh token for ${broadcasterToken.kick_username}`
           );
+
+          // Mark as inactive if it cannot be refreshed
+          await broadcasterToken.update({
+            is_active: false,
+            subscription_error: "Token expired and could not be refreshed",
+          });
         }
       } else {
         logger.info(
