@@ -265,8 +265,11 @@ class KickBotService {
           return await this.refreshAccessToken();
         }
       }
-    } catch (_fileError) {
-      logger.warn("[KickBot] tokens.json file not available or invalid");
+    } catch (fileError) {
+      logger.warn(
+        "[KickBot] tokens.json file not available or invalid:",
+        fileError.message
+      );
     }
 
     // If we get here, no tokens are available
@@ -294,7 +297,9 @@ class KickBotService {
     }
 
     const url = `${this.apiBase}/public/v1/chat`;
-    const broadcasterId = parseInt(config.kick.broadcasterId || "2771761"); // Luisardito channel ID
+    const broadcasterId = Number.parseInt(
+      config.kick.broadcasterId || "2771761"
+    ); // Luisardito channel ID
     const payload = {
       type: "user", // Use 'user' instead of 'bot' for better compatibility
       content: String(message).trim().substring(0, 500), // Ensure it does not exceed the limit
