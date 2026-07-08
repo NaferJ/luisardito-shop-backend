@@ -574,10 +574,32 @@ class KickBotService {
   }
 
   /**
-   * Renews the access token using the refresh token from the file
+   * Renews the access token using the refresh token from the file.
+   * Concurrent calls share a single in-flight network request
+   * (single-flight) to avoid rotating the file refresh token twice.
    * @returns {Promise<string>} New access token
    */
-  async refreshAccessToken() {
+  refreshAccessToken() {
+    const key = "__file__";
+
+    if (this._refreshInFlight.has(key)) {
+      return this._refreshInFlight.get(key);
+    }
+
+    const promise = this._performFileRefresh().finally(() => {
+      this._refreshInFlight.delete(key);
+    });
+
+    this._refreshInFlight.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Internal file-based refresh implementation. Callers should use
+   * refreshAccessToken() which adds the single-flight guard.
+   * @returns {Promise<string>} New access token
+   */
+  async _performFileRefresh() {
     try {
       const tokens = await this.readTokensFromFile();
       if (!tokens || !tokens.refreshToken) {

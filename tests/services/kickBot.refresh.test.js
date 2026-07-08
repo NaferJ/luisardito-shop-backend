@@ -79,4 +79,23 @@ describe("KickBotService.refreshToken single-flight", () => {
     await kickBotService.refreshToken(record);
     expect(axios.post).toHaveBeenCalledTimes(2);
   });
+
+  test("concurrent refreshAccessToken calls share a single axios.post and resolve to the same token string", async () => {
+    mockTokenResponse();
+    kickBotService.readTokensFromFile = jest.fn().mockResolvedValue({
+      accessToken: "old-access-token",
+      refreshToken: "old-refresh-token",
+      expiresAt: Date.now(),
+      refreshExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+    });
+
+    const p1 = kickBotService.refreshAccessToken();
+    const p2 = kickBotService.refreshAccessToken();
+    const [t1, t2] = await Promise.all([p1, p2]);
+
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    expect(t1).toBe(t2);
+    expect(t1).toBe("new-access-token");
+    expect(kickBotService.writeTokensToFile).toHaveBeenCalledTimes(1);
+  });
 });
