@@ -531,16 +531,14 @@ exports.actualizarEstado = asyncHandler(async (req, res) => {
 });
 
 // Return a canje: mark as 'devuelto', refund points and restock
-exports.devolverCanje = async (req, res) => {
-  const t = await Canje.sequelize.transaction();
-  try {
+exports.devolverCanje = asyncHandler(async (req, res) => {
+  const result = await Canje.sequelize.transaction(async (t) => {
     const { id } = req.params;
     const { motivo } = req.body;
     const adminNickname = req.user.nickname;
 
     if (!motivo || String(motivo).trim() === "") {
-      await t.rollback();
-      return res.status(400).json({ error: "Return reason is required" });
+      throw new AppError("Return reason is required", 400);
     }
 
     const canje = await Canje.findByPk(id, {
@@ -549,20 +547,18 @@ exports.devolverCanje = async (req, res) => {
       lock: t.LOCK.UPDATE,
     });
     if (!canje) {
-      await t.rollback();
-      return res.status(404).json({ error: "Canje not found" });
+      throw new AppError("Canje not found", 404);
     }
 
     if (canje.estado === "devuelto") {
-      await t.rollback();
-      return res.status(400).json({ error: "Canje is already returned" });
+      throw new AppError("Canje is already returned", 400);
     }
 
     if (!["pendiente", "entregado"].includes(canje.estado)) {
-      await t.rollback();
-      return res
-        .status(400)
-        .json({ error: "Only pending or delivered canjes can be returned" });
+      throw new AppError(
+        "Only pending or delivered canjes can be returned",
+        400
+      );
     }
 
     const usuario = canje.Usuario;
@@ -608,9 +604,7 @@ exports.devolverCanje = async (req, res) => {
       t
     );
 
-    await t.commit();
-
-    res.json({
+    return {
       message: "Canje returned successfully",
       canje: { id: canje.id, estado: "devuelto" },
       usuario: {
@@ -624,12 +618,8 @@ exports.devolverCanje = async (req, res) => {
         nombre: producto.nombre,
         stockNuevo: stockActual + 1,
       },
-    });
-  } catch (error) {
-    await t.rollback();
-    logger.error("Error returning canje:", error);
-    res
-      .status(500)
-      .json({ error: "Internal server error", message: error.message });
-  }
-};
+    };
+  });
+
+  res.json(result);
+});
