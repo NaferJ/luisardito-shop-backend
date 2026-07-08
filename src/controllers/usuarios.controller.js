@@ -8,11 +8,13 @@ const {
 } = require("../models");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
 const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Helper function to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @returns {Promise<Object>} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -43,10 +45,10 @@ async function enrichUserWithDiscordInfo(user) {
 }
 
 // Show authenticated user data
-exports.me = async (req, res) => {
+exports.me = asyncHandler(async (req, res) => {
   const user = req.user;
   if (!user) {
-    return res.status(401).json({ error: "User not authenticated" });
+    throw new AppError("User not authenticated", 401);
   }
 
   const {
@@ -126,7 +128,7 @@ exports.me = async (req, res) => {
     creado,
     actualizado,
   });
-};
+});
 
 // Optional: edit profile
 exports.updateMe = async (req, res) => {
@@ -666,38 +668,31 @@ exports.syncKickInfo = async (req, res) => {
 };
 
 // Update user points (admin by permission)
-exports.actualizarPuntos = async (req, res) => {
-  const t = await Usuario.sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const { puntos, motivo, operation = "set" } = req.body; // operation: 'add' | 'set'
-    const adminNickname = req.user.nickname;
+exports.actualizarPuntos = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { puntos, motivo, operation = "set" } = req.body; // operation: 'add' | 'set'
+  const adminNickname = req.user.nickname;
 
-    const puntosNum = Number(puntos);
+  const puntosNum = Number(puntos);
 
+  const result = await Usuario.sequelize.transaction(async (t) => {
     // Validate operation
     if (!["add", "set"].includes(operation)) {
-      await t.rollback();
-      return res
-        .status(400)
-        .json({ error: "Operation must be 'add' or 'set'" });
+      throw new AppError("Operation must be 'add' or 'set'", 400);
     }
 
     // For 'add', allow negatives (subtract); for 'set', do not allow negatives
     if (!Number.isFinite(puntosNum) || (operation === "set" && puntosNum < 0)) {
-      await t.rollback();
-      return res.status(400).json({ error: "Invalid points amount" });
+      throw new AppError("Invalid points amount", 400);
     }
 
     if (!motivo || String(motivo).trim() === "") {
-      await t.rollback();
-      return res.status(400).json({ error: "Reason is required" });
+      throw new AppError("Reason is required", 400);
     }
 
     const usuario = await Usuario.findByPk(id, { transaction: t });
     if (!usuario) {
-      await t.rollback();
-      return res.status(404).json({ error: "User not found" });
+      throw new AppError("User not found", 404);
     }
 
     const puntosAnteriores = usuario.puntos;
@@ -727,9 +722,7 @@ exports.actualizarPuntos = async (req, res) => {
       { transaction: t }
     );
 
-    await t.commit();
-
-    res.json({
+    return {
       message: "Points updated successfully",
       usuario: {
         id: usuario.id,
@@ -741,15 +734,11 @@ exports.actualizarPuntos = async (req, res) => {
       operation, // Report which operation was performed
       motivo,
       administrador: adminNickname,
-    });
-  } catch (error) {
-    await t.rollback();
-    logger.error("Error updating points:", error);
-    res
-      .status(500)
-      .json({ error: "Internal server error", message: error.message });
-  }
-};
+    };
+  });
+
+  res.json(result);
+});
 
 /**
  * DEBUG: Check current user permissions
