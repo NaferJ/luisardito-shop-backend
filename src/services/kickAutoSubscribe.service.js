@@ -267,6 +267,20 @@ async function performBroadcasterRefresh(broadcasterToken) {
         error.response.status,
         error.response.data
       );
+
+      if (error.response.status === 400 || error.response.status === 401) {
+        try {
+          await broadcasterToken.update({
+            is_active: false,
+            subscription_error: "Token expired and could not be refreshed",
+          });
+        } catch (dbError) {
+          logger.error(
+            "[Token Refresh] Error deactivating token:",
+            dbError.message
+          );
+        }
+      }
     }
     return false;
   }
