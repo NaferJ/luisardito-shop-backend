@@ -15,16 +15,44 @@ class KickBotService {
     this.botUsername = config.kickBot?.username || "Bot";
     this.tokensFile = path.join(__dirname, "../../tokens/tokens.json");
 
+    // In-flight refresh promises keyed by token identity (single-flight guard)
+    this._refreshInFlight = new Map();
+
     // Start background auto-refresh
     this.startAutoRefresh();
   }
 
   /**
-   * Renews an access token using the refresh token
+   * Renews an access token using the refresh token.
+   * Concurrent calls for the same token share a single in-flight network
+   * request (single-flight) to avoid race conditions caused by Kick's
+   * rotating refresh tokens.
    * @param {Object} tokenRecord - KickBotToken model instance
    * @returns {Promise<Object>} - Updated token
    */
-  async refreshToken(tokenRecord) {
+  refreshToken(tokenRecord) {
+    const key =
+      tokenRecord.id != null ? tokenRecord.id : tokenRecord.kick_username;
+
+    if (this._refreshInFlight.has(key)) {
+      return this._refreshInFlight.get(key);
+    }
+
+    const promise = this._performRefresh(tokenRecord).finally(() => {
+      this._refreshInFlight.delete(key);
+    });
+
+    this._refreshInFlight.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Internal refresh implementation. Callers should use refreshToken()
+   * which adds the single-flight guard.
+   * @param {Object} tokenRecord - KickBotToken model instance
+   * @returns {Promise<Object>} - Updated token
+   */
+  async _performRefresh(tokenRecord) {
     try {
       logger.info(
         `[KickBot] Attempting to renew token for ${tokenRecord.kick_username}`
