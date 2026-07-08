@@ -411,18 +411,17 @@ exports.listarPorUsuario = asyncHandler(async (req, res) => {
   res.json(canjes);
 });
 
-exports.actualizarEstado = async (req, res) => {
-  const t = await Canje.sequelize.transaction();
-  try {
-    const { id } = req.params;
-    const { estado } = req.body;
-    const estadosPermitidos = ["pendiente", "entregado", "cancelado"];
+exports.actualizarEstado = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { estado } = req.body;
+  const estadosPermitidos = ["pendiente", "entregado", "cancelado"];
 
+  const result = await Canje.sequelize.transaction(async (t) => {
     if (!estadosPermitidos.includes(estado)) {
-      await t.rollback();
-      return res.status(400).json({
-        error: `Invalid state. Allowed: ${estadosPermitidos.join(", ")}. To return use PUT /api/canjes/:id/devolver.`,
-      });
+      throw new AppError(
+        `Invalid state. Allowed: ${estadosPermitidos.join(", ")}. To return use PUT /api/canjes/:id/devolver.`,
+        400
+      );
     }
 
     const canje = await Canje.findByPk(id, {
@@ -434,8 +433,7 @@ exports.actualizarEstado = async (req, res) => {
     });
 
     if (!canje) {
-      await t.rollback();
-      return res.status(404).json({ error: "Not found" });
+      throw new AppError("Not found", 404);
     }
 
     // Update canje state
@@ -505,8 +503,6 @@ exports.actualizarEstado = async (req, res) => {
       }
     }
 
-    await t.commit();
-
     // Check if VIP should be granted for the response
     const shouldGrantVip =
       estado === "entregado" &&
@@ -517,7 +513,7 @@ exports.actualizarEstado = async (req, res) => {
       (!canje.Usuario?.vip_expires_at ||
         new Date(canje.Usuario.vip_expires_at) > new Date());
 
-    res.json({
+    return {
       message: "State updated",
       id: canje.id,
       estado: canje.estado,
@@ -528,13 +524,11 @@ exports.actualizarEstado = async (req, res) => {
             vip_granted: shouldGrantVip && !isAlreadyVip,
           }
         : null,
-    });
-  } catch (err) {
-    await t.rollback();
-    logger.error("Error updating canje state:", err);
-    res.status(400).json({ error: err.message });
-  }
-};
+    };
+  });
+
+  res.json(result);
+});
 
 // Return a canje: mark as 'devuelto', refund points and restock
 exports.devolverCanje = async (req, res) => {
