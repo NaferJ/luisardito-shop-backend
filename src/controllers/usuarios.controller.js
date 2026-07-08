@@ -8,6 +8,8 @@ const {
 } = require("../models");
 const { extractAvatarUrl, getKickUserData } = require("../utils/kickApi");
 const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Helper function to enrich user info with Discord data
@@ -43,10 +45,10 @@ async function enrichUserWithDiscordInfo(user) {
 }
 
 // Show authenticated user data
-exports.me = async (req, res) => {
+exports.me = asyncHandler(async (req, res) => {
   const user = req.user;
   if (!user) {
-    return res.status(401).json({ error: "User not authenticated" });
+    throw new AppError("User not authenticated", 401);
   }
 
   const {
@@ -126,7 +128,7 @@ exports.me = async (req, res) => {
     creado,
     actualizado,
   });
-};
+});
 
 // Optional: edit profile
 exports.updateMe = async (req, res) => {
