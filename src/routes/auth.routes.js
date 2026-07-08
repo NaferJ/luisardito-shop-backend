@@ -1,13 +1,20 @@
 const router = require("express").Router();
 const authCtrl = require("../controllers/auth.controller");
+const validate = require("../middleware/validate.middleware");
+const {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  logoutSchema,
+} = require("../schemas/auth.schema");
 
 // Auth local
-router.post("/register", authCtrl.registerLocal);
-router.post("/login", authCtrl.loginLocal);
+router.post("/register", validate(registerSchema), authCtrl.registerLocal);
+router.post("/login", validate(loginSchema), authCtrl.loginLocal);
 
 // Refresh token y logout
-router.post("/refresh", authCtrl.refreshToken);
-router.post("/logout", authCtrl.logout);
+router.post("/refresh", validate(refreshSchema), authCtrl.refreshToken);
+router.post("/logout", validate(logoutSchema), authCtrl.logout);
 router.post("/logout-all", authCtrl.logoutAll);
 
 // OAuth de Kick
