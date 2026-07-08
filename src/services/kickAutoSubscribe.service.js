@@ -3,6 +3,9 @@ const config = require("../../config");
 const { KickEventSubscription, KickBroadcasterToken } = require("../models");
 const logger = require("../utils/logger");
 
+// In-flight refresh promises keyed by broadcaster identity (single-flight guard)
+const refreshInFlight = new Map();
+
 /**
  * List of events to auto-subscribe to
  */
@@ -207,11 +210,12 @@ async function hasActiveSubscriptions(broadcasterUserId) {
 }
 
 /**
- * Refreshes the access token using the refresh token
+ * Internal refresh implementation. Callers should use refreshAccessToken()
+ * which adds the single-flight guard.
  * @param {Object} broadcasterToken - Broadcaster token instance
  * @returns {Promise<boolean>} True if refreshed successfully
  */
-async function refreshAccessToken(broadcasterToken) {
+async function performBroadcasterRefresh(broadcasterToken) {
   try {
     if (!broadcasterToken.refresh_token) {
       logger.error("[Token Refresh] No refresh token available");
@@ -269,6 +273,32 @@ async function refreshAccessToken(broadcasterToken) {
 }
 
 /**
+ * Refreshes the access token using the refresh token.
+ * Concurrent calls for the same broadcaster share a single in-flight
+ * network request (single-flight) to avoid race conditions caused by
+ * Kick's rotating refresh tokens.
+ * @param {Object} broadcasterToken - Broadcaster token instance
+ * @returns {Promise<boolean>} True if refreshed successfully
+ */
+function refreshAccessToken(broadcasterToken) {
+  const key =
+    broadcasterToken.id ??
+    broadcasterToken.kick_user_id ??
+    broadcasterToken.kick_username;
+
+  if (refreshInFlight.has(key)) {
+    return refreshInFlight.get(key);
+  }
+
+  const promise = performBroadcasterRefresh(broadcasterToken).finally(() => {
+    refreshInFlight.delete(key);
+  });
+
+  refreshInFlight.set(key, promise);
+  return promise;
+}
+
+/**
  * Verifies and refreshes the token if necessary
  * @param {string} broadcasterUserId - Broadcaster ID
  * @returns {Promise<string|null>} Valid access token or null
@@ -321,4 +351,5 @@ module.exports = {
   refreshAccessToken,
   ensureValidToken,
   DEFAULT_EVENTS,
+  refreshInFlight,
 };
