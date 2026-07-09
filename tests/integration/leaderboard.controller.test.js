@@ -14,21 +14,39 @@ jest.mock("../../src/utils/logger", () => ({
 }));
 
 const service = require("../../src/services/leaderboard.service");
+const AppError = require("../../src/utils/AppError");
 const controller = require("../../src/controllers/leaderboard.controller");
 
 function createRes() {
   return {
     statusCode: 200,
     body: null,
-    status(c) {
+    status: jest.fn(function (c) {
       this.statusCode = c;
       return this;
-    },
-    json(b) {
+    }),
+    json: jest.fn(function (b) {
       this.body = b;
       return this;
-    },
+    }),
   };
+}
+
+function expectNextCalledWithAppError(next, res, statusCode, message) {
+  expect(next).toHaveBeenCalledTimes(1);
+  const err = next.mock.calls[0][0];
+  expect(err).toBeInstanceOf(AppError);
+  expect(err.statusCode).toBe(statusCode);
+  expect(err.message).toBe(message);
+  expect(res.status).not.toHaveBeenCalled();
+  expect(res.json).not.toHaveBeenCalled();
+}
+
+function expectNextCalledWithError(next, res) {
+  expect(next).toHaveBeenCalledTimes(1);
+  expect(next.mock.calls[0][0]).toBeInstanceOf(Error);
+  expect(res.status).not.toHaveBeenCalled();
+  expect(res.json).not.toHaveBeenCalled();
 }
 
 describe("leaderboard.controller", () => {
@@ -53,55 +71,53 @@ describe("leaderboard.controller", () => {
     test("limit > 500 -> 400", async () => {
       const req = { query: { limit: "501" }, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getLeaderboard(req, res);
+      await controller.getLeaderboard(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Limit must be between 1 and 500",
-      });
+      expectNextCalledWithAppError(
+        next,
+        res,
+        400,
+        "Limit must be between 1 and 500"
+      );
     });
 
     test("limit < 1 -> 400", async () => {
       const req = { query: { limit: "-1" }, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getLeaderboard(req, res);
+      await controller.getLeaderboard(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Limit must be between 1 and 500",
-      });
+      expectNextCalledWithAppError(
+        next,
+        res,
+        400,
+        "Limit must be between 1 and 500"
+      );
     });
 
     test("offset < 0 -> 400", async () => {
       const req = { query: { offset: "-1" }, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getLeaderboard(req, res);
+      await controller.getLeaderboard(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Offset cannot be negative",
-      });
+      expectNextCalledWithAppError(next, res, 400, "Offset cannot be negative");
     });
 
-    test("service rejects -> 500", async () => {
+    test("service rejects -> next(err)", async () => {
       service.getLeaderboard.mockRejectedValue(new Error("boom"));
 
       const req = { query: {}, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getLeaderboard(req, res);
+      await controller.getLeaderboard(req, res, next);
 
-      expect(res.statusCode).toBe(500);
-      expect(res.body).toMatchObject({
-        success: false,
-        message: "Error fetching leaderboard",
-      });
+      expectNextCalledWithError(next, res);
     });
   });
 
@@ -113,14 +129,11 @@ describe("leaderboard.controller", () => {
         user: {},
       };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getUserHistory(req, res);
+      await controller.getUserHistory(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Invalid user ID",
-      });
+      expectNextCalledWithAppError(next, res, 400, "Invalid user ID");
     });
 
     test("days > 90 -> 400", async () => {
@@ -130,14 +143,16 @@ describe("leaderboard.controller", () => {
         user: {},
       };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getUserHistory(req, res);
+      await controller.getUserHistory(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Days must be between 1 and 90",
-      });
+      expectNextCalledWithAppError(
+        next,
+        res,
+        400,
+        "Days must be between 1 and 90"
+      );
     });
 
     test("days < 1 -> 400", async () => {
@@ -147,14 +162,16 @@ describe("leaderboard.controller", () => {
         user: {},
       };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getUserHistory(req, res);
+      await controller.getUserHistory(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "Days must be between 1 and 90",
-      });
+      expectNextCalledWithAppError(
+        next,
+        res,
+        400,
+        "Days must be between 1 and 90"
+      );
     });
 
     test("happy path - passes service result, 200", async () => {
@@ -192,19 +209,16 @@ describe("leaderboard.controller", () => {
       expect(res.body).toBe(sentinel);
     });
 
-    test("service rejects -> 500", async () => {
+    test("service rejects -> next(err)", async () => {
       service.getLeaderboardStats.mockRejectedValue(new Error("boom"));
 
       const req = { query: {}, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.getStats(req, res);
+      await controller.getStats(req, res, next);
 
-      expect(res.statusCode).toBe(500);
-      expect(res.body).toMatchObject({
-        success: false,
-        message: "Error fetching stats",
-      });
+      expectNextCalledWithError(next, res);
     });
   });
 
@@ -270,14 +284,16 @@ describe("leaderboard.controller", () => {
     test("days < 7 -> 400", async () => {
       const req = { query: { days: "5" }, params: {}, user: {} };
       const res = createRes();
+      const next = jest.fn();
 
-      await controller.cleanOldSnapshots(req, res);
+      await controller.cleanOldSnapshots(req, res, next);
 
-      expect(res.statusCode).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        message: "You must keep at least 7 days of history",
-      });
+      expectNextCalledWithAppError(
+        next,
+        res,
+        400,
+        "You must keep at least 7 days of history"
+      );
     });
 
     test("happy path - passes service result, 200", async () => {
