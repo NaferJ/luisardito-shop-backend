@@ -113,7 +113,7 @@ function parseModeratorCommand(content) {
         flags.aliases = flagValue
           .split(",")
           .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
-          .filter((a) => a);
+          .filter(Boolean);
       } else if (flagName === "cooldown") {
         flags.cooldown = parseInt(flagValue) || 3;
       } else if (flagName === "desc") {
