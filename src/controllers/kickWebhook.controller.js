@@ -103,7 +103,9 @@ exports.diagnosticTokensDB = asyncHandler(async (req, res) => {
 
     // 3. Check main broadcaster subscriptions
     const suscripciones = await KickEventSubscription.findAll({
-      where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
+      where: {
+        broadcaster_user_id: Number.parseInt(config.kick.broadcasterId),
+      },
       attributes: [
         "id",
         "subscription_id",
@@ -246,7 +248,9 @@ exports.diagnosticTokens = asyncHandler(async (req, res) => {
 
     // 4. Check current subscriptions
     const suscripciones = await KickEventSubscription.findAll({
-      where: { broadcaster_user_id: parseInt(broadcasterPrincipal) },
+      where: {
+        broadcaster_user_id: Number.parseInt(broadcasterPrincipal),
+      },
       attributes: ["event_type", "subscription_id", "status"],
     });
 
@@ -798,10 +802,7 @@ async function isStreamLive() {
     const redis = getRedisClient();
     const isLive = await redis.get("stream:is_live");
 
-    if (isLive !== "true") {
-      return false;
-    }
-    return true;
+    return isLive === "true";
   } catch (redisError) {
     logger.error(`[STREAM] Error checking status:`, redisError.message);
     logger.info(`[STREAM] Assuming LIVE due to Redis error`);
@@ -901,16 +902,8 @@ async function resolveSubscriberStatus(kickUserId, kickUsername) {
 /**
  * Award chat points to a user within a DB transaction.
  */
-async function awardChatPoints(
-  usuario,
-  pointsToAward,
-  userType,
-  isVipActive,
-  isSubscriber,
-  payload,
-  kickUserId,
-  kickUsername
-) {
+async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
+  const { isVipActive, isSubscriber, payload, kickUserId, kickUsername } = ctx;
   const COOLDOWN_MS = 5 * 60 * 1000;
   const cooldownKey = `chat_cooldown:${kickUserId}`;
   const now = new Date();
@@ -1123,16 +1116,13 @@ async function handleChatMessage(payload, _metadata) {
     }
 
     // AWARD POINTS (only if passed Redis cooldown)
-    await awardChatPoints(
-      usuario,
-      pointsToAward,
-      userType,
+    await awardChatPoints(usuario, pointsToAward, userType, {
       isVipActive,
       isSubscriber,
       payload,
       kickUserId,
-      kickUsername
-    );
+      kickUsername,
+    });
   } catch (error) {
     logger.error("[Chat Message] Error:", error.message);
   }
@@ -2276,7 +2266,7 @@ exports.systemStatus = asyncHandler(async (req, res) => {
     // Count active subscriptions
     const subscriptions = await KickEventSubscription.count({
       where: {
-        broadcaster_user_id: parseInt(config.kick.broadcasterId),
+        broadcaster_user_id: Number.parseInt(config.kick.broadcasterId),
         status: "active",
       },
     });
@@ -2331,7 +2321,7 @@ async function saveSubscriptionDebugResult(sub, broadcasterId) {
   const { KickEventSubscription } = require("../models");
   const dataToSave = {
     subscription_id: sub.subscription_id,
-    broadcaster_user_id: parseInt(broadcasterId),
+    broadcaster_user_id: Number.parseInt(broadcasterId),
     event_type: sub.name,
     event_version: sub.version,
     method: "webhook",
@@ -2427,7 +2417,7 @@ exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
     // 2. Simulate Kick API call (single event for testing)
     const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
     const testPayload = {
-      broadcaster_user_id: parseInt(config.kick.broadcasterId),
+      broadcaster_user_id: Number.parseInt(config.kick.broadcasterId),
       events: [{ name: "chat.message.sent", version: 1 }],
       method: "webhook",
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
@@ -2475,7 +2465,7 @@ exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
     // 4. Clean up any subscription created during testing
     await KickEventSubscription.destroy({
       where: {
-        broadcaster_user_id: parseInt(config.kick.broadcasterId),
+        broadcaster_user_id: Number.parseInt(config.kick.broadcasterId),
         event_type: "chat.message.sent",
       },
     });
@@ -2707,7 +2697,9 @@ exports.debugAppTokenWebhooks = asyncHandler(async (req, res) => {
     // 3. Check all subscriptions in DB
     const { KickEventSubscription } = require("../models");
     const allSubscriptions = await KickEventSubscription.findAll({
-      where: { broadcaster_user_id: parseInt(config.kick.broadcasterId) },
+      where: {
+        broadcaster_user_id: Number.parseInt(config.kick.broadcasterId),
+      },
       attributes: [
         "id",
         "subscription_id",
@@ -2897,7 +2889,7 @@ exports.debugBotrixMigration = asyncHandler(async (req, res) => {
       },
       content: `@${kick_username} tiene ${points_amount} puntos.`,
       broadcaster: {
-        user_id: parseInt(process.env.KICK_BROADCASTER_ID || "2771761"),
+        user_id: Number.parseInt(process.env.KICK_BROADCASTER_ID || "2771761"),
       },
     };
 
