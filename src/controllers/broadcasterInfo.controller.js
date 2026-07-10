@@ -20,8 +20,8 @@ exports.getBroadcasterInfo = asyncHandler(async (req, res) => {
       success: true,
       data: broadcasterInfo,
     });
-  } catch (_error) {
-    throw new AppError("Error fetching broadcaster info", 500);
+  } catch (error) {
+    throw new AppError("Error fetching broadcaster info", 500, error.message);
   }
 });
 
@@ -38,7 +38,7 @@ exports.getStreamStatus = asyncHandler(async (req, res) => {
       success: true,
       data: status,
     });
-  } catch (_error) {
-    throw new AppError("Error fetching stream status", 500);
+  } catch (error) {
+    throw new AppError("Error fetching stream status", 500, error.message);
   }
 });

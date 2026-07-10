@@ -71,6 +71,7 @@ describe("broadcasterInfo.controller migration characterization", () => {
       expect(err).toBeInstanceOf(AppError);
       expect(err.statusCode).toBe(500);
       expect(err.message).toBe("Error fetching broadcaster info");
+      expect(err.details).toBe("Redis connection lost");
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });
@@ -113,6 +114,7 @@ describe("broadcasterInfo.controller migration characterization", () => {
       expect(err).toBeInstanceOf(AppError);
       expect(err.statusCode).toBe(500);
       expect(err.message).toBe("Error fetching stream status");
+      expect(err.details).toBe("Redis connection lost");
       expect(res.status).not.toHaveBeenCalled();
       expect(res.json).not.toHaveBeenCalled();
     });
@@ -147,6 +149,7 @@ describe("broadcasterInfo.controller migration characterization", () => {
         "error",
         "Error fetching broadcaster info"
       );
+      expect(response.body).toHaveProperty("details", "Redis down");
       expect(response.body).not.toHaveProperty("success");
     });
 
@@ -165,6 +168,7 @@ describe("broadcasterInfo.controller migration characterization", () => {
         "error",
         "Error fetching stream status"
       );
+      expect(response.body).toHaveProperty("details", "Redis down");
       expect(response.body).not.toHaveProperty("success");
     });
   });
