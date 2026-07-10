@@ -24,7 +24,7 @@ const AppError = require("../utils/AppError");
 /**
  * Helper to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @returns {Promise<{discord_info: Object|null, display_name: string}>} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -125,8 +125,7 @@ exports.loginLocal = asyncHandler(async (req, res) => {
   const { nickname, password } = req.body;
   const user = await Usuario.findOne({ where: { nickname } });
   if (
-    !user ||
-    !user.password_hash ||
+    !user?.password_hash ||
     !(await bcrypt.compare(password, user.password_hash))
   ) {
     throw new AppError("Invalid credentials", 401);
@@ -756,8 +755,8 @@ exports.callbackKickBot = async (req, res) => {
 
     // Also save to tokens.json for auto-refresh
     try {
-      const fs = require("fs").promises;
-      const path = require("path");
+      const fs = require("node:fs").promises;
+      const path = require("node:path");
       const tokensFile = path.join(__dirname, "../../tokens/tokens.json");
       const fullPath = path.resolve(tokensFile);
       logger.info("[Kick OAuth][callbackKickBot] Saving tokens to:", fullPath);
