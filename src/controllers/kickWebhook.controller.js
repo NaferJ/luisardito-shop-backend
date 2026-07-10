@@ -236,10 +236,13 @@ exports.diagnosticTokens = asyncHandler(async (req, res) => {
     );
 
     // 3. Check if main broadcaster has a token
-    const broadcasterToken = allTokens.find(
+    const hasBroadcasterToken = allTokens.some(
       (t) => t.kick_user_id.toString() === broadcasterPrincipal.toString()
     );
-    logger.info("[DIAGNOSTIC] Main broadcaster has token?", !!broadcasterToken);
+    logger.info(
+      "[DIAGNOSTIC] Main broadcaster has token?",
+      hasBroadcasterToken
+    );
 
     // 4. Check current subscriptions
     const suscripciones = await KickEventSubscription.findAll({
@@ -253,10 +256,10 @@ exports.diagnosticTokens = asyncHandler(async (req, res) => {
     );
 
     // 5. Check which user is NaferJ (ID 33112734)
-    const naferToken = allTokens.find(
+    const hasNaferToken = allTokens.some(
       (t) => t.kick_user_id.toString() === "33112734"
     );
-    logger.info("[DIAGNOSTIC] NaferJ (33112734) has token?", !!naferToken);
+    logger.info("[DIAGNOSTIC] NaferJ (33112734) has token?", hasNaferToken);
     logger.info(
       "[DIAGNOSTIC] Is NaferJ the main broadcaster?",
       broadcasterPrincipal.toString() === "33112734"
@@ -264,9 +267,9 @@ exports.diagnosticTokens = asyncHandler(async (req, res) => {
 
     const diagnostico = {
       broadcaster_principal_config: broadcasterPrincipal,
-      broadcaster_principal_tiene_token: !!broadcasterToken,
+      broadcaster_principal_tiene_token: hasBroadcasterToken,
       nafer_user_id: "33112734",
-      nafer_tiene_token: !!naferToken,
+      nafer_tiene_token: hasNaferToken,
       nafer_es_broadcaster_principal:
         broadcasterPrincipal.toString() === "33112734",
       total_tokens_activos: allTokens.length,
@@ -489,6 +492,23 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
 // ============================================================================
 
 /**
+ * Send chat message notifying user they are not registered for reward redemption
+ */
+async function notifyUnregisteredReward(kickUsername, localReward) {
+  try {
+    const bot = require("../services/kickBot.service");
+    const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
+    await bot.sendMessage(message);
+    logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
+  } catch (botError) {
+    logger.error(
+      `[Reward Redemption] Error sending chat message:`,
+      botError.message
+    );
+  }
+}
+
+/**
  * Handle channel reward redemptions
  */
 async function handleRewardRedemption(payload, _metadata) {
@@ -525,20 +545,7 @@ async function handleRewardRedemption(payload, _metadata) {
         `[Reward Redemption] User ${kickUsername} not registered in store`
       );
 
-      // Send chat message notifying user IMMEDIATELY
-      try {
-        const bot = require("../services/kickBot.service");
-        const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
-        await bot.sendMessage(message);
-        logger.info(
-          `[Reward Redemption] Message sent to ${kickUsername} in chat`
-        );
-      } catch (botError) {
-        logger.error(
-          `[Reward Redemption] Error sending chat message:`,
-          botError.message
-        );
-      }
+      await notifyUnregisteredReward(kickUsername, localReward);
       return;
     }
 
@@ -657,6 +664,360 @@ async function handleRewardRedemption(payload, _metadata) {
 }
 
 /**
+ * Process Botrix migration (points + watchtime) for a chat message.
+ * Returns true if the message was fully consumed by migration.
+ */
+async function processBotrixMigration(payload, botrixConfig) {
+  if (botrixConfig.migration_enabled) {
+    logger.info("[BOTRIX DEBUG] Checking message for points migration...");
+    const botrixResult =
+      await BotrixMigrationService.processChatMessage(payload);
+    logger.info("[BOTRIX DEBUG] Processing result:", botrixResult);
+
+    if (botrixResult.processed) {
+      logger.info(
+        `[BOTRIX] Points migration processed: ${JSON.stringify(botrixResult.details)}`
+      );
+      return true;
+    }
+    logger.info(`[BOTRIX] Points not processed: ${botrixResult.reason}`);
+  }
+
+  if (botrixConfig.watchtime_migration_enabled) {
+    logger.info(
+      "[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration..."
+    );
+    const watchtimeResult =
+      await BotrixMigrationService.processWatchtimeMessage(payload);
+    logger.info("[BOTRIX WATCHTIME DEBUG] Processing result:", watchtimeResult);
+
+    if (watchtimeResult.processed) {
+      logger.info(
+        `[BOTRIX WATCHTIME] Watchtime migration processed: ${JSON.stringify(watchtimeResult.details)}`
+      );
+      return true;
+    }
+    logger.info(
+      `[BOTRIX WATCHTIME] Watchtime not processed: ${watchtimeResult.reason}`
+    );
+  }
+
+  return false;
+}
+
+/**
+ * Process moderator commands from chat. Returns true if message was consumed.
+ */
+async function processModeratorCommands(payload) {
+  try {
+    const content = String(payload.content || "").trim();
+    const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
+
+    if (!modCommands.some((cmd) => content.startsWith(cmd))) {
+      return false;
+    }
+
+    const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
+    const modResult =
+      await ModeratorCommandsService.processModeratorCommand(payload);
+
+    if (!modResult.processed) {
+      return false;
+    }
+
+    logger.info(
+      `[MOD-CMD] Moderator command processed: ${content.split(/\s+/)[0]}`
+    );
+
+    if (modResult.message) {
+      try {
+        const bot = require("../services/kickBot.service");
+        await bot.sendMessage(modResult.message);
+        logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
+      } catch (botError) {
+        logger.error(
+          `[MOD-CMD] Error sending response to chat:`,
+          botError.message
+        );
+      }
+    }
+
+    return true;
+  } catch (modErr) {
+    logger.error(
+      "[MOD-CMD] Error handling moderator commands:",
+      modErr.message
+    );
+    return false;
+  }
+}
+
+/**
+ * Process bot commands from chat.
+ */
+async function processBotCommands(payload, kickUserId, kickUsername) {
+  try {
+    const content = String(payload.content || "").trim();
+    if (!content.startsWith("!")) {
+      return;
+    }
+
+    const bot = require("../services/kickBot.service");
+    const commandHandler = require("../services/kickBotCommandHandler.service");
+
+    const commandProcessed = await commandHandler.processMessage(
+      content,
+      kickUserId,
+      payload.channel?.username || "luisardito",
+      bot,
+      null,
+      "kick",
+      null,
+      kickUsername
+    );
+
+    if (commandProcessed) {
+      logger.info(
+        `[BOT-COMMAND] Command processed successfully for ${kickUsername}`
+      );
+    } else {
+      logger.debug(
+        `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`
+      );
+    }
+  } catch (cmdErr) {
+    logger.error("[Chat Command] Error handling commands:", cmdErr.message);
+  }
+}
+
+/**
+ * Check if stream is live via Redis. Returns true if live (or on Redis error, assumes live).
+ */
+async function isStreamLive() {
+  try {
+    const redis = getRedisClient();
+    const isLive = await redis.get("stream:is_live");
+
+    if (isLive !== "true") {
+      return false;
+    }
+    return true;
+  } catch (redisError) {
+    logger.error(`[STREAM] Error checking status:`, redisError.message);
+    logger.info(`[STREAM] Assuming LIVE due to Redis error`);
+    return true;
+  }
+}
+
+/**
+ * Process watchtime tracking for a user on every chat message.
+ */
+async function processWatchtime(kickUserId, usuarioId) {
+  try {
+    const wtNow = new Date();
+    const redis = getRedisClient();
+    const WATCHTIME_COOLDOWN_MS = 60 * 1000;
+    const watchtimeKey = `watchtime_cooldown:${kickUserId}`;
+
+    const wasSet = await redis.set(
+      watchtimeKey,
+      wtNow.toISOString(),
+      "PX",
+      WATCHTIME_COOLDOWN_MS,
+      "NX"
+    );
+
+    if (!wasSet) {
+      logger.info(`[WATCHTIME] User ${kickUserId} on cooldown (1 min)`);
+      return;
+    }
+
+    const [, created] = await UserWatchtime.findOrCreate({
+      where: { usuario_id: usuarioId },
+      defaults: {
+        usuario_id: usuarioId,
+        kick_user_id: kickUserId,
+        total_watchtime_minutes: 1,
+        message_count: 1,
+        first_message_date: wtNow,
+        last_message_at: wtNow,
+      },
+    });
+
+    if (!created) {
+      await UserWatchtime.increment(
+        { total_watchtime_minutes: 1, message_count: 1 },
+        { where: { usuario_id: usuarioId } }
+      );
+      await UserWatchtime.update(
+        { last_message_at: wtNow },
+        { where: { usuario_id: usuarioId } }
+      );
+    }
+
+    logger.info(`[WATCHTIME] User ${kickUserId} +1 minute`);
+  } catch (watchtimeError) {
+    logger.error(`[WATCHTIME] Error:`, watchtimeError.message);
+  }
+}
+
+/**
+ * Resolve subscriber status for a Kick user, deactivating expired subscriptions.
+ */
+async function resolveSubscriberStatus(kickUserId, kickUsername) {
+  const userTracking = await KickUserTracking.findOne({
+    where: { kick_user_id: kickUserId },
+  });
+
+  const now = new Date();
+  if (!userTracking?.is_subscribed) {
+    return { isSubscriber: false, userTracking };
+  }
+
+  const expiresAt = userTracking.subscription_expires_at
+    ? new Date(userTracking.subscription_expires_at)
+    : null;
+
+  if (expiresAt && expiresAt > now) {
+    return { isSubscriber: true, userTracking };
+  }
+
+  // Expired subscription: deactivate flag
+  try {
+    await KickUserTracking.update(
+      { is_subscribed: false },
+      { where: { kick_user_id: kickUserId } }
+    );
+    logger.info(
+      `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`
+    );
+  } catch (e) {
+    logger.error("[CHAT] Error deactivating expired subscription:", e.message);
+  }
+
+  return { isSubscriber: false, userTracking };
+}
+
+/**
+ * Award chat points to a user within a DB transaction.
+ */
+async function awardChatPoints(
+  usuario,
+  pointsToAward,
+  userType,
+  isVipActive,
+  isSubscriber,
+  payload,
+  kickUserId,
+  kickUsername
+) {
+  const COOLDOWN_MS = 5 * 60 * 1000;
+  const cooldownKey = `chat_cooldown:${kickUserId}`;
+  const now = new Date();
+
+  logger.info(`[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`);
+
+  try {
+    const redis = getRedisClient();
+    const wasSet = await redis.set(
+      cooldownKey,
+      now.toISOString(),
+      "PX",
+      COOLDOWN_MS,
+      "NX"
+    );
+
+    if (!wasSet) {
+      const ttl = await redis.pttl(cooldownKey);
+      const remainingSecs = Math.ceil(ttl / 1000);
+      logger.info(`[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`);
+      logger.info(
+        `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`
+      );
+      return;
+    }
+
+    logger.info(`[REDIS COOLDOWN] ${kickUsername} can receive points`);
+    logger.info(
+      `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`
+    );
+  } catch (redisError) {
+    logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
+    logger.info(
+      `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`
+    );
+  }
+
+  const transaction = await sequelize.transaction({
+    isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
+  });
+
+  try {
+    await usuario.increment("puntos", { by: pointsToAward }, { transaction });
+
+    const usuarioActualizado = await usuario.reload({ transaction });
+    if (usuarioActualizado.puntos > usuarioActualizado.max_puntos) {
+      await usuarioActualizado.update(
+        { max_puntos: usuarioActualizado.puntos },
+        { transaction }
+      );
+      logger.info(
+        `[MAX POINTS] New max points: ${usuarioActualizado.puntos} for ${kickUsername}`
+      );
+    }
+
+    await HistorialPunto.create(
+      {
+        usuario_id: usuario.id,
+        puntos: pointsToAward,
+        tipo: "ganado",
+        concepto: `Mensaje en chat (${userType})`,
+        kick_event_data: {
+          event_type: "chat.message.sent",
+          message_id: payload.message_id,
+          kick_user_id: kickUserId,
+          kick_username: kickUsername,
+          user_type: userType,
+          is_vip: isVipActive,
+          is_subscriber: isSubscriber,
+        },
+      },
+      { transaction }
+    );
+
+    await transaction.commit();
+
+    logger.info(
+      `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`
+    );
+    logger.info(
+      `[Chat Message] Total user points: ${usuarioActualizado.puntos}`
+    );
+  } catch (transactionError) {
+    await transaction.rollback();
+    logger.error(
+      `[Chat Message] Transaction error for ${kickUsername}:`,
+      transactionError.message
+    );
+
+    try {
+      const redis = getRedisClient();
+      await redis.del(cooldownKey);
+      logger.info(
+        `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`
+      );
+    } catch (redisCleanupError) {
+      logger.error(
+        `[REDIS COOLDOWN] Error cleaning cooldown:`,
+        redisCleanupError.message
+      );
+    }
+
+    throw transactionError;
+  }
+}
+
+/**
  * Handle chat messages
  */
 async function handleChatMessage(payload, _metadata) {
@@ -666,146 +1027,33 @@ async function handleChatMessage(payload, _metadata) {
     const kickUsername = sender.username;
 
     // PRIORITY 1: Check if it's a Botrix migration
-    // Only process if migration is enabled
     const { BotrixMigrationConfig } = require("../models");
     const botrixConfig = await BotrixMigrationConfig.getConfig();
 
-    if (botrixConfig.migration_enabled) {
-      logger.info("[BOTRIX DEBUG] Checking message for points migration...");
-      const botrixResult =
-        await BotrixMigrationService.processChatMessage(payload);
-      logger.info("[BOTRIX DEBUG] Processing result:", botrixResult);
-
-      if (botrixResult.processed) {
-        logger.info(
-          `[BOTRIX] Points migration processed: ${JSON.stringify(botrixResult.details)}`
-        );
-        return;
-      } else {
-        logger.info(`[BOTRIX] Points not processed: ${botrixResult.reason}`);
-      }
-    }
-
-    // Process watchtime migration
-    if (botrixConfig.watchtime_migration_enabled) {
-      logger.info(
-        "[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration..."
-      );
-      const watchtimeResult =
-        await BotrixMigrationService.processWatchtimeMessage(payload);
-      logger.info(
-        "[BOTRIX WATCHTIME DEBUG] Processing result:",
-        watchtimeResult
-      );
-
-      if (watchtimeResult.processed) {
-        logger.info(
-          `[BOTRIX WATCHTIME] Watchtime migration processed: ${JSON.stringify(watchtimeResult.details)}`
-        );
-        return;
-      } else {
-        logger.info(
-          `[BOTRIX WATCHTIME] Watchtime not processed: ${watchtimeResult.reason}`
-        );
-      }
-    }
+    const botrixConsumed = await processBotrixMigration(payload, botrixConfig);
+    if (botrixConsumed) return;
 
     // ==========================================
     // MODERATOR COMMANDS (Command management from chat)
     // Processed BEFORE regular commands and points
     // ==========================================
-    try {
-      const content = String(payload.content || "").trim();
-      const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
-
-      if (modCommands.some((cmd) => content.startsWith(cmd))) {
-        const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
-        const modResult =
-          await ModeratorCommandsService.processModeratorCommand(payload);
-
-        if (modResult.processed) {
-          logger.info(
-            `[MOD-CMD] Moderator command processed: ${content.split(/\s+/)[0]}`
-          );
-
-          // Send response to chat if there's a message
-          if (modResult.message) {
-            try {
-              const bot = require("../services/kickBot.service");
-              await bot.sendMessage(modResult.message);
-              logger.info(
-                `[MOD-CMD] Response sent to chat: ${modResult.message}`
-              );
-            } catch (botError) {
-              logger.error(
-                `[MOD-CMD] Error sending response to chat:`,
-                botError.message
-              );
-            }
-          }
-
-          return; // End processing here
-        }
-      }
-    } catch (modErr) {
-      logger.error(
-        "[MOD-CMD] Error handling moderator commands:",
-        modErr.message
-      );
-    }
+    const modConsumed = await processModeratorCommands(payload);
+    if (modConsumed) return;
 
     // ==========================================
     // BOT COMMANDS (Dynamic system from DB)
     // Always responded to, regardless of stream status
     // ==========================================
-    try {
-      const content = String(payload.content || "").trim();
-      if (content.startsWith("!")) {
-        const bot = require("../services/kickBot.service");
-        const commandHandler = require("../services/kickBotCommandHandler.service");
-
-        // Process command dynamically from database
-        const commandProcessed = await commandHandler.processMessage(
-          content,
-          kickUserId, // Use numeric ID to search in user_id_ext
-          payload.channel?.username || "luisardito",
-          bot,
-          null, // No message context for webhooks
-          "kick", // Specify platform
-          null, // No discordUserId
-          kickUsername // Pass displayName for @ in responses
-        );
-
-        if (commandProcessed) {
-          logger.info(
-            `[BOT-COMMAND] Command processed successfully for ${kickUsername}`
-          );
-        } else {
-          logger.debug(
-            `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`
-          );
-        }
-      }
-    } catch (cmdErr) {
-      logger.error("[Chat Command] Error handling commands:", cmdErr.message);
-    }
+    await processBotCommands(payload, kickUserId, kickUsername);
 
     // PRIORITY 2: Check if stream is live (for points, not for commands)
-    try {
-      const redis = getRedisClient();
-      const isLive = await redis.get("stream:is_live");
-
-      if (isLive !== "true") {
-        logger.info(`[STREAM] OFFLINE - No points awarded to ${kickUsername}`);
-        return; // DO NOT CONTINUE
-      }
-
-      logger.info(`[STREAM] LIVE - Processing points for ${kickUsername}`);
-    } catch (redisError) {
-      logger.error(`[STREAM] Error checking status:`, redisError.message);
-      logger.info(`[STREAM] Assuming LIVE due to Redis error`);
-      // Fallback: continue if Redis fails (to avoid breaking the system)
+    const live = await isStreamLive();
+    if (!live) {
+      logger.info(`[STREAM] OFFLINE - No points awarded to ${kickUsername}`);
+      return;
     }
+
+    logger.info(`[STREAM] LIVE - Processing points for ${kickUsername}`);
 
     // Check if user exists in our DB
     const usuario = await Usuario.findOne({
@@ -820,7 +1068,6 @@ async function handleChatMessage(payload, _metadata) {
     }
 
     // Sync full profile (username and avatar) if changed (with 24h throttling)
-    // The webhook ALWAYS brings sender.profile_picture per Kick documentation
     await syncUserProfileIfNeeded(
       usuario,
       kickUsername,
@@ -829,56 +1076,8 @@ async function handleChatMessage(payload, _metadata) {
       sender.profile_picture
     );
 
-    // ============================================================================
     // WATCHTIME: Processed on EVERY message (live stream + registered user)
-    // 1-minute cooldown to avoid +1min spam from flood
-    // ============================================================================
-    try {
-      const wtNow = new Date();
-      const redis = getRedisClient();
-      const WATCHTIME_COOLDOWN_MS = 60 * 1000; // 1 minute
-      const watchtimeKey = `watchtime_cooldown:${kickUserId}`;
-
-      const wasSet = await redis.set(
-        watchtimeKey,
-        wtNow.toISOString(),
-        "PX",
-        WATCHTIME_COOLDOWN_MS,
-        "NX"
-      );
-
-      if (!wasSet) {
-        logger.info(`[WATCHTIME] ${kickUsername} on cooldown (1 min)`);
-      } else {
-        const [, created] = await UserWatchtime.findOrCreate({
-          where: { usuario_id: usuario.id },
-          defaults: {
-            usuario_id: usuario.id,
-            kick_user_id: kickUserId,
-            total_watchtime_minutes: 1,
-            message_count: 1,
-            first_message_date: wtNow,
-            last_message_at: wtNow,
-          },
-        });
-
-        if (!created) {
-          await UserWatchtime.increment(
-            { total_watchtime_minutes: 1, message_count: 1 },
-            { where: { usuario_id: usuario.id } }
-          );
-          await UserWatchtime.update(
-            { last_message_at: wtNow },
-            { where: { usuario_id: usuario.id } }
-          );
-        }
-
-        logger.info(`[WATCHTIME] ${kickUsername} +1 minute`);
-      }
-    } catch (watchtimeError) {
-      logger.error(`[WATCHTIME] Error:`, watchtimeError.message);
-      // Do not block the rest of processing
-    }
+    await processWatchtime(kickUserId, usuario.id);
 
     // Get points configuration
     const configs = await KickPointsConfig.findAll({
@@ -891,38 +1090,12 @@ async function handleChatMessage(payload, _metadata) {
     });
 
     // Determine if subscriber (validating expiration)
-    const userTracking = await KickUserTracking.findOne({
-      where: { kick_user_id: kickUserId },
-    });
+    const { isSubscriber } = await resolveSubscriberStatus(
+      kickUserId,
+      kickUsername
+    );
 
     const now = new Date();
-    let isSubscriber = false;
-    if (userTracking?.is_subscribed) {
-      const expiresAt = userTracking.subscription_expires_at
-        ? new Date(userTracking.subscription_expires_at)
-        : null;
-      if (expiresAt && expiresAt > now) {
-        isSubscriber = true;
-      } else {
-        // Expired subscription: deactivate flag to avoid sub points
-        try {
-          await KickUserTracking.update(
-            { is_subscribed: false },
-            { where: { kick_user_id: kickUserId } }
-          );
-          logger.info(
-            `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`
-          );
-        } catch (e) {
-          logger.error(
-            "[CHAT] Error deactivating expired subscription:",
-            e.message
-          );
-        }
-        isSubscriber = false;
-      }
-    }
-
     let basePoints = isSubscriber
       ? configMap["chat_points_subscriber"] || 0
       : configMap["chat_points_regular"] || 0;
@@ -936,7 +1109,6 @@ async function handleChatMessage(payload, _metadata) {
 
     if (isSubscriber) {
       userType = "subscriber";
-      // Points already assigned in basePoints (chat_points_subscriber)
     } else if (isVipActive && configMap["chat_points_vip"]) {
       pointsToAward = configMap["chat_points_vip"];
       userType = "vip";
@@ -950,132 +1122,17 @@ async function handleChatMessage(payload, _metadata) {
       return;
     }
 
-    // ============================================================================
-    // REDIS COOLDOWN: Ultra-fast and atomic (for 1000 msg/min)
-    // ============================================================================
-    const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
-    const cooldownKey = `chat_cooldown:${kickUserId}`;
-
-    logger.info(
-      `[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`
-    );
-
-    try {
-      const redis = getRedisClient();
-
-      // SET NX PX: SET if NOT exists, with automatic expiration
-      // Returns "OK" if key was created, null if it already existed
-      const wasSet = await redis.set(
-        cooldownKey,
-        now.toISOString(),
-        "PX", // Milliseconds
-        COOLDOWN_MS,
-        "NX" // Only if NOT exists
-      );
-
-      if (!wasSet) {
-        // Key already exists = active cooldown
-        const ttl = await redis.pttl(cooldownKey); // TTL in milliseconds
-        const remainingSecs = Math.ceil(ttl / 1000);
-
-        logger.info(
-          `[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`
-        );
-        logger.info(
-          `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`
-        );
-
-        return; // DO NOT CONTINUE - DO NOT AWARD POINTS
-      }
-
-      // If we got here: key created successfully = can receive points
-      logger.info(`[REDIS COOLDOWN] ${kickUsername} can receive points`);
-      logger.info(
-        `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`
-      );
-    } catch (redisError) {
-      logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
-      logger.info(
-        `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`
-      );
-      // For maximum availability: continue
-      // For maximum consistency: return;
-    }
-
-    // ============================================================================
     // AWARD POINTS (only if passed Redis cooldown)
-    // ============================================================================
-    const transaction = await sequelize.transaction({
-      isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
-    });
-
-    try {
-      // Award points
-      await usuario.increment("puntos", { by: pointsToAward }, { transaction });
-
-      // Update max_puntos if necessary
-      const usuarioActualizado = await usuario.reload({ transaction });
-      if (usuarioActualizado.puntos > usuarioActualizado.max_puntos) {
-        await usuarioActualizado.update(
-          { max_puntos: usuarioActualizado.puntos },
-          { transaction }
-        );
-        logger.info(
-          `[MAX POINTS] New max points: ${usuarioActualizado.puntos} for ${kickUsername}`
-        );
-      }
-
-      // Register in history
-      await HistorialPunto.create(
-        {
-          usuario_id: usuario.id,
-          puntos: pointsToAward,
-          tipo: "ganado",
-          concepto: `Mensaje en chat (${userType})`,
-          kick_event_data: {
-            event_type: "chat.message.sent",
-            message_id: payload.message_id,
-            kick_user_id: kickUserId,
-            kick_username: kickUsername,
-            user_type: userType,
-            is_vip: isVipActive,
-            is_subscriber: isSubscriber,
-          },
-        },
-        { transaction }
-      );
-
-      await transaction.commit();
-
-      logger.info(
-        `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`
-      );
-      logger.info(
-        `[Chat Message] Total user points: ${usuarioActualizado.puntos}`
-      );
-    } catch (transactionError) {
-      await transaction.rollback();
-      logger.error(
-        `[Chat Message] Transaction error for ${kickUsername}:`,
-        transactionError.message
-      );
-
-      // If DB fails, delete Redis cooldown to allow retry
-      try {
-        const redis = getRedisClient();
-        await redis.del(cooldownKey);
-        logger.info(
-          `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`
-        );
-      } catch (redisCleanupError) {
-        logger.error(
-          `[REDIS COOLDOWN] Error cleaning cooldown:`,
-          redisCleanupError.message
-        );
-      }
-
-      throw transactionError;
-    }
+    await awardChatPoints(
+      usuario,
+      pointsToAward,
+      userType,
+      isVipActive,
+      isSubscriber,
+      payload,
+      kickUserId,
+      kickUsername
+    );
   } catch (error) {
     logger.error("[Chat Message] Error:", error.message);
   }
@@ -1394,6 +1451,139 @@ async function handleSubscriptionRenewal(payload, _metadata) {
 }
 
 /**
+ * Award points to the gifter of subscription gifts.
+ */
+async function awardGifterPoints(gifter, giftees, pointsForGifter) {
+  const gifterKickUserId = String(gifter.user_id);
+  const gifterUsuario = await Usuario.findOne({
+    where: { user_id_ext: gifterKickUserId },
+  });
+
+  if (!gifterUsuario) {
+    return;
+  }
+
+  logger.info("[Subscription Gifts] Gifter found in DB, awarding points");
+
+  await syncUserProfileIfNeeded(
+    gifterUsuario,
+    gifter.username,
+    gifterKickUserId,
+    true,
+    gifter.profile_picture
+  );
+
+  const totalPoints = pointsForGifter * giftees.length;
+  await gifterUsuario.increment("puntos", { by: totalPoints });
+
+  await HistorialPunto.create({
+    usuario_id: gifterUsuario.id,
+    puntos: totalPoints,
+    tipo: "ganado",
+    concepto: `Gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
+    kick_event_data: {
+      event_type: "channel.subscription.gifts",
+      kick_user_id: gifterKickUserId,
+      kick_username: gifter.username,
+      gifts_count: giftees.length,
+    },
+  });
+
+  await NotificacionService.crearNotificacionPuntosGanados(gifterUsuario.id, {
+    cantidad: totalPoints,
+    concepto: `You gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
+    tipo_evento: "channel.subscription.gifts",
+    gifts_count: giftees.length,
+  });
+
+  await KickUserTracking.upsert({
+    kick_user_id: gifterKickUserId,
+    kick_username: gifter.username,
+    total_gifts_given: KickUserTracking.sequelize.literal(
+      `total_gifts_given + ${giftees.length}`
+    ),
+  });
+
+  logger.info(
+    `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`
+  );
+}
+
+/**
+ * Award points to a single giftee of a subscription gift.
+ */
+async function awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt) {
+  const gifteeKickUserId = String(giftee.user_id);
+  const gifteeUsername = giftee.username;
+
+  const gifteeUsuario = await Usuario.findOne({
+    where: { user_id_ext: gifteeKickUserId },
+  });
+
+  if (!gifteeUsuario) {
+    return;
+  }
+
+  await syncUserProfileIfNeeded(
+    gifteeUsuario,
+    gifteeUsername,
+    gifteeKickUserId,
+    true,
+    giftee.profile_picture
+  );
+
+  await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
+
+  await HistorialPunto.create({
+    usuario_id: gifteeUsuario.id,
+    puntos: pointsForGiftee,
+    tipo: "ganado",
+    concepto: `Received gifted subscription`,
+    kick_event_data: {
+      event_type: "channel.subscription.gifts",
+      kick_user_id: gifteeKickUserId,
+      kick_username: gifteeUsername,
+      gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
+      expires_at: expiresAt,
+    },
+  });
+
+  await NotificacionService.crearNotificacionSubRegalada(gifteeUsuario.id, {
+    regalador_username: gifter.is_anonymous
+      ? "An anonymous user"
+      : gifter.username,
+    monto_subscription: 1,
+    puntos_otorgados: pointsForGiftee,
+    expires_at: expiresAt,
+  });
+
+  await KickUserTracking.upsert({
+    kick_user_id: gifteeKickUserId,
+    kick_username: gifteeUsername,
+    is_subscribed: true,
+    subscription_expires_at: expiresAt,
+    total_gifts_received: KickUserTracking.sequelize.literal(
+      "total_gifts_received + 1"
+    ),
+    total_subscriptions: KickUserTracking.sequelize.literal(
+      "total_subscriptions + 1"
+    ),
+  });
+
+  logger.info(
+    "[Subscription Gifts]",
+    pointsForGiftee,
+    "points to",
+    gifteeUsername,
+    "for receiving gifted sub"
+  );
+  logger.info(
+    "[Subscription Gifts] Total receiver points:",
+    (await gifteeUsuario.reload()).puntos
+  );
+}
+
+/**
  * Handle subscription gifts
  */
 async function handleSubscriptionGifts(payload, _metadata) {
@@ -1427,140 +1617,13 @@ async function handleSubscriptionGifts(payload, _metadata) {
 
     // Award points to gifter (if not anonymous)
     if (!gifter.is_anonymous && pointsForGifter > 0) {
-      const gifterKickUserId = String(gifter.user_id);
-      const gifterUsuario = await Usuario.findOne({
-        where: { user_id_ext: gifterKickUserId },
-      });
-
-      if (gifterUsuario) {
-        logger.info("[Subscription Gifts] Gifter found in DB, awarding points");
-
-        // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-        await syncUserProfileIfNeeded(
-          gifterUsuario,
-          gifter.username,
-          gifterKickUserId,
-          true,
-          gifter.profile_picture
-        );
-
-        const totalPoints = pointsForGifter * giftees.length;
-        await gifterUsuario.increment("puntos", { by: totalPoints });
-
-        await HistorialPunto.create({
-          usuario_id: gifterUsuario.id,
-          puntos: totalPoints,
-          tipo: "ganado",
-          concepto: `Gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
-          kick_event_data: {
-            event_type: "channel.subscription.gifts",
-            kick_user_id: gifterKickUserId,
-            kick_username: gifter.username,
-            gifts_count: giftees.length,
-          },
-        });
-
-        // Create notification for gift subscription points earned
-        await NotificacionService.crearNotificacionPuntosGanados(
-          gifterUsuario.id,
-          {
-            cantidad: totalPoints,
-            concepto: `You gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
-            tipo_evento: "channel.subscription.gifts",
-            gifts_count: giftees.length,
-          }
-        );
-
-        // Update gifter tracking
-        await KickUserTracking.upsert({
-          kick_user_id: gifterKickUserId,
-          kick_username: gifter.username,
-          total_gifts_given: KickUserTracking.sequelize.literal(
-            `total_gifts_given + ${giftees.length}`
-          ),
-        });
-
-        logger.info(
-          `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`
-        );
-      }
+      await awardGifterPoints(gifter, giftees, pointsForGifter);
     }
 
     // Award points to each giftee
     if (pointsForGiftee > 0) {
       for (const giftee of giftees) {
-        const gifteeKickUserId = String(giftee.user_id);
-        const gifteeUsername = giftee.username;
-
-        const gifteeUsuario = await Usuario.findOne({
-          where: { user_id_ext: gifteeKickUserId },
-        });
-
-        if (gifteeUsuario) {
-          // Sync full profile (username and avatar) if changed (NO throttling, infrequent event)
-          await syncUserProfileIfNeeded(
-            gifteeUsuario,
-            gifteeUsername,
-            gifteeKickUserId,
-            true,
-            giftee.profile_picture
-          );
-
-          await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
-
-          await HistorialPunto.create({
-            usuario_id: gifteeUsuario.id,
-            puntos: pointsForGiftee,
-            tipo: "ganado",
-            concepto: `Received gifted subscription`,
-            kick_event_data: {
-              event_type: "channel.subscription.gifts",
-              kick_user_id: gifteeKickUserId,
-              kick_username: gifteeUsername,
-              gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
-              expires_at: expiresAt,
-            },
-          });
-
-          // Create notification for gifted subscription
-          await NotificacionService.crearNotificacionSubRegalada(
-            gifteeUsuario.id,
-            {
-              regalador_username: gifter.is_anonymous
-                ? "An anonymous user"
-                : gifter.username,
-              monto_subscription: 1,
-              puntos_otorgados: pointsForGiftee,
-              expires_at: expiresAt,
-            }
-          );
-
-          // Update receiver tracking
-          await KickUserTracking.upsert({
-            kick_user_id: gifteeKickUserId,
-            kick_username: gifteeUsername,
-            is_subscribed: true,
-            subscription_expires_at: expiresAt,
-            total_gifts_received: KickUserTracking.sequelize.literal(
-              "total_gifts_received + 1"
-            ),
-            total_subscriptions: KickUserTracking.sequelize.literal(
-              "total_subscriptions + 1"
-            ),
-          });
-
-          logger.info(
-            "[Subscription Gifts]",
-            pointsForGiftee,
-            "points to",
-            gifteeUsername,
-            "for receiving gifted sub"
-          );
-          logger.info(
-            "[Subscription Gifts] Total receiver points:",
-            (await gifteeUsuario.reload()).puntos
-          );
-        }
+        await awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt);
       }
     }
   } catch (error) {
@@ -1738,7 +1801,8 @@ async function handleModerationBanned(payload, _metadata) {
     expires_at: payload.metadata.expires_at,
   });
 
-  // TODO: Implement business logic (register ban, update permissions, etc.)
+  // Ban business logic (register ban, update permissions, etc.) is not yet implemented.
+  // Logging only — no action taken for moderation bans at this time.
 }
 
 /**
@@ -2045,6 +2109,54 @@ exports.testRealWebhook = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Renew an expired broadcaster token if possible.
+ * Throws AppError on failure.
+ */
+async function renewBroadcasterTokenIfNeeded(broadcasterToken) {
+  const now = new Date();
+  const expiresAt = new Date(broadcasterToken.token_expires_at);
+  const isExpired = expiresAt <= now;
+
+  logger.info("[REACTIVATE] Token status:", {
+    expires_at: expiresAt,
+    now: now,
+    is_expired: isExpired,
+    has_refresh_token: !!broadcasterToken.refresh_token,
+  });
+
+  if (!isExpired) {
+    return;
+  }
+
+  logger.info(
+    "[REACTIVATE] Token expired, attempting renewal with refresh_token..."
+  );
+
+  if (!broadcasterToken.refresh_token) {
+    throw new AppError("Token expired and no refresh_token available", 400);
+  }
+
+  try {
+    const {
+      refreshAccessToken,
+    } = require("../services/kickAutoSubscribe.service");
+    logger.info("[REACTIVATE] Attempting token renewal...");
+
+    const renewed = await refreshAccessToken(broadcasterToken);
+
+    if (!renewed) {
+      throw new AppError("Could not renew expired token", 400);
+    }
+
+    logger.info("[REACTIVATE] Token renewed successfully");
+    await broadcasterToken.reload();
+  } catch (refreshError) {
+    logger.error("[REACTIVATE] Error renewing token:", refreshError.message);
+    throw new AppError("Error renewing token: " + refreshError.message, 400);
+  }
+}
+
+/**
  * REACTIVATE: Main broadcaster token
  */
 exports.reactivateBroadcasterToken = asyncHandler(async (req, res) => {
@@ -2067,60 +2179,14 @@ exports.reactivateBroadcasterToken = asyncHandler(async (req, res) => {
 
     logger.info("[REACTIVATE] Token found, checking expiration...");
 
-    // Check if token is expired
-    const now = new Date();
-    const expiresAt = new Date(broadcasterToken.token_expires_at);
-    const isExpired = expiresAt <= now;
-
-    logger.info("[REACTIVATE] Token status:", {
-      expires_at: expiresAt,
-      now: now,
-      is_expired: isExpired,
-      has_refresh_token: !!broadcasterToken.refresh_token,
-    });
-
-    if (isExpired) {
-      logger.info(
-        "[REACTIVATE] Token expired, attempting renewal with refresh_token..."
-      );
-
-      if (!broadcasterToken.refresh_token) {
-        throw new AppError("Token expired and no refresh_token available", 400);
-      }
-
-      // Attempt to renew token
-      try {
-        const {
-          refreshAccessToken,
-        } = require("../services/kickAutoSubscribe.service");
-        logger.info("[REACTIVATE] Attempting token renewal...");
-
-        const renewed = await refreshAccessToken(broadcasterToken);
-
-        if (!renewed) {
-          throw new AppError("Could not renew expired token", 400);
-        }
-
-        logger.info("[REACTIVATE] Token renewed successfully");
-        await broadcasterToken.reload(); // Reload updated token
-      } catch (refreshError) {
-        logger.error(
-          "[REACTIVATE] Error renewing token:",
-          refreshError.message
-        );
-        throw new AppError(
-          "Error renewing token: " + refreshError.message,
-          400
-        );
-      }
-    }
+    await renewBroadcasterTokenIfNeeded(broadcasterToken);
 
     logger.info("[REACTIVATE] Reactivating token...");
 
     // Reactivate token
     await broadcasterToken.update({
       is_active: true,
-      auto_subscribed: false, // Will mark true after subscribing
+      auto_subscribed: false,
       subscription_error: null,
     });
 
@@ -2251,6 +2317,86 @@ exports.systemStatus = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Save a single subscription from Kick API response and return a debug result entry.
+ */
+async function saveSubscriptionDebugResult(sub, broadcasterId) {
+  if (!sub.subscription_id || sub.error) {
+    return {
+      event: sub.name || "UNKNOWN",
+      success: false,
+      kick_error: sub.error || "No subscription_id in response",
+    };
+  }
+
+  const { KickEventSubscription } = require("../models");
+  const dataToSave = {
+    subscription_id: sub.subscription_id,
+    broadcaster_user_id: parseInt(broadcasterId),
+    event_type: sub.name,
+    event_version: sub.version,
+    method: "webhook",
+    status: "active",
+  };
+
+  logger.info("[DEBUG SUB] Data to save:", JSON.stringify(dataToSave, null, 2));
+
+  try {
+    const localSub = await KickEventSubscription.findOne({
+      where: { subscription_id: sub.subscription_id },
+    });
+
+    if (localSub) {
+      await localSub.update(dataToSave);
+      logger.info("[DEBUG SUB] Update successful for:", sub.name);
+      return {
+        event: sub.name,
+        success: true,
+        action: "updated",
+        subscription_id: sub.subscription_id,
+        db_id: localSub.id,
+      };
+    }
+
+    const newSubscription = await KickEventSubscription.create(dataToSave);
+    logger.info("[DEBUG SUB] Create successful for:", sub.name);
+    return {
+      event: sub.name,
+      success: true,
+      action: "created",
+      subscription_id: sub.subscription_id,
+      db_id: newSubscription.id,
+    };
+  } catch (dbError) {
+    logger.error("[DEBUG SUB] Detailed DB error:", {
+      message: dbError.message,
+      name: dbError.name,
+      errors: dbError.errors,
+      sql: dbError.sql,
+      stack: dbError.stack,
+    });
+
+    return {
+      event: sub.name || "UNKNOWN",
+      success: false,
+      error: {
+        message: dbError.message,
+        name: dbError.name,
+        errors: dbError.errors
+          ? dbError.errors.map((e) => ({
+              message: e.message,
+              type: e.type,
+              path: e.path,
+              value: e.value,
+            }))
+          : null,
+        sql: dbError.sql,
+      },
+      attempted_data: dataToSave,
+    };
+  }
+}
+
+/**
  * DEBUG: Temporary endpoint to debug the subscription process
  */
 exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
@@ -2282,7 +2428,7 @@ exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
     const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
     const testPayload = {
       broadcaster_user_id: parseInt(config.kick.broadcasterId),
-      events: [{ name: "chat.message.sent", version: 1 }], // Single event for testing
+      events: [{ name: "chat.message.sent", version: 1 }],
       method: "webhook",
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
     };
@@ -2321,86 +2467,9 @@ exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
         JSON.stringify(sub, null, 2)
       );
 
-      if (sub.subscription_id && !sub.error) {
-        const dataToSave = {
-          subscription_id: sub.subscription_id,
-          broadcaster_user_id: parseInt(config.kick.broadcasterId),
-          event_type: sub.name,
-          event_version: sub.version,
-          method: "webhook",
-          status: "active",
-        };
-
-        logger.info(
-          "[DEBUG SUB] Data to save:",
-          JSON.stringify(dataToSave, null, 2)
-        );
-
-        try {
-          // Use same logic as main service: find-update
-          let localSub = await KickEventSubscription.findOne({
-            where: { subscription_id: sub.subscription_id },
-          });
-
-          if (localSub) {
-            // If exists, update data
-            await localSub.update(dataToSave);
-            debugResults.push({
-              event: sub.name,
-              success: true,
-              action: "updated",
-              subscription_id: sub.subscription_id,
-              db_id: localSub.id,
-            });
-            logger.info("[DEBUG SUB] Update successful for:", sub.name);
-          } else {
-            // If not exists, create new
-            const newSubscription =
-              await KickEventSubscription.create(dataToSave);
-            debugResults.push({
-              event: sub.name,
-              success: true,
-              action: "created",
-              subscription_id: sub.subscription_id,
-              db_id: newSubscription.id,
-            });
-            logger.info("[DEBUG SUB] Create successful for:", sub.name);
-          }
-        } catch (dbError) {
-          logger.error("[DEBUG SUB] Detailed DB error:", {
-            message: dbError.message,
-            name: dbError.name,
-            errors: dbError.errors,
-            sql: dbError.sql,
-            stack: dbError.stack,
-          });
-
-          debugResults.push({
-            event: sub.name || "UNKNOWN",
-            success: false,
-            error: {
-              message: dbError.message,
-              name: dbError.name,
-              errors: dbError.errors
-                ? dbError.errors.map((e) => ({
-                    message: e.message,
-                    type: e.type,
-                    path: e.path,
-                    value: e.value,
-                  }))
-                : null,
-              sql: dbError.sql,
-            },
-            attempted_data: dataToSave,
-          });
-        }
-      } else {
-        debugResults.push({
-          event: sub.name || "UNKNOWN",
-          success: false,
-          kick_error: sub.error || "No subscription_id in response",
-        });
-      }
+      debugResults.push(
+        await saveSubscriptionDebugResult(sub, config.kick.broadcasterId)
+      );
     }
 
     // 4. Clean up any subscription created during testing
@@ -2901,6 +2970,57 @@ exports.debugSystemInfo = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Format a Redis TTL value for display.
+ */
+function formatTtl(ttl) {
+  if (ttl === -1) return "no_expiration";
+  if (ttl === -2) return "not_found";
+  return `${ttl}s (${Math.floor(ttl / 60)} min)`;
+}
+
+/**
+ * Calculate minutes since a given timestamp string.
+ */
+function minutesSince(timestampStr) {
+  if (!timestampStr) return null;
+  const lastUpdate = new Date(timestampStr);
+  const now = new Date();
+  return (now - lastUpdate) / 1000 / 60;
+}
+
+/**
+ * Build stream health warnings based on Redis state.
+ */
+function buildStreamWarnings(
+  isLive,
+  ttlIsLive,
+  minutesSinceStatus,
+  streamInfo
+) {
+  const warnings = [];
+
+  if (isLive === "true" && ttlIsLive < 3600) {
+    warnings.push(`Low TTL: expires in ${Math.floor(ttlIsLive / 60)} minutes`);
+  }
+
+  if (isLive === "true" && minutesSinceStatus && minutesSinceStatus > 120) {
+    warnings.push(
+      `No status updates for ${minutesSinceStatus.toFixed(1)} minutes`
+    );
+  }
+
+  if (isLive === "true" && !streamInfo) {
+    warnings.push("Stream online but no info in Redis");
+  }
+
+  if (ttlIsLive === -1) {
+    warnings.push("Key without TTL (permanent)");
+  }
+
+  return warnings;
+}
+
+/**
  * DEBUG: Check stream status
  */
 exports.debugStreamStatus = asyncHandler(async (req, res) => {
@@ -2922,52 +3042,25 @@ exports.debugStreamStatus = asyncHandler(async (req, res) => {
     if (currentInfo) {
       try {
         streamInfo = JSON.parse(currentInfo);
-      } catch (_e) {
-        logger.warn("[Stream Status] Error parsing stream:current_info");
+      } catch (parseError) {
+        logger.warn(
+          "[Stream Status] Error parsing stream:current_info:",
+          parseError.message
+        );
       }
     }
 
-    // Calculate time since last update
-    let minutesSinceStatusUpdate = null;
-    if (lastStatusUpdate) {
-      const lastUpdate = new Date(lastStatusUpdate);
-      const now = new Date();
-      minutesSinceStatusUpdate = (now - lastUpdate) / 1000 / 60;
-    }
-
-    let minutesSinceMetadataUpdate = null;
-    if (lastMetadataUpdate) {
-      const lastUpdate = new Date(lastMetadataUpdate);
-      const now = new Date();
-      minutesSinceMetadataUpdate = (now - lastUpdate) / 1000 / 60;
-    }
+    // Calculate time since last updates
+    const minutesSinceStatusUpdate = minutesSince(lastStatusUpdate);
+    const minutesSinceMetadataUpdate = minutesSince(lastMetadataUpdate);
 
     // Detect inconsistencies
-    const warnings = [];
-
-    if (isLive === "true" && ttlIsLive < 3600) {
-      warnings.push(
-        `Low TTL: expires in ${Math.floor(ttlIsLive / 60)} minutes`
-      );
-    }
-
-    if (
-      isLive === "true" &&
-      minutesSinceStatusUpdate &&
-      minutesSinceStatusUpdate > 120
-    ) {
-      warnings.push(
-        `No status updates for ${minutesSinceStatusUpdate.toFixed(1)} minutes`
-      );
-    }
-
-    if (isLive === "true" && !streamInfo) {
-      warnings.push("Stream online but no info in Redis");
-    }
-
-    if (ttlIsLive === -1) {
-      warnings.push("Key without TTL (permanent)");
-    }
+    const warnings = buildStreamWarnings(
+      isLive,
+      ttlIsLive,
+      minutesSinceStatusUpdate,
+      streamInfo
+    );
 
     res.json({
       success: true,
@@ -2982,18 +3075,8 @@ exports.debugStreamStatus = asyncHandler(async (req, res) => {
       },
       stream_info: streamInfo,
       redis_metadata: {
-        ttl_is_live:
-          ttlIsLive === -1
-            ? "no_expiration"
-            : ttlIsLive === -2
-              ? "not_found"
-              : `${ttlIsLive}s (${Math.floor(ttlIsLive / 60)} min)`,
-        ttl_current_info:
-          ttlCurrentInfo === -1
-            ? "no_expiration"
-            : ttlCurrentInfo === -2
-              ? "not_found"
-              : `${ttlCurrentInfo}s (${Math.floor(ttlCurrentInfo / 60)} min)`,
+        ttl_is_live: formatTtl(ttlIsLive),
+        ttl_current_info: formatTtl(ttlCurrentInfo),
         last_status_update: lastStatusUpdate || "never",
         last_metadata_update: lastMetadataUpdate || "never",
         minutes_since_status_update: minutesSinceStatusUpdate
