@@ -145,48 +145,48 @@ exports.obtenerPorSlug = asyncHandler(async (req, res) => {
   res.json(await buildProductoDetailResponse(producto, usuarioId));
 });
 
-exports.crear = async (req, res) => {
+exports.crear = asyncHandler(async (req, res) => {
   try {
     const producto = await Producto.create(req.body);
     res.status(201).json(producto);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    throw new AppError(err.message, 400);
   }
-};
+});
 
-exports.editar = async (req, res) => {
+exports.editar = asyncHandler(async (req, res) => {
+  const producto = await Producto.findByPk(req.params.id);
+  if (!producto) throw new AppError("Not found", 404);
   try {
-    const producto = await Producto.findByPk(req.params.id);
-    if (!producto) return res.status(404).json({ error: "Not found" });
     await producto.update(req.body);
     res.json(producto);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    throw new AppError(err.message, 400);
   }
-};
+});
 
-exports.eliminar = async (req, res) => {
+exports.eliminar = asyncHandler(async (req, res) => {
   const producto = await Producto.findByPk(req.params.id);
-  if (!producto) return res.status(404).json({ error: "Not found" });
+  if (!producto) throw new AppError("Not found", 404);
   await producto.destroy();
   res.json({ message: "Product deleted" });
-};
+});
 
 /**
  * Update product promotions
  */
-exports.actualizarPromociones = async (req, res) => {
+exports.actualizarPromociones = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const { promocion_ids } = req.body; // Array of promotion IDs to assign
 
     if (!Array.isArray(promocion_ids)) {
-      return res.status(400).json({ error: "promocion_ids must be an array" });
+      throw new AppError("promocion_ids must be an array", 400);
     }
 
     const producto = await Producto.findByPk(id);
     if (!producto) {
-      return res.status(404).json({ error: "Product not found" });
+      throw new AppError("Product not found", 404);
     }
 
     const { PromocionProducto } = require("../models");
@@ -225,37 +225,33 @@ exports.actualizarPromociones = async (req, res) => {
       promociones_asignadas: promocion_ids,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("Error updating product promotions:", error);
-    res.status(500).json({ error: "Error updating promotions" });
+    throw new AppError("Error updating promotions", 500);
   }
-};
+});
 
 // Debug endpoint to list all products without filters
-exports.debugListar = async (req, res) => {
-  try {
-    const productos = await Producto.findAll({
-      order: [["id", "ASC"]],
-      attributes: CANJES_COUNT_ATTRIBUTES,
-    });
+exports.debugListar = asyncHandler(async (req, res) => {
+  const productos = await Producto.findAll({
+    order: [["id", "ASC"]],
+    attributes: CANJES_COUNT_ATTRIBUTES,
+  });
 
-    res.json({
-      total: productos.length,
-      productos: productos.map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        estado: p.estado,
-        precio: p.precio,
-        stock: p.stock,
-        canjes_count: p.get ? p.get("canjes_count") : p.canjes_count,
-        creado: p.creado,
-        actualizado: p.actualizado,
-      })),
-    });
-  } catch (error) {
-    logger.error("[DEBUG] Error:", error.message);
-    res.status(500).json({ error: error.message });
-  }
-};
+  res.json({
+    total: productos.length,
+    productos: productos.map((p) => ({
+      id: p.id,
+      nombre: p.nombre,
+      estado: p.estado,
+      precio: p.precio,
+      stock: p.stock,
+      canjes_count: p.get ? p.get("canjes_count") : p.canjes_count,
+      creado: p.creado,
+      actualizado: p.actualizado,
+    })),
+  });
+});
 
 // ADMIN endpoint: lists all products with canjes_count (requires auth/permission at route level)
 exports.listarAdmin = asyncHandler(async (req, res) => {
