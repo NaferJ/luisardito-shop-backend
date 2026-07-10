@@ -229,30 +229,85 @@ exports.crear = asyncHandler(async (req, res) => {
 /**
  * Update existing promotion
  */
+function buildUpdatePayload(
+  promocion,
+  campos,
+  nuevaFechaInicio,
+  nuevaFechaFin
+) {
+  return {
+    codigo: campos.codigo ? campos.codigo.toUpperCase() : promocion.codigo,
+    nombre: campos.nombre || promocion.nombre,
+    titulo: campos.titulo || promocion.titulo,
+    descripcion:
+      campos.descripcion !== undefined
+        ? campos.descripcion
+        : promocion.descripcion,
+    tipo: campos.tipo || promocion.tipo,
+    tipo_descuento: campos.tipo_descuento || promocion.tipo_descuento,
+    valor_descuento:
+      campos.valor_descuento !== undefined
+        ? campos.valor_descuento
+        : promocion.valor_descuento,
+    descuento_maximo:
+      campos.descuento_maximo !== undefined
+        ? campos.descuento_maximo
+        : promocion.descuento_maximo,
+    fecha_inicio: nuevaFechaInicio,
+    fecha_fin: nuevaFechaFin,
+    cantidad_usos_maximos:
+      campos.cantidad_usos_maximos !== undefined
+        ? campos.cantidad_usos_maximos
+        : promocion.cantidad_usos_maximos,
+    usos_por_usuario: campos.usos_por_usuario || promocion.usos_por_usuario,
+    minimo_puntos:
+      campos.minimo_puntos !== undefined
+        ? campos.minimo_puntos
+        : promocion.minimo_puntos,
+    requiere_codigo:
+      campos.requiere_codigo !== undefined
+        ? campos.requiere_codigo
+        : promocion.requiere_codigo,
+    prioridad:
+      campos.prioridad !== undefined ? campos.prioridad : promocion.prioridad,
+    estado: campos.estado || promocion.estado,
+    aplica_acumulacion:
+      campos.aplica_acumulacion !== undefined
+        ? campos.aplica_acumulacion
+        : promocion.aplica_acumulacion,
+    metadata_visual: campos.metadata_visual || promocion.metadata_visual,
+    reglas_aplicacion: campos.reglas_aplicacion || promocion.reglas_aplicacion,
+  };
+}
+
+async function updateProductAssociations(
+  promocion,
+  id,
+  productos_ids,
+  transaction
+) {
+  await PromocionProducto.destroy({
+    where: { promocion_id: id },
+    transaction,
+  });
+
+  if (productos_ids.length > 0) {
+    const productos = await Producto.findAll({
+      where: { id: { [Op.in]: productos_ids } },
+      transaction,
+    });
+
+    if (productos.length !== productos_ids.length) {
+      throw new Error("Algunos productos no existen");
+    }
+
+    await promocion.addProductos(productos, { transaction });
+  }
+}
+
 exports.actualizar = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const {
-    codigo,
-    nombre,
-    titulo,
-    descripcion,
-    tipo,
-    tipo_descuento,
-    valor_descuento,
-    descuento_maximo,
-    fecha_inicio,
-    fecha_fin,
-    cantidad_usos_maximos,
-    usos_por_usuario,
-    minimo_puntos,
-    requiere_codigo,
-    prioridad,
-    estado,
-    aplica_acumulacion,
-    metadata_visual,
-    reglas_aplicacion,
-    productos_ids,
-  } = req.body;
+  const { productos_ids, ...campos } = req.body;
 
   await sequelize.transaction(async (transaction) => {
     const promocion = await Promocion.findByPk(id, { transaction });
@@ -262,8 +317,8 @@ exports.actualizar = asyncHandler(async (req, res) => {
     }
 
     // Validate dates if provided
-    const nuevaFechaInicio = fecha_inicio || promocion.fecha_inicio;
-    const nuevaFechaFin = fecha_fin || promocion.fecha_fin;
+    const nuevaFechaInicio = campos.fecha_inicio || promocion.fecha_inicio;
+    const nuevaFechaFin = campos.fecha_fin || promocion.fecha_fin;
 
     if (new Date(nuevaFechaFin) <= new Date(nuevaFechaInicio)) {
       throw new AppError(
@@ -273,10 +328,10 @@ exports.actualizar = asyncHandler(async (req, res) => {
     }
 
     // Validate unique code if updating
-    if (codigo && codigo !== promocion.codigo) {
+    if (campos.codigo && campos.codigo !== promocion.codigo) {
       const existeCodigo = await Promocion.findOne({
         where: {
-          codigo: codigo.toUpperCase(),
+          codigo: campos.codigo.toUpperCase(),
           id: { [Op.ne]: id },
         },
         transaction,
@@ -286,70 +341,19 @@ exports.actualizar = asyncHandler(async (req, res) => {
       }
     }
 
-    // Update fields
     await promocion.update(
-      {
-        codigo: codigo ? codigo.toUpperCase() : promocion.codigo,
-        nombre: nombre || promocion.nombre,
-        titulo: titulo || promocion.titulo,
-        descripcion:
-          descripcion !== undefined ? descripcion : promocion.descripcion,
-        tipo: tipo || promocion.tipo,
-        tipo_descuento: tipo_descuento || promocion.tipo_descuento,
-        valor_descuento:
-          valor_descuento !== undefined
-            ? valor_descuento
-            : promocion.valor_descuento,
-        descuento_maximo:
-          descuento_maximo !== undefined
-            ? descuento_maximo
-            : promocion.descuento_maximo,
-        fecha_inicio: nuevaFechaInicio,
-        fecha_fin: nuevaFechaFin,
-        cantidad_usos_maximos:
-          cantidad_usos_maximos !== undefined
-            ? cantidad_usos_maximos
-            : promocion.cantidad_usos_maximos,
-        usos_por_usuario: usos_por_usuario || promocion.usos_por_usuario,
-        minimo_puntos:
-          minimo_puntos !== undefined ? minimo_puntos : promocion.minimo_puntos,
-        requiere_codigo:
-          requiere_codigo !== undefined
-            ? requiere_codigo
-            : promocion.requiere_codigo,
-        prioridad: prioridad !== undefined ? prioridad : promocion.prioridad,
-        estado: estado || promocion.estado,
-        aplica_acumulacion:
-          aplica_acumulacion !== undefined
-            ? aplica_acumulacion
-            : promocion.aplica_acumulacion,
-        metadata_visual: metadata_visual || promocion.metadata_visual,
-        reglas_aplicacion: reglas_aplicacion || promocion.reglas_aplicacion,
-      },
+      buildUpdatePayload(promocion, campos, nuevaFechaInicio, nuevaFechaFin),
       { transaction }
     );
 
     // Update associated products if provided
     if (productos_ids !== undefined && Array.isArray(productos_ids)) {
-      // Remove existing associations
-      await PromocionProducto.destroy({
-        where: { promocion_id: id },
-        transaction,
-      });
-
-      // Create new associations
-      if (productos_ids.length > 0) {
-        const productos = await Producto.findAll({
-          where: { id: { [Op.in]: productos_ids } },
-          transaction,
-        });
-
-        if (productos.length !== productos_ids.length) {
-          throw new Error("Algunos productos no existen");
-        }
-
-        await promocion.addProductos(productos, { transaction });
-      }
+      await updateProductAssociations(
+        promocion,
+        id,
+        productos_ids,
+        transaction
+      );
     }
   });
 
@@ -540,8 +544,9 @@ exports.exportarPDF = asyncHandler(async (req, res) => {
     // Convert to plain object for easier PDF access
     const promocionData = {
       ...promocion.toJSON(),
-      total_usos: parseInt(estadisticas?.total_usos) || 0,
-      puntos_descontados: parseInt(estadisticas?.puntos_descontados) || 0,
+      total_usos: Number.parseInt(estadisticas?.total_usos) || 0,
+      puntos_descontados:
+        Number.parseInt(estadisticas?.puntos_descontados) || 0,
     };
 
     promocionesConEstadisticas.push(promocionData);
