@@ -27,7 +27,7 @@ exports.getConnectionStatus = asyncHandler(async (req, res) => {
 
     const subscriptions = await KickEventSubscription.findAll({
       where: {
-        broadcaster_user_id: parseInt(mainBroadcasterId),
+        broadcaster_user_id: Number.parseInt(mainBroadcasterId),
         status: "active",
       },
     });
@@ -160,7 +160,7 @@ exports.disconnect = asyncHandler(async (req, res) => {
         { status: "inactive" },
         {
           where: {
-            broadcaster_user_id: parseInt(mainBroadcasterId),
+            broadcaster_user_id: Number.parseInt(mainBroadcasterId),
             status: "active",
           },
         }
@@ -184,8 +184,6 @@ exports.disconnect = asyncHandler(async (req, res) => {
  */
 exports.getActiveToken = asyncHandler(async (req, res) => {
   try {
-    // TODO: Add admin permission check
-
     const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { is_active: true },
       order: [["created_at", "DESC"]],
@@ -288,7 +286,7 @@ exports.debugConfig = asyncHandler(async (req, res) => {
       subscriptionsByBroadcaster: await KickEventSubscription.count({
         where: {
           broadcaster_user_id: config.kick.broadcasterId
-            ? parseInt(config.kick.broadcasterId)
+            ? Number.parseInt(config.kick.broadcasterId)
             : null,
           status: "active",
         },
