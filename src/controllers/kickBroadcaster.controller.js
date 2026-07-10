@@ -2,11 +2,13 @@ const { KickBroadcasterToken, KickEventSubscription } = require("../models");
 const tokenRefreshService = require("../services/tokenRefresh.service");
 const config = require("../../config");
 const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Checks the broadcaster connection status
  */
-exports.getConnectionStatus = async (req, res) => {
+exports.getConnectionStatus = asyncHandler(async (req, res) => {
   try {
     // Get the main broadcaster from configuration
     const mainBroadcasterId = config.kick.broadcasterId;
@@ -126,15 +128,16 @@ exports.getConnectionStatus = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Kick Broadcaster] Error fetching status:", error.message);
-    return res.status(500).json({ error: "Internal server error" });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 /**
  * Disconnects the broadcaster (deactivates the token)
  */
-exports.disconnect = async (req, res) => {
+exports.disconnect = asyncHandler(async (req, res) => {
   try {
     const mainBroadcasterId = config.kick.broadcasterId;
 
@@ -144,7 +147,7 @@ exports.disconnect = async (req, res) => {
     });
 
     if (!broadcasterToken) {
-      return res.status(404).json({ error: "No broadcaster connected" });
+      throw new AppError("No broadcaster connected", 404);
     }
 
     await broadcasterToken.update({
@@ -170,15 +173,16 @@ exports.disconnect = async (req, res) => {
       token_provider: broadcasterToken.kick_username,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Kick Broadcaster] Error disconnecting:", error.message);
-    return res.status(500).json({ error: "Internal server error" });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 /**
  * Gets the active broadcaster token (internal/admin use only)
  */
-exports.getActiveToken = async (req, res) => {
+exports.getActiveToken = asyncHandler(async (req, res) => {
   try {
     // TODO: Add admin permission check
 
@@ -188,7 +192,7 @@ exports.getActiveToken = async (req, res) => {
     });
 
     if (!broadcasterToken) {
-      return res.status(404).json({ error: "No broadcaster connected" });
+      throw new AppError("No broadcaster connected", 404);
     }
 
     // Do not expose the full token for security
@@ -203,15 +207,16 @@ exports.getActiveToken = async (req, res) => {
       auto_subscribed: broadcasterToken.auto_subscribed,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Kick Broadcaster] Error fetching token:", error.message);
-    return res.status(500).json({ error: "Internal server error" });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 /**
  * Manually refreshes the active broadcaster token
  */
-exports.refreshToken = async (req, res) => {
+exports.refreshToken = asyncHandler(async (req, res) => {
   try {
     const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { is_active: true },
@@ -219,7 +224,7 @@ exports.refreshToken = async (req, res) => {
     });
 
     if (!broadcasterToken) {
-      return res.status(404).json({ error: "No broadcaster connected" });
+      throw new AppError("No broadcaster connected", 404);
     }
 
     const result = await tokenRefreshService.forceRefresh(
@@ -236,37 +241,36 @@ exports.refreshToken = async (req, res) => {
         new_expires_at: broadcasterToken.token_expires_at,
       });
     } else {
-      return res.status(400).json({
-        error: "Could not refresh the token",
-        details: result.error,
-      });
+      throw new AppError("Could not refresh the token", 400, result.error);
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Kick Broadcaster] Error refreshing token:", error.message);
-    return res.status(500).json({ error: "Internal server error" });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 /**
  * Gets the status of the automatic refresh service
  */
-exports.getRefreshServiceStatus = async (req, res) => {
+exports.getRefreshServiceStatus = asyncHandler(async (req, res) => {
   try {
     const status = tokenRefreshService.getStatus();
     return res.json(status);
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error(
       "[Kick Broadcaster] Error fetching service status:",
       error.message
     );
-    return res.status(500).json({ error: "Internal server error" });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 /**
  * Debug endpoint to verify configuration
  */
-exports.debugConfig = async (req, res) => {
+exports.debugConfig = asyncHandler(async (req, res) => {
   try {
     return res.json({
       config: {
@@ -291,6 +295,7 @@ exports.debugConfig = async (req, res) => {
       }),
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 500);
   }
-};
+});
