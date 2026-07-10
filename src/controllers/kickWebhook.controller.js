@@ -1,4 +1,6 @@
 const { verifyWebhookSignature } = require("../utils/kickWebhook.util");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 const {
   KickWebhookEvent,
   KickPointsConfig,
@@ -21,7 +23,7 @@ const { syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
  * DIAGNOSTIC: monitor Redis
  */
 
-exports.debugRedisCooldowns = async (req, res) => {
+exports.debugRedisCooldowns = asyncHandler(async (req, res) => {
   try {
     const { getRedisClient } = require("../config/redis.config");
     const redis = getRedisClient();
@@ -53,18 +55,16 @@ exports.debugRedisCooldowns = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Debug Redis] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DIAGNOSTIC: Check tokens stored in DB
  */
-exports.diagnosticTokensDB = async (req, res) => {
+exports.diagnosticTokensDB = asyncHandler(async (req, res) => {
   try {
     const {
       KickBroadcasterToken,
@@ -193,14 +193,12 @@ exports.diagnosticTokensDB = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[DIAGNOSTIC DB] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
-exports.diagnosticTokens = async (req, res) => {
+});
+exports.diagnosticTokens = asyncHandler(async (req, res) => {
   try {
     const {
       KickBroadcasterToken,
@@ -294,14 +292,12 @@ exports.diagnosticTokens = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[DIAGNOSTIC] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
-exports.testCors = async (req, res) => {
+});
+exports.testCors = asyncHandler(async (req, res) => {
   logger.info("[CORS Test] ==========================================");
   logger.info("[CORS Test] Method:", req.method);
   logger.info("[CORS Test] Origin:", req.headers.origin || "NO ORIGIN");
@@ -317,7 +313,7 @@ exports.testCors = async (req, res) => {
     headers: req.headers,
     corsEnabled: true,
   });
-};
+});
 
 /**
  * Main controller to receive Kick webhooks
@@ -1890,7 +1886,7 @@ async function handleKicksGifted(payload, _metadata) {
  * Simple endpoint to verify Kick can reach the server
  * GET /webhook/test
  */
-exports.testWebhook = async (req, res) => {
+exports.testWebhook = asyncHandler(async (req, res) => {
   logger.info("[Kick Webhook] Test endpoint reached");
   logger.info("[Kick Webhook] Headers:", req.headers);
   logger.info("[Kick Webhook] IP:", req.ip);
@@ -1903,13 +1899,13 @@ exports.testWebhook = async (req, res) => {
     ip: req.ip,
     userAgent: req.headers["user-agent"],
   });
-};
+});
 
 /**
  * Endpoint to verify webhook configuration
  * GET /webhook/debug
  */
-exports.debugWebhook = async (req, res) => {
+exports.debugWebhook = asyncHandler(async (req, res) => {
   try {
     const { KickEventSubscription } = require("../models");
 
@@ -1938,15 +1934,16 @@ exports.debugWebhook = async (req, res) => {
       ],
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * Temporary endpoint to simulate a chat event and verify processing works
  * POST /api/kick-webhook/simulate-chat
  */
-exports.simulateChat = async (req, res) => {
+exports.simulateChat = asyncHandler(async (req, res) => {
   try {
     logger.info("[Webhook Simulator] Simulating chat event...");
 
@@ -1988,19 +1985,17 @@ exports.simulateChat = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Webhook Simulator] Error:", error.message);
-    return res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * Endpoint to simulate a REAL Kick webhook (with headers and all)
  * POST /api/kick-webhook/test-real-webhook
  */
-exports.testRealWebhook = async (req, res) => {
+exports.testRealWebhook = asyncHandler(async (req, res) => {
   try {
     logger.info(
       "[Test Real Webhook] Simulating REAL Kick webhook with headers..."
@@ -2043,18 +2038,16 @@ exports.testRealWebhook = async (req, res) => {
     // Call main handler as if it were a real webhook
     await this.handleWebhook(req, res);
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Test Real Webhook] Error:", error.message);
-    return res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * REACTIVATE: Main broadcaster token
  */
-exports.reactivateBroadcasterToken = async (req, res) => {
+exports.reactivateBroadcasterToken = asyncHandler(async (req, res) => {
   try {
     const { KickBroadcasterToken } = require("../models");
     const {
@@ -2069,11 +2062,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
     });
 
     if (!broadcasterToken) {
-      return res.status(404).json({
-        success: false,
-        error: "Main broadcaster token not found",
-        accion: "Luisardito must authenticate first",
-      });
+      throw new AppError("Main broadcaster token not found", 404);
     }
 
     logger.info("[REACTIVATE] Token found, checking expiration...");
@@ -2096,12 +2085,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
       );
 
       if (!broadcasterToken.refresh_token) {
-        return res.status(400).json({
-          success: false,
-          error: "Token expired and no refresh_token available",
-          expires_at: broadcasterToken.token_expires_at,
-          accion: "Luisardito must fully re-authenticate",
-        });
+        throw new AppError("Token expired and no refresh_token available", 400);
       }
 
       // Attempt to renew token
@@ -2114,12 +2098,7 @@ exports.reactivateBroadcasterToken = async (req, res) => {
         const renewed = await refreshAccessToken(broadcasterToken);
 
         if (!renewed) {
-          return res.status(400).json({
-            success: false,
-            error: "Could not renew expired token",
-            expires_at: broadcasterToken.token_expires_at,
-            accion: "Luisardito must fully re-authenticate",
-          });
+          throw new AppError("Could not renew expired token", 400);
         }
 
         logger.info("[REACTIVATE] Token renewed successfully");
@@ -2129,12 +2108,10 @@ exports.reactivateBroadcasterToken = async (req, res) => {
           "[REACTIVATE] Error renewing token:",
           refreshError.message
         );
-        return res.status(400).json({
-          success: false,
-          error: "Error renewing token: " + refreshError.message,
-          expires_at: broadcasterToken.token_expires_at,
-          accion: "Luisardito must fully re-authenticate",
-        });
+        throw new AppError(
+          "Error renewing token: " + refreshError.message,
+          400
+        );
       }
     }
 
@@ -2205,18 +2182,16 @@ exports.reactivateBroadcasterToken = async (req, res) => {
       });
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[REACTIVATE] General error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * Simplified webhook system status
  */
-exports.systemStatus = async (req, res) => {
+exports.systemStatus = asyncHandler(async (req, res) => {
   try {
     const {
       KickBroadcasterToken,
@@ -2269,18 +2244,16 @@ exports.systemStatus = async (req, res) => {
         : "System needs configuration",
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[System Status] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DEBUG: Temporary endpoint to debug the subscription process
  */
-exports.debugSubscriptionProcess = async (req, res) => {
+exports.debugSubscriptionProcess = asyncHandler(async (req, res) => {
   try {
     const {
       KickBroadcasterToken,
@@ -2300,11 +2273,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
     });
 
     if (!broadcasterToken) {
-      return res.json({
-        success: false,
-        error: "No active token for main broadcaster",
-        broadcaster_id: config.kick.broadcasterId,
-      });
+      throw new AppError("No active token for main broadcaster", 500);
     }
 
     logger.info("[DEBUG SUB] Token found for:", broadcasterToken.kick_username);
@@ -2339,11 +2308,7 @@ exports.debugSubscriptionProcess = async (req, res) => {
       );
     } catch (apiError) {
       logger.error("[DEBUG SUB] Kick API error:", apiError.message);
-      return res.json({
-        success: false,
-        error: "Error communicating with Kick API",
-        details: apiError.response?.data || apiError.message,
-      });
+      throw new AppError("Error communicating with Kick API", 500);
     }
 
     // 3. Try saving each subscription and capture detailed errors
@@ -2460,19 +2425,16 @@ exports.debugSubscriptionProcess = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[DEBUG SUB] General error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DEBUG: Verify KickEventSubscription table structure
  */
-exports.debugTableStructure = async (req, res) => {
+exports.debugTableStructure = asyncHandler(async (req, res) => {
   try {
     const { KickEventSubscription } = require("../models");
     const { sequelize } = require("../models/database");
@@ -2592,19 +2554,16 @@ exports.debugTableStructure = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[DEBUG TABLE] General error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * APP TOKEN: Configure permanent webhooks with App Access Token
  */
-exports.setupPermanentWebhooks = async (req, res) => {
+exports.setupPermanentWebhooks = asyncHandler(async (req, res) => {
   try {
     const {
       subscribeToEventsWithAppToken,
@@ -2644,28 +2603,19 @@ exports.setupPermanentWebhooks = async (req, res) => {
         ],
       });
     } else {
-      res.status(500).json({
-        success: false,
-        message: "Error configuring permanent webhooks",
-        error: result.error,
-        token_type: "APP_TOKEN",
-        permanent: false,
-      });
+      throw new AppError("Error configuring permanent webhooks", 500);
     }
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Setup Permanent] General error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      message: "Internal error configuring permanent webhooks",
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * APP TOKEN: Debug and status of permanent webhooks
  */
-exports.debugAppTokenWebhooks = async (req, res) => {
+exports.debugAppTokenWebhooks = asyncHandler(async (req, res) => {
   try {
     const {
       getAppAccessToken,
@@ -2747,19 +2697,16 @@ exports.debugAppTokenWebhooks = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Debug App Token] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * APP TOKEN: Comparative status between User Token vs App Token
  */
-exports.compareTokenTypes = async (req, res) => {
+exports.compareTokenTypes = asyncHandler(async (req, res) => {
   try {
     const {
       checkAppTokenWebhooksStatus,
@@ -2845,13 +2792,11 @@ exports.compareTokenTypes = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Compare Tokens] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 // ============================================================================
 // DEBUG ENDPOINTS FOR NEW FEATURES
@@ -2860,15 +2805,15 @@ exports.compareTokenTypes = async (req, res) => {
 /**
  * DEBUG: Simulate Botrix migration
  */
-exports.debugBotrixMigration = async (req, res) => {
+exports.debugBotrixMigration = asyncHandler(async (req, res) => {
   try {
     const { kick_username, points_amount } = req.body;
 
     if (!kick_username || !points_amount) {
-      return res.status(400).json({
-        success: false,
-        error: "Missing parameters: kick_username, points_amount",
-      });
+      throw new AppError(
+        "Missing parameters: kick_username, points_amount",
+        400
+      );
     }
 
     logger.info(
@@ -2898,18 +2843,16 @@ exports.debugBotrixMigration = async (req, res) => {
       mock_message: mockMessage.content,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[DEBUG BOTRIX] Simulation error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DEBUG: VIP configuration and migration info
  */
-exports.debugSystemInfo = async (req, res) => {
+exports.debugSystemInfo = asyncHandler(async (req, res) => {
   try {
     const { BotrixMigrationConfig } = require("../models");
     const config = await BotrixMigrationConfig.getConfig();
@@ -2951,18 +2894,16 @@ exports.debugSystemInfo = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("Error getting system info:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DEBUG: Check stream status
  */
-exports.debugStreamStatus = async (req, res) => {
+exports.debugStreamStatus = asyncHandler(async (req, res) => {
   try {
     const redis = getRedisClient();
 
@@ -3069,28 +3010,23 @@ exports.debugStreamStatus = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Stream Status] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * EMERGENCY: Manually set stream status
  * POST /api/kick-webhook/debug/force-stream-state
  * Body: { "is_live": true/false, "reason": "explanation" }
  */
-exports.forceStreamState = async (req, res) => {
+exports.forceStreamState = asyncHandler(async (req, res) => {
   try {
     const { is_live, reason } = req.body;
 
     if (typeof is_live !== "boolean") {
-      return res.status(400).json({
-        success: false,
-        error: "Parameter is_live must be boolean (true/false)",
-      });
+      throw new AppError("Parameter is_live must be boolean (true/false)", 400);
     }
 
     const redis = getRedisClient();
@@ -3171,19 +3107,17 @@ exports.forceStreamState = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[FORCE STREAM STATE] Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * PUBLIC ENDPOINT: Get public Kick points configuration
  * GET /api/kick/public/points-config
  */
-exports.getPublicPointsConfig = async (req, res) => {
+exports.getPublicPointsConfig = asyncHandler(async (req, res) => {
   try {
     const configs = await KickPointsConfig.findAll({
       order: [["id", "ASC"]],
@@ -3204,10 +3138,8 @@ exports.getPublicPointsConfig = async (req, res) => {
       initialized,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Public Points Config] Error:", error.message);
-    res.status(500).json({
-      success: false,
-      error: "Internal server error",
-    });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
