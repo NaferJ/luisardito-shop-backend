@@ -139,7 +139,7 @@ function parseModeratorCommand(content) {
 /**
  * Processes a moderator command and executes the corresponding action
  * @param {object} payload - Full Kick webhook payload (chat.message.sent)
- * @returns {object} - { success, message, processed }
+ * @returns {Promise<object>} - { success, message, processed }
  */
 async function processModeratorCommand(payload) {
   try {
