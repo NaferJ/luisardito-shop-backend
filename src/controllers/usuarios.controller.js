@@ -131,7 +131,7 @@ exports.me = asyncHandler(async (req, res) => {
 });
 
 // Optional: edit profile
-exports.updateMe = async (req, res) => {
+exports.updateMe = asyncHandler(async (req, res) => {
   try {
     const updates = req.body;
     const allowedFields = ["discord_username", "password"];
@@ -160,12 +160,13 @@ exports.updateMe = async (req, res) => {
       updated_fields: Object.keys(filteredUpdates),
     });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    if (err instanceof AppError) throw err;
+    throw new AppError(err.message, 400);
   }
-};
+});
 
 // List all users with stats (admin by permission)
-exports.listarUsuarios = async (req, res) => {
+exports.listarUsuarios = asyncHandler(async (req, res) => {
   try {
     const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
     const offset = req.query.offset ? parseInt(req.query.offset) : undefined;
@@ -278,11 +279,9 @@ exports.listarUsuarios = async (req, res) => {
     res.json(enrichedUsers);
   } catch (error) {
     logger.error("Error listing users:", error);
-    res
-      .status(500)
-      .json({ error: "Internal server error", message: error.message });
+    throw new AppError("Internal server error", 500);
   }
-};
+});
 
 // ============================================================================
 // DEBUG ENDPOINTS
@@ -291,7 +290,7 @@ exports.listarUsuarios = async (req, res) => {
 /**
  * DEBUG: Get complete info for a specific user
  */
-exports.debugUsuario = async (req, res) => {
+exports.debugUsuario = asyncHandler(async (req, res) => {
   try {
     const { usuarioId } = req.params;
     const { Rol, Permiso, RolPermiso } = require("../models");
@@ -311,10 +310,7 @@ exports.debugUsuario = async (req, res) => {
     });
 
     if (!usuario) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+      throw new AppError("User not found", 404);
     }
 
     const permisos =
@@ -407,145 +403,22 @@ exports.debugUsuario = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("Error in user debug:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
-
-/**
- * DEBUG: Complete info of the roles and permissions system
- */
-exports.debugRolesPermisos = async (req, res) => {
-  try {
-    const { Rol, Permiso, RolPermiso } = require("../models");
-
-    // Get all roles with their permissions
-    const roles = await Rol.findAll({
-      include: [
-        {
-          model: RolPermiso,
-          include: [Permiso],
-        },
-      ],
-    });
-
-    // Get all permissions
-    const permisos = await Permiso.findAll({
-      order: [["id", "ASC"]],
-    });
-
-    // Count users by role
-    const usuariosPorRol = await Usuario.findAll({
-      attributes: [
-        "rol_id",
-        [
-          Usuario.sequelize.fn("COUNT", Usuario.sequelize.col("id")),
-          "total_usuarios",
-        ],
-      ],
-      group: ["rol_id"],
-    });
-
-    // Specifically check the ver_historial_puntos permission
-    const permisoHistorial = await Permiso.findOne({
-      where: { nombre: "ver_historial_puntos" },
-      include: [
-        {
-          model: RolPermiso,
-          include: [Rol],
-        },
-      ],
-    });
-
-    // Specifically check role 1 (basic user)
-    const rolUsuario = await Rol.findByPk(1, {
-      include: [
-        {
-          model: RolPermiso,
-          include: [Permiso],
-        },
-      ],
-    });
-
-    res.json({
-      debug_estructura: {
-        total_roles: roles.length,
-        total_permisos: permisos.length,
-        total_relaciones: await RolPermiso.count(),
-      },
-      roles: roles.map((rol) => ({
-        id: rol.id,
-        nombre: rol.nombre,
-        descripcion: rol.descripcion,
-        permisos: rol.RolPermisos.map((rp) => rp.Permiso.nombre),
-        total_permisos: rol.RolPermisos.length,
-      })),
-      permisos: permisos.map((permiso) => ({
-        id: permiso.id,
-        nombre: permiso.nombre,
-        descripcion: permiso.descripcion,
-      })),
-      usuarios_por_rol: usuariosPorRol.map((u) => ({
-        rol_id: u.rol_id,
-        total_usuarios: parseInt(u.getDataValue("total_usuarios")),
-      })),
-      permiso_historial_puntos: permisoHistorial
-        ? {
-            existe: true,
-            id: permisoHistorial.id,
-            nombre: permisoHistorial.nombre,
-            roles_que_lo_tienen: permisoHistorial.RolPermisos.map((rp) => ({
-              rol_id: rp.Rol.id,
-              rol_nombre: rp.Rol.nombre,
-            })),
-          }
-        : { existe: false },
-      verificacion_rol_1: {
-        rol_usuario_basico: rolUsuario
-          ? {
-              id: rolUsuario.id,
-              nombre: rolUsuario.nombre,
-              descripcion: rolUsuario.descripcion,
-              Permisos: rolUsuario.RolPermisos.map((rp) => ({
-                id: rp.Permiso.id,
-                nombre: rp.Permiso.nombre,
-                descripcion: rp.Permiso.descripcion,
-              })),
-            }
-          : null,
-        tiene_permiso_historial: rolUsuario
-          ? rolUsuario.RolPermisos.some(
-              (rp) => rp.Permiso.nombre === "ver_historial_puntos"
-            )
-          : false,
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("Error in roles and permissions debug:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-};
+});
 
 /**
  * HOTFIX: Update user role (temporary for fixes)
  */
-exports.hotfixActualizarRol = async (req, res) => {
+exports.hotfixActualizarRol = asyncHandler(async (req, res) => {
   try {
     const { usuarioId, nuevoRolId } = req.params;
 
     const usuario = await Usuario.findByPk(usuarioId);
     if (!usuario) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
+      throw new AppError("User not found", 404);
     }
 
     const rolAnterior = usuario.rol_id;
@@ -563,25 +436,24 @@ exports.hotfixActualizarRol = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("Error in role hotfix:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 // Sync Kick info (avatar, username, etc.)
-exports.syncKickInfo = async (req, res) => {
+exports.syncKickInfo = asyncHandler(async (req, res) => {
   try {
     const userId = req.user.id;
     const user = await Usuario.findByPk(userId);
 
     if (!user || !user.user_id_ext) {
-      return res.status(400).json({
-        error: "User not connected to Kick",
-        details: "You must connect your Kick account first",
-      });
+      throw new AppError(
+        "User not connected to Kick",
+        400,
+        "You must connect your Kick account first"
+      );
     }
 
     logger.info(
@@ -602,17 +474,19 @@ exports.syncKickInfo = async (req, res) => {
         "[Sync Kick Info] Error fetching Kick data:",
         kickError.message
       );
-      return res.status(500).json({
-        error: "Could not fetch updated Kick data",
-        details: kickError.message,
-      });
+      throw new AppError(
+        "Could not fetch updated Kick data",
+        500,
+        kickError.message
+      );
     }
 
     if (!kickUserData) {
-      return res.status(404).json({
-        error: "User not found on Kick",
-        details: "The user may have been deleted or is not public",
-      });
+      throw new AppError(
+        "User not found on Kick",
+        404,
+        "The user may have been deleted or is not public"
+      );
     }
 
     // Get Kick avatar
@@ -659,13 +533,11 @@ exports.syncKickInfo = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Sync Kick Info] General error:", error.message);
-    res.status(500).json({
-      error: "Error syncing info",
-      details: error.message,
-    });
+    throw new AppError("Error syncing info", 500, error.message);
   }
-};
+});
 
 // Update user points (admin by permission)
 exports.actualizarPuntos = asyncHandler(async (req, res) => {
@@ -743,7 +615,7 @@ exports.actualizarPuntos = asyncHandler(async (req, res) => {
 /**
  * DEBUG: Check current user permissions
  */
-exports.debugPermisos = async (req, res) => {
+exports.debugPermisos = asyncHandler(async (req, res) => {
   try {
     const { Rol, Permiso } = require("../models");
 
@@ -763,7 +635,7 @@ exports.debugPermisos = async (req, res) => {
     });
 
     if (!userWithRole) {
-      return res.status(404).json({ error: "User not found" });
+      throw new AppError("User not found", 404);
     }
 
     const permisos = userWithRole.Rol?.Permisos?.map((p) => p.nombre) || [];
@@ -792,18 +664,16 @@ exports.debugPermisos = async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[Debug Permisos] Error:", error);
-    res.status(500).json({
-      error: error.message,
-      stack: error.stack,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
 
 /**
  * DEBUG: Check roles and permissions structure in DB (no auth)
  */
-exports.debugRolesPermisos = async (req, res) => {
+exports.debugRolesPermisos = asyncHandler(async (req, res) => {
   try {
     const { Rol, Permiso, RolPermiso, Usuario } = require("../models");
 
@@ -902,9 +772,6 @@ exports.debugRolesPermisos = async (req, res) => {
     });
   } catch (error) {
     logger.error("Error in roles and permissions debug (no auth):", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    throw new AppError(error.message, 500);
   }
-};
+});
