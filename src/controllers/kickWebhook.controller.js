@@ -18,6 +18,7 @@ const { Transaction } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("../utils/logger");
 const { syncUserProfileIfNeeded } = require("../utils/usernameSync.util");
+const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
 
 /**
  * DIAGNOSTIC: monitor Redis
@@ -721,7 +722,6 @@ async function processModeratorCommands(payload) {
       return false;
     }
 
-    const ModeratorCommandsService = require("../services/kickModeratorCommands.service");
     const modResult =
       await ModeratorCommandsService.processModeratorCommand(payload);
 
