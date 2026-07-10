@@ -1,5 +1,6 @@
 const broadcasterInfoService = require("../services/broadcasterInfo.service");
-const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Controller for public broadcaster info endpoints
@@ -11,7 +12,7 @@ const logger = require("../utils/logger");
  * Gets full info for the main broadcaster
  * Public endpoint - no authentication required
  */
-exports.getBroadcasterInfo = async (req, res) => {
+exports.getBroadcasterInfo = asyncHandler(async (req, res) => {
   try {
     const broadcasterInfo = await broadcasterInfoService.getBroadcasterInfo();
 
@@ -19,26 +20,17 @@ exports.getBroadcasterInfo = async (req, res) => {
       success: true,
       data: broadcasterInfo,
     });
-  } catch (error) {
-    logger.error(
-      "[BroadcasterInfoCtrl] Error in getBroadcasterInfo:",
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      error: "Error fetching broadcaster info",
-      message: error.message,
-    });
+  } catch (_error) {
+    throw new AppError("Error fetching broadcaster info", 500);
   }
-};
+});
 
 /**
  * GET /api/broadcaster/status
  * Gets only the stream status (online/offline)
  * Public endpoint - lighter and faster
  */
-exports.getStreamStatus = async (req, res) => {
+exports.getStreamStatus = asyncHandler(async (req, res) => {
   try {
     const status = await broadcasterInfoService.getStreamStatus();
 
@@ -46,16 +38,7 @@ exports.getStreamStatus = async (req, res) => {
       success: true,
       data: status,
     });
-  } catch (error) {
-    logger.error(
-      "[BroadcasterInfoCtrl] Error in getStreamStatus:",
-      error.message
-    );
-
-    res.status(500).json({
-      success: false,
-      error: "Error fetching stream status",
-      message: error.message,
-    });
+  } catch (_error) {
+    throw new AppError("Error fetching stream status", 500);
   }
-};
+});
