@@ -1,7 +1,8 @@
 const NotificacionService = require("../services/notificacion.service");
-const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
-exports.listar = async (req, res) => {
+exports.listar = asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 20, tipo = null, estado = null } = req.query;
     const usuarioId = req.user.id;
@@ -16,12 +17,12 @@ exports.listar = async (req, res) => {
 
     res.json(resultado);
   } catch (error) {
-    logger.error(`[Notificaciones] Error listing: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 500);
   }
-};
+});
 
-exports.obtenerDetalle = async (req, res) => {
+exports.obtenerDetalle = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const usuarioId = req.user.id;
@@ -40,12 +41,12 @@ exports.obtenerDetalle = async (req, res) => {
 
     res.json(notificacion);
   } catch (error) {
-    logger.error(`[Notificaciones] Error fetching detail: ${error.message}`);
-    res.status(404).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 404);
   }
-};
+});
 
-exports.marcarComoLeida = async (req, res) => {
+exports.marcarComoLeida = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const usuarioId = req.user.id;
@@ -60,12 +61,12 @@ exports.marcarComoLeida = async (req, res) => {
       notificacion,
     });
   } catch (error) {
-    logger.error(`[Notificaciones] Error marking as read: ${error.message}`);
-    res.status(404).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 404);
   }
-};
+});
 
-exports.marcarTodasComoLeidas = async (req, res) => {
+exports.marcarTodasComoLeidas = asyncHandler(async (req, res) => {
   try {
     const usuarioId = req.user.id;
 
@@ -77,14 +78,12 @@ exports.marcarTodasComoLeidas = async (req, res) => {
       ...resultado,
     });
   } catch (error) {
-    logger.error(
-      `[Notificaciones] Error marking all as read: ${error.message}`
-    );
-    res.status(500).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 500);
   }
-};
+});
 
-exports.eliminar = async (req, res) => {
+exports.eliminar = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
     const usuarioId = req.user.id;
@@ -93,12 +92,12 @@ exports.eliminar = async (req, res) => {
 
     res.json(resultado);
   } catch (error) {
-    logger.error(`[Notificaciones] Error deleting: ${error.message}`);
-    res.status(404).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 404);
   }
-};
+});
 
-exports.contarNoLeidas = async (req, res) => {
+exports.contarNoLeidas = asyncHandler(async (req, res) => {
   try {
     const usuarioId = req.user.id;
 
@@ -106,7 +105,7 @@ exports.contarNoLeidas = async (req, res) => {
 
     res.json(resultado);
   } catch (error) {
-    logger.error(`[Notificaciones] Error counting unread: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    if (error instanceof AppError) throw error;
+    throw new AppError(error.message, 500);
   }
-};
+});
