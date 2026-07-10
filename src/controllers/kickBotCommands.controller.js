@@ -1,12 +1,14 @@
 const { KickBotCommand } = require("../models");
 const logger = require("../utils/logger");
 const { Op } = require("sequelize");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Get all commands (with pagination and filters)
  * GET /api/kick-admin/bot-commands
  */
-exports.getAllCommands = async (req, res) => {
+exports.getAllCommands = asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 20, enabled, command_type, search } = req.query;
 
@@ -51,20 +53,17 @@ exports.getAllCommands = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching commands:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error fetching commands",
-      error: error.message,
-    });
+    throw new AppError("Error fetching commands", 500);
   }
-};
+});
 
 /**
  * Get all public commands (read-only, no sensitive filters)
  * GET /api/kick-admin/bot-commands/public
  */
-exports.getPublicCommands = async (req, res) => {
+exports.getPublicCommands = asyncHandler(async (req, res) => {
   try {
     const { page = 1, limit = 20, enabled, command_type, search } = req.query;
 
@@ -109,30 +108,24 @@ exports.getPublicCommands = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching public commands:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error fetching commands",
-      error: error.message,
-    });
+    throw new AppError("Error fetching commands", 500);
   }
-};
+});
 
 /**
  * Get a specific command by ID
  * GET /api/kick-admin/bot-commands/:id
  */
-exports.getCommandById = async (req, res) => {
+exports.getCommandById = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
     const command = await KickBotCommand.findByPk(id);
 
     if (!command) {
-      return res.status(404).json({
-        ok: false,
-        message: "Command not found",
-      });
+      throw new AppError("Command not found", 404);
     }
 
     logger.info(`[BOT-COMMANDS] Command fetched: !${command.command}`);
@@ -142,20 +135,17 @@ exports.getCommandById = async (req, res) => {
       data: command,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error fetching command",
-      error: error.message,
-    });
+    throw new AppError("Error fetching command", 500);
   }
-};
+});
 
 /**
  * Create a new command
  * POST /api/kick-admin/bot-commands
  */
-exports.createCommand = async (req, res) => {
+exports.createCommand = asyncHandler(async (req, res) => {
   try {
     const {
       command,
@@ -173,10 +163,10 @@ exports.createCommand = async (req, res) => {
 
     // Validations
     if (!command || !response_message) {
-      return res.status(400).json({
-        ok: false,
-        message: 'The fields "command" and "response_message" are required',
-      });
+      throw new AppError(
+        'The fields "command" and "response_message" are required',
+        400
+      );
     }
 
     // Validate that the command does not already exist
@@ -185,10 +175,7 @@ exports.createCommand = async (req, res) => {
     });
 
     if (existingCommand) {
-      return res.status(409).json({
-        ok: false,
-        message: `The command "!${command}" already exists`,
-      });
+      throw new AppError(`The command "!${command}" already exists`, 409);
     }
 
     // Validate unique aliases
@@ -202,10 +189,10 @@ exports.createCommand = async (req, res) => {
       });
 
       if (existingAliases.length > 0) {
-        return res.status(409).json({
-          ok: false,
-          message: `One of the aliases already exists as a command: ${existingAliases.map((c) => c.command).join(", ")}`,
-        });
+        throw new AppError(
+          `One of the aliases already exists as a command: ${existingAliases.map((c) => c.command).join(", ")}`,
+          409
+        );
       }
     }
 
@@ -234,43 +221,63 @@ exports.createCommand = async (req, res) => {
       data: newCommand,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error creating command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error creating command",
-      error: error.message,
-    });
+    throw new AppError("Error creating command", 500);
   }
-};
+});
+
+/**
+ * Apply field updates to a command instance (only defined fields).
+ * Extracted to reduce cognitive complexity of updateCommand.
+ */
+function applyCommandUpdates(commandInstance, updates) {
+  const {
+    command,
+    aliases,
+    response_message,
+    description,
+    command_type,
+    dynamic_handler,
+    enabled,
+    requires_permission,
+    permission_level,
+    cooldown_seconds,
+    auto_send_interval_seconds,
+  } = updates;
+
+  if (command !== undefined) commandInstance.command = command.toLowerCase();
+  if (aliases !== undefined) commandInstance.aliases = aliases;
+  if (response_message !== undefined)
+    commandInstance.response_message = response_message;
+  if (description !== undefined) commandInstance.description = description;
+  if (command_type !== undefined) commandInstance.command_type = command_type;
+  if (dynamic_handler !== undefined)
+    commandInstance.dynamic_handler = dynamic_handler;
+  if (enabled !== undefined) commandInstance.enabled = enabled;
+  if (requires_permission !== undefined)
+    commandInstance.requires_permission = requires_permission;
+  if (permission_level !== undefined)
+    commandInstance.permission_level = permission_level;
+  if (cooldown_seconds !== undefined)
+    commandInstance.cooldown_seconds = cooldown_seconds;
+  if (auto_send_interval_seconds !== undefined)
+    commandInstance.auto_send_interval_seconds = auto_send_interval_seconds;
+}
 
 /**
  * Update an existing command
  * PUT /api/kick-admin/bot-commands/:id
  */
-exports.updateCommand = async (req, res) => {
+exports.updateCommand = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      command,
-      aliases,
-      response_message,
-      description,
-      command_type,
-      dynamic_handler,
-      enabled,
-      requires_permission,
-      permission_level,
-      cooldown_seconds,
-      auto_send_interval_seconds,
-    } = req.body;
+    const { command } = req.body;
 
     const existingCommand = await KickBotCommand.findByPk(id);
 
     if (!existingCommand) {
-      return res.status(404).json({
-        ok: false,
-        message: "Command not found",
-      });
+      throw new AppError("Command not found", 404);
     }
 
     // If renaming the command, validate that the new name does not exist
@@ -283,31 +290,12 @@ exports.updateCommand = async (req, res) => {
       });
 
       if (duplicateCommand) {
-        return res.status(409).json({
-          ok: false,
-          message: `The command "!${command}" already exists`,
-        });
+        throw new AppError(`The command "!${command}" already exists`, 409);
       }
     }
 
     // Update fields
-    if (command !== undefined) existingCommand.command = command.toLowerCase();
-    if (aliases !== undefined) existingCommand.aliases = aliases;
-    if (response_message !== undefined)
-      existingCommand.response_message = response_message;
-    if (description !== undefined) existingCommand.description = description;
-    if (command_type !== undefined) existingCommand.command_type = command_type;
-    if (dynamic_handler !== undefined)
-      existingCommand.dynamic_handler = dynamic_handler;
-    if (enabled !== undefined) existingCommand.enabled = enabled;
-    if (requires_permission !== undefined)
-      existingCommand.requires_permission = requires_permission;
-    if (permission_level !== undefined)
-      existingCommand.permission_level = permission_level;
-    if (cooldown_seconds !== undefined)
-      existingCommand.cooldown_seconds = cooldown_seconds;
-    if (auto_send_interval_seconds !== undefined)
-      existingCommand.auto_send_interval_seconds = auto_send_interval_seconds;
+    applyCommandUpdates(existingCommand, req.body);
 
     await existingCommand.save();
 
@@ -319,30 +307,24 @@ exports.updateCommand = async (req, res) => {
       data: existingCommand,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error updating command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error updating command",
-      error: error.message,
-    });
+    throw new AppError("Error updating command", 500);
   }
-};
+});
 
 /**
  * Delete a command
  * DELETE /api/kick-admin/bot-commands/:id
  */
-exports.deleteCommand = async (req, res) => {
+exports.deleteCommand = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
     const command = await KickBotCommand.findByPk(id);
 
     if (!command) {
-      return res.status(404).json({
-        ok: false,
-        message: "Command not found",
-      });
+      throw new AppError("Command not found", 404);
     }
 
     const commandName = command.command;
@@ -355,30 +337,24 @@ exports.deleteCommand = async (req, res) => {
       message: "Command deleted successfully",
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error deleting command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error deleting command",
-      error: error.message,
-    });
+    throw new AppError("Error deleting command", 500);
   }
-};
+});
 
 /**
  * Toggle command status (enabled/disabled)
  * PATCH /api/kick-admin/bot-commands/:id/toggle
  */
-exports.toggleCommandStatus = async (req, res) => {
+exports.toggleCommandStatus = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
     const command = await KickBotCommand.findByPk(id);
 
     if (!command) {
-      return res.status(404).json({
-        ok: false,
-        message: "Command not found",
-      });
+      throw new AppError("Command not found", 404);
     }
 
     command.enabled = !command.enabled;
@@ -393,20 +369,17 @@ exports.toggleCommandStatus = async (req, res) => {
       data: command,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error toggling command status:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error toggling command status",
-      error: error.message,
-    });
+    throw new AppError("Error toggling command status", 500);
   }
-};
+});
 
 /**
  * Get command usage statistics
  * GET /api/kick-admin/bot-commands/stats
  */
-exports.getCommandsStats = async (req, res) => {
+exports.getCommandsStats = asyncHandler(async (req, res) => {
   try {
     const totalCommands = await KickBotCommand.count();
     const enabledCommands = await KickBotCommand.count({
@@ -455,30 +428,24 @@ exports.getCommandsStats = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching stats:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error fetching stats",
-      error: error.message,
-    });
+    throw new AppError("Error fetching stats", 500);
   }
-};
+});
 
 /**
  * Duplicate an existing command
  * POST /api/kick-admin/bot-commands/:id/duplicate
  */
-exports.duplicateCommand = async (req, res) => {
+exports.duplicateCommand = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
 
     const originalCommand = await KickBotCommand.findByPk(id);
 
     if (!originalCommand) {
-      return res.status(404).json({
-        ok: false,
-        message: "Command not found",
-      });
+      throw new AppError("Command not found", 404);
     }
 
     // Generate a unique name
@@ -518,20 +485,17 @@ exports.duplicateCommand = async (req, res) => {
       data: duplicatedCommand,
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error duplicating command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error duplicating command",
-      error: error.message,
-    });
+    throw new AppError("Error duplicating command", 500);
   }
-};
+});
 
 /**
  * Test a command (without saving it)
  * POST /api/kick-admin/bot-commands/test
  */
-exports.testCommand = async (req, res) => {
+exports.testCommand = asyncHandler(async (req, res) => {
   try {
     const {
       response_message,
@@ -540,19 +504,16 @@ exports.testCommand = async (req, res) => {
     } = req.body;
 
     if (!response_message) {
-      return res.status(400).json({
-        ok: false,
-        message: 'The field "response_message" is required',
-      });
+      throw new AppError('The field "response_message" is required', 400);
     }
 
     // Simulate variables
     const processedMessage = response_message
-      .replace(/{username}/g, test_username)
-      .replace(/{channel}/g, "luisardito")
-      .replace(/{args}/g, test_args)
-      .replace(/{target_user}/g, test_username)
-      .replace(/{points}/g, "1000");
+      .replaceAll("{username}", test_username)
+      .replaceAll("{channel}", "luisardito")
+      .replaceAll("{args}", test_args)
+      .replaceAll("{target_user}", test_username)
+      .replaceAll("{points}", "1000");
 
     logger.info("[BOT-COMMANDS] Test command executed");
 
@@ -571,11 +532,8 @@ exports.testCommand = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error testing command:", error);
-    res.status(500).json({
-      ok: false,
-      message: "Error testing command",
-      error: error.message,
-    });
+    throw new AppError("Error testing command", 500);
   }
-};
+});
