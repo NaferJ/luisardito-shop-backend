@@ -18,11 +18,13 @@ const { extractAvatarUrl } = require("../utils/kickApi");
 const { setAuthCookies, clearAuthCookies } = require("../utils/cookies.util");
 const KickBotTokenService = require("../services/kickBotToken.service");
 const logger = require("../utils/logger");
+const asyncHandler = require("../utils/asyncHandler");
+const AppError = require("../utils/AppError");
 
 /**
  * Helper to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @returns {Promise<{discord_info: Object|null, display_name: string}>} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
@@ -85,12 +87,12 @@ async function processKickAvatar(kickUser) {
   }
 }
 
-exports.registerLocal = async (req, res) => {
+exports.registerLocal = asyncHandler(async (req, res) => {
   try {
     let { nickname, email, password } = req.body;
 
     if (!nickname || !email || !password) {
-      return res.status(400).json({ error: "All fields are required" });
+      throw new AppError("All fields are required", 400);
     }
 
     nickname = nickname.trim().toLowerCase();
@@ -98,9 +100,7 @@ exports.registerLocal = async (req, res) => {
 
     const developers = ["naferjml@gmail.com"];
     if (!developers.includes(email)) {
-      return res
-        .status(403)
-        .json({ error: "Manual registration is for developers only" });
+      throw new AppError("Manual registration is for developers only", 403);
     }
 
     // Check for duplicates
@@ -108,72 +108,61 @@ exports.registerLocal = async (req, res) => {
       where: { [Op.or]: [{ nickname }, { email }] },
     });
     if (existe) {
-      return res
-        .status(409)
-        .json({ error: "Nickname or email already registered" });
+      throw new AppError("Nickname or email already registered", 409);
     }
 
     const hash = await bcrypt.hash(password, 10);
     const user = await Usuario.create({ nickname, email, password_hash: hash });
     res.status(201).json({ message: "User created", userId: user.id });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    if (err instanceof AppError) throw err;
+    throw new AppError(err.message, 400);
   }
-};
+});
 
 // Local login
-exports.loginLocal = async (req, res) => {
-  try {
-    const { nickname, password } = req.body;
-    const user = await Usuario.findOne({ where: { nickname } });
-    if (
-      !user ||
-      !user.password_hash ||
-      !(await bcrypt.compare(password, user.password_hash))
-    ) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    // Generate access token and refresh token
-    const accessToken = generateAccessToken({
-      userId: user.id,
-      rolId: user.rol_id,
-      nickname: user.nickname,
-    });
-
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers["user-agent"];
-
-    const refreshToken = await createRefreshToken(
-      user.id,
-      ipAddress,
-      userAgent
-    );
-
-    // Set cross-domain cookies
-    setAuthCookies(res, accessToken, refreshToken.token);
-
-    // Enrich user info with Discord data
-    const { discord_info, display_name } =
-      await enrichUserWithDiscordInfo(user);
-
-    res.json({
-      accessToken,
-      refreshToken: refreshToken.token,
-      expiresIn: 3600, // 1 hour in seconds
-      user: {
-        id: user.id,
-        nickname: user.nickname,
-        display_name,
-        puntos: user.puntos,
-        rol_id: user.rol_id,
-        discord_info,
-      },
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+exports.loginLocal = asyncHandler(async (req, res) => {
+  const { nickname, password } = req.body;
+  const user = await Usuario.findOne({ where: { nickname } });
+  if (
+    !user?.password_hash ||
+    !(await bcrypt.compare(password, user.password_hash))
+  ) {
+    throw new AppError("Invalid credentials", 401);
   }
-};
+
+  // Generate access token and refresh token
+  const accessToken = generateAccessToken({
+    userId: user.id,
+    rolId: user.rol_id,
+    nickname: user.nickname,
+  });
+
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  const userAgent = req.headers["user-agent"];
+
+  const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
+
+  // Set cross-domain cookies
+  setAuthCookies(res, accessToken, refreshToken.token);
+
+  // Enrich user info with Discord data
+  const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
+
+  res.json({
+    accessToken,
+    refreshToken: refreshToken.token,
+    expiresIn: 3600, // 1 hour in seconds
+    user: {
+      id: user.id,
+      nickname: user.nickname,
+      display_name,
+      puntos: user.puntos,
+      rol_id: user.rol_id,
+      discord_info,
+    },
+  });
+});
 
 // Redirect to Kick OAuth
 exports.redirectKick = (req, res) => {
@@ -766,8 +755,8 @@ exports.callbackKickBot = async (req, res) => {
 
     // Also save to tokens.json for auto-refresh
     try {
-      const fs = require("fs").promises;
-      const path = require("path");
+      const fs = require("node:fs").promises;
+      const path = require("node:path");
       const tokensFile = path.join(__dirname, "../../tokens/tokens.json");
       const fullPath = path.resolve(tokensFile);
       logger.info("[Kick OAuth][callbackKickBot] Saving tokens to:", fullPath);
@@ -805,289 +794,268 @@ exports.callbackKickBot = async (req, res) => {
 /**
  * Endpoint to refresh the access token using the refresh token
  */
-exports.refreshToken = async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
+exports.refreshToken = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
 
-    if (!refreshToken) {
-      return res.status(400).json({ error: "refreshToken required" });
-    }
-
-    // Validate the refresh token
-    const tokenRecord = await validateRefreshToken(refreshToken);
-
-    if (!tokenRecord) {
-      return res
-        .status(401)
-        .json({ error: "Invalid or expired refresh token" });
-    }
-
-    // Get user data
-    const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
-
-    if (!usuario) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Rotate the refresh token (higher security)
-    const ipAddress = req.ip || req.connection.remoteAddress;
-    const userAgent = req.headers["user-agent"];
-
-    const newRefreshToken = await rotateRefreshToken(
-      refreshToken,
-      ipAddress,
-      userAgent
-    );
-
-    // Generate new access token
-    const newAccessToken = generateAccessToken({
-      userId: usuario.id,
-      rolId: usuario.rol_id,
-      nickname: usuario.nickname,
-      kick_id: usuario.user_id_ext,
-    });
-
-    logger.info(
-      `[Auth][refreshToken] Token renewed for user ${usuario.nickname}`
-    );
-
-    // Set cookies with the new tokens
-    setAuthCookies(res, newAccessToken, newRefreshToken.token);
-
-    // Enrich user info with Discord data
-    const { discord_info, display_name } =
-      await enrichUserWithDiscordInfo(usuario);
-
-    return res.json({
-      accessToken: newAccessToken,
-      refreshToken: newRefreshToken.token,
-      expiresIn: 3600, // 1 hour in seconds
-      user: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        display_name,
-        puntos: usuario.puntos,
-        rol_id: usuario.rol_id,
-        discord_info,
-      },
-    });
-  } catch (error) {
-    logger.error("[Auth][refreshToken] Error:", error.message);
-    return res.status(500).json({ error: "Error refreshing token" });
+  if (!refreshToken) {
+    throw new AppError("refreshToken required", 400);
   }
-};
+
+  // Validate the refresh token
+  const tokenRecord = await validateRefreshToken(refreshToken);
+
+  if (!tokenRecord) {
+    throw new AppError("Invalid or expired refresh token", 401);
+  }
+
+  // Get user data
+  const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
+
+  if (!usuario) {
+    throw new AppError("User not found", 404);
+  }
+
+  // Rotate the refresh token (higher security)
+  const ipAddress = req.ip || req.connection.remoteAddress;
+  const userAgent = req.headers["user-agent"];
+
+  const newRefreshToken = await rotateRefreshToken(
+    refreshToken,
+    ipAddress,
+    userAgent
+  );
+
+  // Generate new access token
+  const newAccessToken = generateAccessToken({
+    userId: usuario.id,
+    rolId: usuario.rol_id,
+    nickname: usuario.nickname,
+    kick_id: usuario.user_id_ext,
+  });
+
+  logger.info(
+    `[Auth][refreshToken] Token renewed for user ${usuario.nickname}`
+  );
+
+  // Set cookies with the new tokens
+  setAuthCookies(res, newAccessToken, newRefreshToken.token);
+
+  // Enrich user info with Discord data
+  const { discord_info, display_name } =
+    await enrichUserWithDiscordInfo(usuario);
+
+  return res.json({
+    accessToken: newAccessToken,
+    refreshToken: newRefreshToken.token,
+    expiresIn: 3600, // 1 hour in seconds
+    user: {
+      id: usuario.id,
+      nickname: usuario.nickname,
+      display_name,
+      puntos: usuario.puntos,
+      rol_id: usuario.rol_id,
+      discord_info,
+    },
+  });
+});
 
 /**
  * Endpoint to log out (revoke refresh token)
  */
-exports.logout = async (req, res) => {
-  try {
-    const { refreshToken } = req.body;
+exports.logout = asyncHandler(async (req, res) => {
+  const { refreshToken } = req.body;
 
-    if (!refreshToken) {
-      return res.status(400).json({ error: "refreshToken required" });
-    }
-
-    // Revoke the refresh token
-    const revoked = await revokeRefreshToken(refreshToken);
-
-    if (!revoked) {
-      return res.status(404).json({ error: "Refresh token not found" });
-    }
-
-    // Clear cross-domain cookies
-    clearAuthCookies(res);
-
-    logger.info("[Auth][logout] Session closed successfully");
-
-    return res.json({ message: "Session closed successfully" });
-  } catch (error) {
-    logger.error("[Auth][logout] Error:", error.message);
-    return res.status(500).json({ error: "Error closing session" });
+  if (!refreshToken) {
+    throw new AppError("refreshToken required", 400);
   }
-};
+
+  // Revoke the refresh token
+  const revoked = await revokeRefreshToken(refreshToken);
+
+  if (!revoked) {
+    throw new AppError("Refresh token not found", 404);
+  }
+
+  // Clear cross-domain cookies
+  clearAuthCookies(res);
+
+  logger.info("[Auth][logout] Session closed successfully");
+
+  return res.json({ message: "Session closed successfully" });
+});
 
 /**
  * Endpoint to close all sessions for a user
  */
-exports.logoutAll = async (req, res) => {
-  try {
-    // Get userId from the current token (assumes auth middleware)
-    const { userId } = req.user || req.body;
+exports.logoutAll = asyncHandler(async (req, res) => {
+  // Get userId from the current token (assumes auth middleware)
+  const { userId } = req.user || req.body;
 
-    if (!userId) {
-      return res.status(400).json({ error: "userId required" });
-    }
-
-    // Revoke all refresh tokens for the user
-    const revokedCount = await revokeAllUserTokens(userId);
-
-    // Clear cross-domain cookies
-    clearAuthCookies(res);
-
-    logger.info(
-      `[Auth][logoutAll] ${revokedCount} sessions closed for user ${userId}`
-    );
-
-    return res.json({
-      message: `${revokedCount} session(s) closed successfully`,
-      revokedCount,
-    });
-  } catch (error) {
-    logger.error("[Auth][logoutAll] Error:", error.message);
-    return res.status(500).json({ error: "Error closing sessions" });
+  if (!userId) {
+    throw new AppError("userId required", 400);
   }
-};
+
+  // Revoke all refresh tokens for the user
+  const revokedCount = await revokeAllUserTokens(userId);
+
+  // Clear cross-domain cookies
+  clearAuthCookies(res);
+
+  logger.info(
+    `[Auth][logoutAll] ${revokedCount} sessions closed for user ${userId}`
+  );
+
+  return res.json({
+    message: `${revokedCount} session(s) closed successfully`,
+    revokedCount,
+  });
+});
 
 // Receive tokens from the frontend (token exchange done in the browser)
-exports.storeTokens = async (req, res) => {
+exports.storeTokens = asyncHandler(async (req, res) => {
+  const { accessToken } = req.body || {};
+  if (!accessToken) {
+    throw new AppError("accessToken required", 400);
+  }
+
+  const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, "");
+  const userUrl = `${userApiBase}/public/v1/users`;
+
+  // Get user data with the received access token
+  let userRes;
   try {
-    const { accessToken } = req.body || {};
-    if (!accessToken) {
-      return res.status(400).json({ error: "accessToken required" });
-    }
-
-    const userApiBase = config.kick.apiBaseUrl.replace(/\/$/, "");
-    const userUrl = `${userApiBase}/public/v1/users`;
-
-    // Get user data with the received access token
-    const userRes = await axios.get(userUrl, {
+    userRes = await axios.get(userUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
       timeout: 10000,
     });
-
-    const kickUser = Array.isArray(userRes.data.data)
-      ? userRes.data.data[0]
-      : userRes.data;
-
-    // Upsert local user
-    let usuario = await Usuario.findOne({
-      where: { user_id_ext: String(kickUser.user_id) },
-    });
-    let isNewUser = false;
-    if (!usuario) {
-      // Create new user
-      const newUserData = {
-        nickname: kickUser.name,
-        email: kickUser.email || `${kickUser.name}@kick.user`,
-        puntos: 1000,
-        rol_id: 1, // New users start as "basic user"
-        user_id_ext: String(kickUser.user_id),
-        password_hash: null,
-        kick_data: {
-          avatar_url: kickUser.profile_picture, // Temporary
-          username: kickUser.name,
-        },
-      };
-
-      usuario = await Usuario.create(newUserData);
-
-      // Get Kick avatar after creating the user
-      const kickAvatarUrl = await processKickAvatar(kickUser);
-
-      if (kickAvatarUrl) {
-        await usuario.update({
-          kick_data: {
-            avatar_url: kickAvatarUrl,
-            username: kickUser.name,
-          },
-        });
-      }
-
-      isNewUser = true;
-    } else {
-      // Get Kick avatar
-      const kickAvatarUrl = await processKickAvatar(kickUser);
-
-      await usuario.update({
-        nickname: kickUser.name,
-        email: kickUser.email || `${kickUser.name}@kick.user`,
-        kick_data: {
-          avatar_url: kickAvatarUrl || kickUser.profile_picture,
-          username: kickUser.name,
-        },
-      });
-    }
-
-    // Issue our JWT
-    const token = jwt.sign(
-      {
-        userId: usuario.id,
-        rolId: usuario.rol_id,
-        nickname: usuario.nickname,
-        kick_id: kickUser.user_id,
-      },
-      config.jwtSecret,
-      { expiresIn: "30d" }
-    );
-
-    // Set cookies (although this endpoint is used less, for compatibility)
-    setAuthCookies(res, token, "no-refresh-token-provided");
-
-    // Enrich user info with Discord data
-    const { discord_info, display_name } =
-      await enrichUserWithDiscordInfo(usuario);
-
-    return res.json({
-      token,
-      usuario: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        display_name,
-        puntos: usuario.puntos,
-        rol_id: usuario.rol_id,
-        user_id_ext: usuario.user_id_ext,
-        kick_data: usuario.kick_data,
-        discord_info,
-        createdAt: usuario.createdAt,
-        updatedAt: usuario.updatedAt,
-      },
-      isNewUser,
-      kickProfile: {
-        username: kickUser.name,
-        id: kickUser.user_id,
-        avatar_url: kickUser.profile_picture,
-      },
-    });
   } catch (error) {
-    logger.error("Error in storeTokens:", error?.message || error);
     if (error.response) {
-      return res.status(400).json({
-        error: "Error fetching Kick profile",
-        details: error.response.data,
+      throw new AppError(
+        "Error fetching Kick profile",
+        400,
+        error.response.data
+      );
+    }
+    throw new AppError("Internal server error", 500);
+  }
+
+  const kickUser = Array.isArray(userRes.data.data)
+    ? userRes.data.data[0]
+    : userRes.data;
+
+  // Upsert local user
+  let usuario = await Usuario.findOne({
+    where: { user_id_ext: String(kickUser.user_id) },
+  });
+  let isNewUser = false;
+  if (!usuario) {
+    // Create new user
+    const newUserData = {
+      nickname: kickUser.name,
+      email: kickUser.email || `${kickUser.name}@kick.user`,
+      puntos: 1000,
+      rol_id: 1, // New users start as "basic user"
+      user_id_ext: String(kickUser.user_id),
+      password_hash: null,
+      kick_data: {
+        avatar_url: kickUser.profile_picture, // Temporary
+        username: kickUser.name,
+      },
+    };
+
+    usuario = await Usuario.create(newUserData);
+
+    // Get Kick avatar after creating the user
+    const kickAvatarUrl = await processKickAvatar(kickUser);
+
+    if (kickAvatarUrl) {
+      await usuario.update({
+        kick_data: {
+          avatar_url: kickAvatarUrl,
+          username: kickUser.name,
+        },
       });
     }
-    return res.status(500).json({ error: "Internal server error" });
+
+    isNewUser = true;
+  } else {
+    // Get Kick avatar
+    const kickAvatarUrl = await processKickAvatar(kickUser);
+
+    await usuario.update({
+      nickname: kickUser.name,
+      email: kickUser.email || `${kickUser.name}@kick.user`,
+      kick_data: {
+        avatar_url: kickAvatarUrl || kickUser.profile_picture,
+        username: kickUser.name,
+      },
+    });
   }
-};
+
+  // Issue our JWT
+  const token = jwt.sign(
+    {
+      userId: usuario.id,
+      rolId: usuario.rol_id,
+      nickname: usuario.nickname,
+      kick_id: kickUser.user_id,
+    },
+    config.jwtSecret,
+    { expiresIn: "30d" }
+  );
+
+  // Set cookies (although this endpoint is used less, for compatibility)
+  setAuthCookies(res, token, "no-refresh-token-provided");
+
+  // Enrich user info with Discord data
+  const { discord_info, display_name } =
+    await enrichUserWithDiscordInfo(usuario);
+
+  return res.json({
+    token,
+    usuario: {
+      id: usuario.id,
+      nickname: usuario.nickname,
+      display_name,
+      puntos: usuario.puntos,
+      rol_id: usuario.rol_id,
+      user_id_ext: usuario.user_id_ext,
+      kick_data: usuario.kick_data,
+      discord_info,
+      createdAt: usuario.createdAt,
+      updatedAt: usuario.updatedAt,
+    },
+    isNewUser,
+    kickProfile: {
+      username: kickUser.name,
+      id: kickUser.user_id,
+      avatar_url: kickUser.profile_picture,
+    },
+  });
+});
 
 /**
  * Endpoint to check cookie status (debugging)
  */
-exports.cookieStatus = async (req, res) => {
-  try {
-    const cookies = req.headers.cookie;
-    const authToken = req.cookies?.auth_token;
-    const refreshToken = req.cookies?.refresh_token;
+exports.cookieStatus = asyncHandler(async (req, res) => {
+  const cookies = req.headers.cookie;
+  const authToken = req.cookies?.auth_token;
+  const refreshToken = req.cookies?.refresh_token;
 
-    return res.json({
-      hasCookies: !!cookies,
-      authToken: authToken ? "present" : "absent",
-      refreshToken: refreshToken ? "present" : "absent",
-      environment: process.env.NODE_ENV,
-      domain:
-        process.env.NODE_ENV === "production" ? ".luisardito.com" : "localhost",
-      userAgent: req.headers["user-agent"],
-      origin: req.headers.origin,
-      allCookies: req.cookies,
-    });
-  } catch (error) {
-    logger.error("[Auth][cookieStatus] Error:", error.message);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
+  return res.json({
+    hasCookies: !!cookies,
+    authToken: authToken ? "present" : "absent",
+    refreshToken: refreshToken ? "present" : "absent",
+    environment: process.env.NODE_ENV,
+    domain:
+      process.env.NODE_ENV === "production" ? ".luisardito.com" : "localhost",
+    userAgent: req.headers["user-agent"],
+    origin: req.headers.origin,
+    allCookies: req.cookies,
+  });
+});
 
 // ==========================================
 // DISCORD OAUTH
@@ -1324,91 +1292,79 @@ exports.callbackDiscord = async (req, res) => {
 /**
  * Manual Discord linking (via temporary code)
  */
-exports.linkDiscordManual = async (req, res) => {
-  try {
-    const { code } = req.body;
-    const userId = req.user?.id;
+exports.linkDiscordManual = asyncHandler(async (req, _res) => {
+  const { code } = req.body;
+  const userId = req.user?.id;
 
-    if (!userId) {
-      return res.status(401).json({ error: "User not authenticated" });
-    }
-
-    if (!code) {
-      return res.status(400).json({ error: "Code required" });
-    }
-
-    // Here we would implement the temporary code logic
-    // For now, return that it is not implemented
-    logger.info(
-      "[Discord OAuth][linkDiscordManual] Method not implemented yet"
-    );
-    return res.status(501).json({ error: "Method not implemented" });
-  } catch (error) {
-    logger.error("[Discord OAuth][linkDiscordManual] Error:", error);
-    return res.status(500).json({ error: "Internal server error" });
+  if (!userId) {
+    throw new AppError("User not authenticated", 401);
   }
-};
+
+  if (!code) {
+    throw new AppError("Code required", 400);
+  }
+
+  // Here we would implement the temporary code logic
+  // For now, return that it is not implemented
+  logger.info("[Discord OAuth][linkDiscordManual] Method not implemented yet");
+  throw new AppError("Method not implemented", 501);
+});
 
 /**
  * Unlink Discord account
  */
-exports.unlinkDiscord = async (req, res) => {
-  try {
-    const userId = req.user?.id;
+exports.unlinkDiscord = asyncHandler(async (req, res) => {
+  const userId = req.user?.id;
 
-    if (!userId) {
-      return res.status(401).json({ error: "User not authenticated" });
-    }
-
-    logger.info(
-      "[Discord OAuth][unlinkDiscord] Unlinking Discord for user:",
-      userId
-    );
-
-    // Find and delete the Discord link
-    const discordLink = await DiscordUserLink.findOne({
-      where: { tienda_user_id: userId },
-    });
-
-    if (!discordLink) {
-      logger.warn(
-        "[Discord OAuth][unlinkDiscord] No Discord link found for user:",
-        userId
-      );
-      return res.status(404).json({ error: "No linked Discord account" });
-    }
-
-    // Delete the link
-    await discordLink.destroy();
-
-    // Clear discord_username on the user if present
-    const usuario = await Usuario.findByPk(userId);
-    if (usuario && usuario.discord_username) {
-      await usuario.update({ discord_username: null });
-    }
-
-    logger.info(
-      "[Discord OAuth][unlinkDiscord] Discord unlinked successfully for user:",
-      userId
-    );
-
-    // Enrich user info with Discord data (should now be null)
-    const { discord_info, display_name } =
-      await enrichUserWithDiscordInfo(usuario);
-
-    return res.json({
-      message: "Discord account unlinked successfully",
-      user: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        display_name,
-        puntos: usuario.puntos,
-        rol_id: usuario.rol_id,
-        discord_info,
-      },
-    });
-  } catch (error) {
-    logger.error("[Discord OAuth][unlinkDiscord] Error:", error);
-    return res.status(500).json({ error: "Error unlinking Discord account" });
+  if (!userId) {
+    throw new AppError("User not authenticated", 401);
   }
-};
+
+  logger.info(
+    "[Discord OAuth][unlinkDiscord] Unlinking Discord for user:",
+    userId
+  );
+
+  // Find and delete the Discord link
+  const discordLink = await DiscordUserLink.findOne({
+    where: { tienda_user_id: userId },
+  });
+
+  if (!discordLink) {
+    logger.warn(
+      "[Discord OAuth][unlinkDiscord] No Discord link found for user:",
+      userId
+    );
+    throw new AppError("No linked Discord account", 404);
+  }
+
+  // Delete the link
+  await discordLink.destroy();
+
+  // Clear discord_username on the user if present
+  const usuario = await Usuario.findByPk(userId);
+  if (usuario && usuario.discord_username) {
+    await usuario.update({ discord_username: null });
+  }
+
+  logger.info(
+    "[Discord OAuth][unlinkDiscord] Discord unlinked successfully for user:",
+    userId
+  );
+
+  // Enrich user info with Discord data (should now be null)
+  const { discord_info, display_name } =
+    await enrichUserWithDiscordInfo(usuario);
+
+  return res.json({
+    message: "Discord account unlinked successfully",
+    user: {
+      id: usuario.id,
+      nickname: usuario.nickname,
+      display_name,
+      puntos: usuario.puntos,
+      rol_id: usuario.rol_id,
+      discord_info,
+    },
+  });
+});
