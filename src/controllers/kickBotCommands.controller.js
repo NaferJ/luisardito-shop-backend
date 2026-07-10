@@ -228,25 +228,51 @@ exports.createCommand = asyncHandler(async (req, res) => {
 });
 
 /**
+ * Apply field updates to a command instance (only defined fields).
+ * Extracted to reduce cognitive complexity of updateCommand.
+ */
+function applyCommandUpdates(commandInstance, updates) {
+  const {
+    command,
+    aliases,
+    response_message,
+    description,
+    command_type,
+    dynamic_handler,
+    enabled,
+    requires_permission,
+    permission_level,
+    cooldown_seconds,
+    auto_send_interval_seconds,
+  } = updates;
+
+  if (command !== undefined) commandInstance.command = command.toLowerCase();
+  if (aliases !== undefined) commandInstance.aliases = aliases;
+  if (response_message !== undefined)
+    commandInstance.response_message = response_message;
+  if (description !== undefined) commandInstance.description = description;
+  if (command_type !== undefined) commandInstance.command_type = command_type;
+  if (dynamic_handler !== undefined)
+    commandInstance.dynamic_handler = dynamic_handler;
+  if (enabled !== undefined) commandInstance.enabled = enabled;
+  if (requires_permission !== undefined)
+    commandInstance.requires_permission = requires_permission;
+  if (permission_level !== undefined)
+    commandInstance.permission_level = permission_level;
+  if (cooldown_seconds !== undefined)
+    commandInstance.cooldown_seconds = cooldown_seconds;
+  if (auto_send_interval_seconds !== undefined)
+    commandInstance.auto_send_interval_seconds = auto_send_interval_seconds;
+}
+
+/**
  * Update an existing command
  * PUT /api/kick-admin/bot-commands/:id
  */
 exports.updateCommand = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
-    const {
-      command,
-      aliases,
-      response_message,
-      description,
-      command_type,
-      dynamic_handler,
-      enabled,
-      requires_permission,
-      permission_level,
-      cooldown_seconds,
-      auto_send_interval_seconds,
-    } = req.body;
+    const { command } = req.body;
 
     const existingCommand = await KickBotCommand.findByPk(id);
 
@@ -269,23 +295,7 @@ exports.updateCommand = asyncHandler(async (req, res) => {
     }
 
     // Update fields
-    if (command !== undefined) existingCommand.command = command.toLowerCase();
-    if (aliases !== undefined) existingCommand.aliases = aliases;
-    if (response_message !== undefined)
-      existingCommand.response_message = response_message;
-    if (description !== undefined) existingCommand.description = description;
-    if (command_type !== undefined) existingCommand.command_type = command_type;
-    if (dynamic_handler !== undefined)
-      existingCommand.dynamic_handler = dynamic_handler;
-    if (enabled !== undefined) existingCommand.enabled = enabled;
-    if (requires_permission !== undefined)
-      existingCommand.requires_permission = requires_permission;
-    if (permission_level !== undefined)
-      existingCommand.permission_level = permission_level;
-    if (cooldown_seconds !== undefined)
-      existingCommand.cooldown_seconds = cooldown_seconds;
-    if (auto_send_interval_seconds !== undefined)
-      existingCommand.auto_send_interval_seconds = auto_send_interval_seconds;
+    applyCommandUpdates(existingCommand, req.body);
 
     await existingCommand.save();
 
@@ -499,11 +509,11 @@ exports.testCommand = asyncHandler(async (req, res) => {
 
     // Simulate variables
     const processedMessage = response_message
-      .replace(/{username}/g, test_username)
-      .replace(/{channel}/g, "luisardito")
-      .replace(/{args}/g, test_args)
-      .replace(/{target_user}/g, test_username)
-      .replace(/{points}/g, "1000");
+      .replaceAll("{username}", test_username)
+      .replaceAll("{channel}", "luisardito")
+      .replaceAll("{args}", test_args)
+      .replaceAll("{target_user}", test_username)
+      .replaceAll("{points}", "1000");
 
     logger.info("[BOT-COMMANDS] Test command executed");
 
