@@ -113,7 +113,7 @@ function parseModeratorCommand(content) {
         flags.aliases = flagValue
           .split(",")
           .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
-          .filter((a) => a);
+          .filter(Boolean);
       } else if (flagName === "cooldown") {
         flags.cooldown = parseInt(flagValue) || 3;
       } else if (flagName === "desc") {
@@ -139,7 +139,7 @@ function parseModeratorCommand(content) {
 /**
  * Processes a moderator command and executes the corresponding action
  * @param {object} payload - Full Kick webhook payload (chat.message.sent)
- * @returns {object} - { success, message, processed }
+ * @returns {Promise<object>} - { success, message, processed }
  */
 async function processModeratorCommand(payload) {
   try {
