@@ -1,6 +1,7 @@
 const eslint = require("@eslint/js");
 const globals = require("globals");
 const prettierConfig = require("eslint-config-prettier");
+const tseslint = require("typescript-eslint");
 
 module.exports = [
   {
@@ -39,8 +40,38 @@ module.exports = [
       ],
     },
   },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended.map((config) => ({
+    ...config,
+    files: ["**/*.ts"],
+  })),
   {
-    files: ["tests/**/*.test.js", "tests/**/*.js"],
+    files: ["**/*.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      "no-console": "error",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          args: "after-used",
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      "tests/**/*.test.js",
+      "tests/**/*.js",
+      "tests/**/*.test.ts",
+      "tests/**/*.ts",
+    ],
     languageOptions: {
       globals: {
         ...globals.jest,
@@ -48,11 +79,10 @@ module.exports = [
     },
   },
   {
-    files: ["src/utils/logger.js"],
+    files: ["src/utils/logger.js", "src/utils/logger.ts"],
     rules: {
       "no-console": "off",
     },
   },
-  eslint.configs.recommended,
   prettierConfig,
 ];
