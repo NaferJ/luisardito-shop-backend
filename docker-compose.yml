@@ -47,7 +47,7 @@ services:
       DB_PORT: 3306
       DB_NAME: luisardito_shop
     command: >
-      sh -c "npm install && npx sequelize db:migrate && npm run start"
+      sh -c "npm install && npx sequelize db:migrate && npm run start:prod"
     volumes:
       - ./tokens:/app/tokens
       - ./backups:/app/backups

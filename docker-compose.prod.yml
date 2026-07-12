@@ -18,7 +18,7 @@ services:
     group_add:
       - "999"
     command: >
-      sh -c "npx sequelize db:migrate --debug && npm run start"
+      sh -c "npx sequelize db:migrate --debug && npm run start:prod"
     ports:
       - "3001:3000"
     restart: unless-stopped
