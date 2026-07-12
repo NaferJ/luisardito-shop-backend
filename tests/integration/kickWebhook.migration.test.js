@@ -99,6 +99,7 @@ const VipService = require("../../src/services/vip.service");
 const kickAppTokenService = require("../../src/services/kickAppToken.service");
 const config = require("../../config");
 const controller = require("../../src/controllers/kickWebhook.controller");
+const debugController = require("../../src/controllers/kickWebhookDebug.controller");
 const AppError = require("../../src/utils/AppError");
 
 function createRes() {
@@ -160,7 +161,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugRedisCooldowns(req, res, next);
+      await debugController.debugRedisCooldowns(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -181,7 +182,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugRedisCooldowns(req, res, next);
+      await debugController.debugRedisCooldowns(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Redis down");
     });
@@ -197,7 +198,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.diagnosticTokensDB(req, res, next);
+      await debugController.diagnosticTokensDB(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -213,7 +214,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.diagnosticTokensDB(req, res, next);
+      await debugController.diagnosticTokensDB(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "DB down");
     });
@@ -229,7 +230,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.diagnosticTokens(req, res, next);
+      await debugController.diagnosticTokens(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -245,7 +246,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.diagnosticTokens(req, res, next);
+      await debugController.diagnosticTokens(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "DB down");
     });
@@ -261,7 +262,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.testCors(req, res, next);
+      await debugController.testCors(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -286,7 +287,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.testWebhook(req, res, next);
+      await debugController.testWebhook(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -309,7 +310,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugWebhook(req, res, next);
+      await debugController.debugWebhook(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -335,7 +336,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugWebhook(req, res, next);
+      await debugController.debugWebhook(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "DB down");
     });
@@ -350,7 +351,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.simulateChat(req, res, next);
+      await debugController.simulateChat(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.status).toBe("success");
@@ -373,7 +374,12 @@ describe("kickWebhook.controller migration characterization", () => {
 
       // handleWebhook will be called internally via this.handleWebhook
       // Since no Kick headers are present, it returns 200 "Webhook endpoint ready"
-      await controller.testRealWebhook.call(controller, req, res, next);
+      await debugController.testRealWebhook.call(
+        debugController,
+        req,
+        res,
+        next
+      );
 
       // handleWebhook sends response directly (200 with "Webhook endpoint ready")
       expect(res.json).toHaveBeenCalled();
@@ -395,7 +401,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.systemStatus(req, res, next);
+      await debugController.systemStatus(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -413,7 +419,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.systemStatus(req, res, next);
+      await debugController.systemStatus(req, res, next);
 
       expect(res.statusCode).toBe(503);
       expect(res.body.success).toBeFalsy();
@@ -429,7 +435,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.systemStatus(req, res, next);
+      await debugController.systemStatus(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "DB down");
     });
@@ -448,7 +454,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.setupPermanentWebhooks(req, res, next);
+      await debugController.setupPermanentWebhooks(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -470,7 +476,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.setupPermanentWebhooks(req, res, next);
+      await debugController.setupPermanentWebhooks(req, res, next);
 
       expectNextCalledWithAppError(
         next,
@@ -489,7 +495,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.setupPermanentWebhooks(req, res, next);
+      await debugController.setupPermanentWebhooks(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Network error");
     });
@@ -509,7 +515,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugBotrixMigration(req, res, next);
+      await debugController.debugBotrixMigration(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -527,7 +533,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugBotrixMigration(req, res, next);
+      await debugController.debugBotrixMigration(req, res, next);
 
       expectNextCalledWithAppError(
         next,
@@ -548,7 +554,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugBotrixMigration(req, res, next);
+      await debugController.debugBotrixMigration(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Service error");
     });
@@ -582,7 +588,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugSystemInfo(req, res, next);
+      await debugController.debugSystemInfo(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -603,7 +609,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugSystemInfo(req, res, next);
+      await debugController.debugSystemInfo(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Config error");
     });
@@ -627,7 +633,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugStreamStatus(req, res, next);
+      await debugController.debugStreamStatus(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body.success).toBe(true);
@@ -645,7 +651,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.debugStreamStatus(req, res, next);
+      await debugController.debugStreamStatus(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Redis down");
     });
@@ -665,7 +671,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.forceStreamState(req, res, next);
+      await debugController.forceStreamState(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -686,7 +692,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.forceStreamState(req, res, next);
+      await debugController.forceStreamState(req, res, next);
 
       expectNextCalledWithAppError(
         next,
@@ -704,7 +710,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.forceStreamState(req, res, next);
+      await debugController.forceStreamState(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Redis down");
     });
@@ -727,7 +733,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.getPublicPointsConfig(req, res, next);
+      await debugController.getPublicPointsConfig(req, res, next);
 
       expect(res.statusCode).toBe(200);
       expect(res.body).toEqual({
@@ -753,7 +759,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.getPublicPointsConfig(req, res, next);
+      await debugController.getPublicPointsConfig(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Internal server error");
     });
@@ -768,7 +774,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.reactivateBroadcasterToken(req, res, next);
+      await debugController.reactivateBroadcasterToken(req, res, next);
 
       expectNextCalledWithAppError(
         next,
@@ -785,7 +791,7 @@ describe("kickWebhook.controller migration characterization", () => {
       const res = createRes();
       const next = jest.fn();
 
-      await controller.reactivateBroadcasterToken(req, res, next);
+      await debugController.reactivateBroadcasterToken(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "DB down");
     });
