@@ -38,7 +38,7 @@ export const debugRedisCooldowns = asyncHandler(async (req: any, res: any) => {
       });
     }
 
-    const sortedCooldowns = cooldowns.sort(
+    const sortedCooldowns = [...cooldowns].sort(
       (a, b) => a.expires_in_seconds - b.expires_in_seconds
     );
 
