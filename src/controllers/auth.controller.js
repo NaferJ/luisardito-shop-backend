@@ -67,7 +67,7 @@ const {
  * @param {Object} kickUser - Kick user data
  * @returns {string|null} - Kick avatar URL or null if absent
  */
-async function processKickAvatar(kickUser) {
+function processKickAvatar(kickUser) {
   try {
     const kickAvatarUrl = extractAvatarUrl(kickUser);
 
@@ -386,7 +386,7 @@ exports.callbackKick = async (req, res) => {
 
         // Link the user_id_ext to the existing user
         // Get Kick avatar
-        const kickAvatarUrl = await processKickAvatar(kickUser);
+        const kickAvatarUrl = processKickAvatar(kickUser);
 
         await colision.update({
           user_id_ext: String(kickUser.user_id),
@@ -424,7 +424,7 @@ exports.callbackKick = async (req, res) => {
         usuario = await Usuario.create(newUserData);
 
         // Get Kick avatar after creating the user
-        const kickAvatarUrl = await processKickAvatar(kickUser);
+        const kickAvatarUrl = processKickAvatar(kickUser);
 
         if (kickAvatarUrl) {
           await usuario.update({
@@ -462,7 +462,7 @@ exports.callbackKick = async (req, res) => {
       });
 
       // Get Kick avatar
-      const kickAvatarUrl = await processKickAvatar(kickUser);
+      const kickAvatarUrl = processKickAvatar(kickUser);
 
       await usuario.update({
         nickname: kickUser.name,
@@ -968,7 +968,7 @@ exports.storeTokens = asyncHandler(async (req, res) => {
     usuario = await Usuario.create(newUserData);
 
     // Get Kick avatar after creating the user
-    const kickAvatarUrl = await processKickAvatar(kickUser);
+    const kickAvatarUrl = processKickAvatar(kickUser);
 
     if (kickAvatarUrl) {
       await usuario.update({
@@ -982,7 +982,7 @@ exports.storeTokens = asyncHandler(async (req, res) => {
     isNewUser = true;
   } else {
     // Get Kick avatar
-    const kickAvatarUrl = await processKickAvatar(kickUser);
+    const kickAvatarUrl = processKickAvatar(kickUser);
 
     await usuario.update({
       nickname: kickUser.name,
