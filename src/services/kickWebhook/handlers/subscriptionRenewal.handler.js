@@ -1,9 +1,9 @@
-import { processSubscriptionEvent } from "./subscriptionShared";
+const { processSubscriptionEvent } = require("./subscriptionShared");
 
 /**
  * Handle subscription renewals
  */
-export async function handleSubscriptionRenewal(payload: any, _metadata: any) {
+async function handleSubscriptionRenewal(payload, _metadata) {
   await processSubscriptionEvent(payload, _metadata, {
     logLabel: "Subscription Renewal",
     configKey: "subscription_renewal_points",
@@ -14,3 +14,5 @@ export async function handleSubscriptionRenewal(payload: any, _metadata: any) {
     sendNotification: false,
   });
 }
+
+module.exports = { handleSubscriptionRenewal };

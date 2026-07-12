@@ -1,5 +1,5 @@
-import { getRedisClient } from "../../../config/redis.config";
-import logger from "../../../utils/logger";
+const { getRedisClient } = require("../../../config/redis.config");
+const logger = require("../../../utils/logger");
 
 /**
  * Handle livestream metadata updates
@@ -7,10 +7,7 @@ import logger from "../../../utils/logger";
  * Only updates stream info (title, category, etc.)
  * Must NOT change stream:is_live state
  */
-export async function handleLivestreamMetadataUpdated(
-  payload: any,
-  _metadata: any
-) {
+async function handleLivestreamMetadataUpdated(payload, _metadata) {
   try {
     const redis = getRedisClient();
 
@@ -50,3 +47,5 @@ export async function handleLivestreamMetadataUpdated(
     logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);
   }
 }
+
+module.exports = { handleLivestreamMetadataUpdated };

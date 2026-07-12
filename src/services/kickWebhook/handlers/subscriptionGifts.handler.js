@@ -1,18 +1,13 @@
-import * as _models from "../../../models";
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } =
-  _models as any;
-import NotificacionService from "../../notificacion.service";
-import logger from "../../../utils/logger";
-import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+const _models = require("../../../models");
+const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
+const NotificacionService = require("../../notificacion.service");
+const logger = require("../../../utils/logger");
+const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
 
 /**
  * Award points to the gifter of subscription gifts.
  */
-async function awardGifterPoints(
-  gifter: any,
-  giftees: any[],
-  pointsForGifter: any
-) {
+async function awardGifterPoints(gifter, giftees, pointsForGifter) {
   const gifterKickUserId = String(gifter.user_id);
   const gifterUsuario = await Usuario.findOne({
     where: { user_id_ext: gifterKickUserId },
@@ -71,12 +66,7 @@ async function awardGifterPoints(
 /**
  * Award points to a single giftee of a subscription gift.
  */
-async function awardGifteePoints(
-  giftee: any,
-  gifter: any,
-  pointsForGiftee: any,
-  expiresAt: any
-) {
+async function awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt) {
   const gifteeKickUserId = String(giftee.user_id);
   const gifteeUsername = giftee.username;
 
@@ -150,7 +140,7 @@ async function awardGifteePoints(
 /**
  * Handle subscription gifts
  */
-export async function handleSubscriptionGifts(payload: any, _metadata: any) {
+async function handleSubscriptionGifts(payload, _metadata) {
   try {
     const gifter = payload.gifter;
     const giftees = payload.giftees || [];
@@ -159,7 +149,7 @@ export async function handleSubscriptionGifts(payload: any, _metadata: any) {
     logger.info("[Kick Webhook][Subscription Gifts]", {
       broadcaster: payload.broadcaster.username,
       gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
-      giftees: giftees.map((g: any) => g.username),
+      giftees: giftees.map((g) => g.username),
       totalGifts: giftees.length,
     });
 
@@ -171,8 +161,8 @@ export async function handleSubscriptionGifts(payload: any, _metadata: any) {
       },
     });
 
-    const configMap: any = {};
-    configs.forEach((c: any) => {
+    const configMap = {};
+    configs.forEach((c) => {
       configMap[c.config_key] = c.config_value;
     });
 
@@ -194,3 +184,5 @@ export async function handleSubscriptionGifts(payload: any, _metadata: any) {
     logger.error("[Kick Webhook][Subscription Gifts] Error:", error.message);
   }
 }
+
+module.exports = { handleSubscriptionGifts };

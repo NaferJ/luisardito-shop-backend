@@ -84,14 +84,5 @@ module.exports = [
       "no-console": "off",
     },
   },
-  // TEMPORARY: relaxed for the mechanical JS->TS move of kickWebhook.
-  // Remove during the typing/Zod pass (strict typing + import migration).
-  {
-    files: ["src/services/kickWebhook/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-explicit-any": "off",
-      "@typescript-eslint/no-require-imports": "off",
-    },
-  },
   prettierConfig,
 ];

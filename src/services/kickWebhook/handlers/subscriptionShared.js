@@ -1,25 +1,10 @@
-import * as _models from "../../../models";
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } =
-  _models as any;
-import NotificacionService from "../../notificacion.service";
-import logger from "../../../utils/logger";
-import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+const _models = require("../../../models");
+const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
+const NotificacionService = require("../../notificacion.service");
+const logger = require("../../../utils/logger");
+const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
 
-interface SubscriptionHandlerConfig {
-  logLabel: string;
-  configKey: string;
-  eventType: string;
-  conceptPrefix: string;
-  logVerb: string;
-  includeUserType: boolean;
-  sendNotification: boolean;
-}
-
-export async function processSubscriptionEvent(
-  payload: any,
-  _metadata: any,
-  opts: SubscriptionHandlerConfig
-) {
+async function processSubscriptionEvent(payload, _metadata, opts) {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -81,7 +66,7 @@ export async function processSubscriptionEvent(
         ? `${opts.conceptPrefix} (${durationStr}) - ${userType}`
         : `${opts.conceptPrefix} (${durationStr})`;
 
-      const kickEventData: any = {
+      const kickEventData = {
         event_type: opts.eventType,
         kick_user_id: kickUserId,
         kick_username: kickUsername,
@@ -133,3 +118,5 @@ export async function processSubscriptionEvent(
     logger.error(`[Kick Webhook][${opts.logLabel}] Error:`, error.message);
   }
 }
+
+module.exports = { processSubscriptionEvent };
