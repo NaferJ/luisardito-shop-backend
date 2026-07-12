@@ -38,12 +38,14 @@ export const debugRedisCooldowns = asyncHandler(async (req: any, res: any) => {
       });
     }
 
+    const sortedCooldowns = cooldowns.sort(
+      (a, b) => a.expires_in_seconds - b.expires_in_seconds
+    );
+
     res.json({
       success: true,
       total_active_cooldowns: cooldowns.length,
-      cooldowns: cooldowns.sort(
-        (a, b) => a.expires_in_seconds - b.expires_in_seconds
-      ),
+      cooldowns: sortedCooldowns,
       redis_status: redis.status,
       timestamp: new Date().toISOString(),
     });
@@ -162,18 +164,28 @@ export const diagnosticTokensDB = asyncHandler(async (req: any, res: any) => {
         created_at: s.created_at,
       })),
       estado: {
-        problema_identificado: !broadcasterPrincipal
-          ? "Main broadcaster (ID: " +
-            config.kick.broadcasterId +
-            ") has NO stored token"
-          : suscripciones.length === 0
-            ? "Main broadcaster has token but NO subscriptions"
-            : "Token and subscriptions present - should work",
-        accion_requerida: !broadcasterPrincipal
-          ? "Luisardito needs to authenticate at: https://luisardito.com/auth/login"
-          : suscripciones.length === 0
-            ? "Re-authentication needed to create subscriptions"
-            : "Test webhook by sending a message in Luisardito's chat",
+        problema_identificado: (() => {
+          if (!broadcasterPrincipal) {
+            return (
+              "Main broadcaster (ID: " +
+              config.kick.broadcasterId +
+              ") has NO stored token"
+            );
+          }
+          if (suscripciones.length === 0) {
+            return "Main broadcaster has token but NO subscriptions";
+          }
+          return "Token and subscriptions present - should work";
+        })(),
+        accion_requerida: (() => {
+          if (!broadcasterPrincipal) {
+            return "Luisardito needs to authenticate at: https://luisardito.com/auth/login";
+          }
+          if (suscripciones.length === 0) {
+            return "Re-authentication needed to create subscriptions";
+          }
+          return "Test webhook by sending a message in Luisardito's chat";
+        })(),
       },
     };
 
