@@ -5,7 +5,9 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
+    "start:prod": "node dist/app.js",
     "dev": "nodemon app.js",
+    "build": "tsc -p tsconfig.build.json",
     "test": "jest --runInBand --forceExit",
     "test:watch": "jest --watch",
     "migrate": "npx sequelize db:migrate",
