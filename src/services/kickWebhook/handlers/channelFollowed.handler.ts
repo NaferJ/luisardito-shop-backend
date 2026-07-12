@@ -41,11 +41,11 @@ export async function handleChannelFollowed(payload: any, _metadata: any) {
     );
 
     // Check if already followed before (first time only)
-    let userTracking = await KickUserTracking.findOne({
+    const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
     });
 
-    if (userTracking && userTracking.follow_points_awarded) {
+    if (userTracking?.follow_points_awarded) {
       logger.info(
         `[Kick Webhook][Channel Followed] User ${kickUsername} already received follow points previously`
       );
@@ -100,7 +100,7 @@ export async function handleChannelFollowed(payload: any, _metadata: any) {
 
     // Update or create tracking
     if (!userTracking) {
-      userTracking = await KickUserTracking.create({
+      await KickUserTracking.create({
         kick_user_id: kickUserId,
         kick_username: kickUsername,
         has_followed: true,

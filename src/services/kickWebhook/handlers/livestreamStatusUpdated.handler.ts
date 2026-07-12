@@ -2,6 +2,24 @@ import { getRedisClient } from "../../../config/redis.config";
 import logger from "../../../utils/logger";
 
 /**
+ * Validate event timestamp — warn if event is too old.
+ */
+function warnIfStaleTimestamp(timestamp: any) {
+  if (!timestamp) return;
+
+  const eventTimestamp: any = new Date(timestamp);
+  const now: any = new Date();
+  const ageMinutes = (now - eventTimestamp) / 1000 / 60;
+
+  if (ageMinutes > 5) {
+    logger.warn(
+      `[STREAM STATUS] Event too old (${ageMinutes.toFixed(2)} minutes)`
+    );
+    logger.warn(`[STREAM STATUS] May be outdated, processing with caution`);
+  }
+}
+
+/**
  * Handle livestream status changes
  */
 export async function handleLivestreamStatusUpdated(
@@ -34,18 +52,7 @@ export async function handleLivestreamStatusUpdated(
     });
 
     // Validate event timestamp (do not process very old events)
-    if (metadata.timestamp) {
-      const eventTimestamp: any = new Date(metadata.timestamp);
-      const now: any = new Date();
-      const ageMinutes = (now - eventTimestamp) / 1000 / 60;
-
-      if (ageMinutes > 5) {
-        logger.warn(
-          `[STREAM STATUS] Event too old (${ageMinutes.toFixed(2)} minutes)`
-        );
-        logger.warn(`[STREAM STATUS] May be outdated, processing with caution`);
-      }
-    }
+    warnIfStaleTimestamp(metadata.timestamp);
 
     // Get previous state from Redis
     const previousState = await redis.get("stream:is_live");
