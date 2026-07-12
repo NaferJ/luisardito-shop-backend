@@ -32,7 +32,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "smoke": "node -e \"const fs=require('fs');for(const d of ['src/routes','src/controllers'])fs.readdirSync(d).filter(f=>f.endsWith('.js')).forEach(f=>require('./'+d+'/'+f));console.log('boot-smoke OK');process.exit(0)\""
+    "presmoke": "npm run build",
+    "smoke": "node -e \"const fs=require('fs');for(const d of ['dist/src/routes','dist/src/controllers'])fs.readdirSync(d).filter(f=>f.endsWith('.js')).forEach(f=>require('./'+d+'/'+f));console.log('boot-smoke OK');process.exit(0)\""
   },
   "keywords": [],
   "author": "",
