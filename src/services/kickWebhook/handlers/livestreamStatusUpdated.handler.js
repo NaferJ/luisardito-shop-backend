@@ -24,19 +24,8 @@ function warnIfStaleTimestamp(timestamp) {
  */
 async function handleLivestreamStatusUpdated(payload, metadata) {
   try {
-    logger.info("WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED");
-
     const isLive = payload.is_live;
     const redis = getRedisClient();
-
-    // Detailed full payload log for debugging
-    logger.info("[STREAM STATUS] ==========================================");
-    logger.info("[STREAM STATUS] WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED");
-    logger.info(
-      "[STREAM STATUS] Full payload:",
-      JSON.stringify(payload, null, 2)
-    );
-    logger.info("[STREAM STATUS] Metadata:", JSON.stringify(metadata, null, 2));
 
     logger.info("[Kick Webhook][Livestream Status]", {
       broadcaster: payload.broadcaster.username,
@@ -111,8 +100,6 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
         ? "[STREAM] LIVE - Chat points ACTIVATED"
         : "[STREAM] OFFLINE - Chat points DEACTIVATED"
     );
-
-    logger.info("[STREAM STATUS] ==========================================");
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Status] Error:", error);
     logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);

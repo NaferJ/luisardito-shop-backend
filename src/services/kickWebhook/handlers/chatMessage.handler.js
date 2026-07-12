@@ -20,10 +20,8 @@ const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
  */
 async function processBotrixMigration(payload, botrixConfig) {
   if (botrixConfig.migration_enabled) {
-    logger.info("[BOTRIX DEBUG] Checking message for points migration...");
     const botrixResult =
       await BotrixMigrationService.processChatMessage(payload);
-    logger.info("[BOTRIX DEBUG] Processing result:", botrixResult);
 
     if (botrixResult.processed) {
       logger.info(
@@ -35,12 +33,8 @@ async function processBotrixMigration(payload, botrixConfig) {
   }
 
   if (botrixConfig.watchtime_migration_enabled) {
-    logger.info(
-      "[BOTRIX WATCHTIME DEBUG] Checking message for watchtime migration..."
-    );
     const watchtimeResult =
       await BotrixMigrationService.processWatchtimeMessage(payload);
-    logger.info("[BOTRIX WATCHTIME DEBUG] Processing result:", watchtimeResult);
 
     if (watchtimeResult.processed) {
       logger.info(
@@ -254,8 +248,6 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
   const cooldownKey = `chat_cooldown:${kickUserId}`;
   const now = new Date();
 
-  logger.info(`[REDIS COOLDOWN] Checking for ${kickUsername} (${kickUserId})`);
-
   try {
     const redis = getRedisClient();
     const wasSet = await redis.set(
@@ -267,24 +259,11 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
     );
 
     if (!wasSet) {
-      const ttl = await redis.pttl(cooldownKey);
-      const remainingSecs = Math.ceil(ttl / 1000);
       logger.info(`[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`);
-      logger.info(
-        `[REDIS COOLDOWN] ${remainingSecs}s remaining (${Math.ceil(ttl / 60000)} minutes)`
-      );
       return;
     }
-
-    logger.info(`[REDIS COOLDOWN] ${kickUsername} can receive points`);
-    logger.info(
-      `[REDIS COOLDOWN] Next message allowed in: ${COOLDOWN_MS / 1000}s (${COOLDOWN_MS / 60000} minutes)`
-    );
   } catch (redisError) {
     logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
-    logger.info(
-      `[REDIS COOLDOWN] Fallback: continuing without cooldown due to Redis error`
-    );
   }
 
   const transaction = await sequelize.transaction({
@@ -329,9 +308,6 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
     logger.info(
       `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`
     );
-    logger.info(
-      `[Chat Message] Total user points: ${usuarioActualizado.puntos}`
-    );
   } catch (transactionError) {
     await transaction.rollback();
     logger.error(
@@ -342,9 +318,6 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
     try {
       const redis = getRedisClient();
       await redis.del(cooldownKey);
-      logger.info(
-        `[REDIS COOLDOWN] Cooldown deleted due to DB error - allowing retry`
-      );
     } catch (redisCleanupError) {
       logger.error(
         `[REDIS COOLDOWN] Error cleaning cooldown:`,
@@ -452,10 +425,6 @@ async function handleChatMessage(payload, _metadata) {
       pointsToAward = configMap["chat_points_vip"];
       userType = "vip";
     }
-
-    logger.info(
-      `[CHAT POINTS] ${kickUsername} - VIP: ${isVipActive}, Subscriber: ${isSubscriber}, Type: ${userType}, Points: ${pointsToAward}`
-    );
 
     if (pointsToAward <= 0) {
       return;
