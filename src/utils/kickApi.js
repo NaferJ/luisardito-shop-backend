@@ -147,18 +147,21 @@ async function getKickUserData(userIdOrToken) {
     // If it is a user ID, use public endpoint (if it exists)
     logger.info("[Kick API] Trying to fetch data by user ID:", userIdOrToken);
 
+    const userIdStr = String(userIdOrToken);
+    if (!/^[0-9]+$/.test(userIdStr)) {
+      throw new Error("Invalid Kick user ID");
+    }
+
     try {
-      const response = await axios.get(
-        `https://kick.com/api/v1/users/${userIdOrToken}`,
-        {
-          headers: {
-            "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            Accept: "application/json",
-          },
-          timeout: 10000,
-        }
-      );
+      const publicUserUrl = `https://kick.com/api/v1/users/${encodeURIComponent(userIdStr)}`;
+      const response = await axios.get(publicUserUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          Accept: "application/json",
+        },
+        timeout: 10000,
+      });
 
       logger.info("[Kick API] Data fetched by ID:", response.data?.name);
       return response.data;
