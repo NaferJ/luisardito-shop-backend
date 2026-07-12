@@ -32,68 +32,25 @@ const {
 async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
   logger.info(`[Kick Webhook] Processing event ${eventType}`);
 
-  // DEBUG LOG - SEE ALL EVENTS
+  const handlers = {
+    "chat.message.sent": handleChatMessage,
+    "channel.followed": handleChannelFollowed,
+    "channel.subscription.new": handleNewSubscription,
+    "channel.subscription.renewal": handleSubscriptionRenewal,
+    "channel.subscription.gifts": handleSubscriptionGifts,
+    "livestream.status.updated": handleLivestreamStatusUpdated,
+    "livestream.metadata.updated": handleLivestreamMetadataUpdated,
+    "moderation.banned": handleModerationBanned,
+    "kicks.gifted": handleKicksGifted,
+    "channel.reward.redemption.updated": handleRewardRedemption,
+  };
 
-  // Check exact value
-  if (eventType === "livestream.status.updated") {
-    logger.warn(`EXACT MATCH: livestream.status.updated`);
-  } else if (eventType?.includes?.("livestream")) {
-    logger.warn(`CONTAINS livestream BUT NO MATCH: "${eventType}"`);
-  }
-
-  switch (eventType) {
-    case "chat.message.sent":
-      await handleChatMessage(payload, metadata);
-      break;
-
-    case "channel.followed":
-      logger.info("CASE MATCH: channel.followed");
-      await handleChannelFollowed(payload, metadata);
-      break;
-
-    case "channel.subscription.new":
-      logger.info("CASE MATCH: channel.subscription.new");
-      await handleNewSubscription(payload, metadata);
-      break;
-
-    case "channel.subscription.renewal":
-      logger.info("CASE MATCH: channel.subscription.renewal");
-      await handleSubscriptionRenewal(payload, metadata);
-      break;
-
-    case "channel.subscription.gifts":
-      logger.info("CASE MATCH: channel.subscription.gifts");
-      await handleSubscriptionGifts(payload, metadata);
-      break;
-
-    case "livestream.status.updated":
-      logger.info("CASE MATCH: livestream.status.updated");
-      await handleLivestreamStatusUpdated(payload, metadata);
-      break;
-
-    case "livestream.metadata.updated":
-      logger.info("CASE MATCH: livestream.metadata.updated");
-      await handleLivestreamMetadataUpdated(payload, metadata);
-      break;
-
-    case "moderation.banned":
-      logger.info("CASE MATCH: moderation.banned");
-      await handleModerationBanned(payload, metadata);
-      break;
-
-    case "kicks.gifted":
-      logger.info("CASE MATCH: kicks.gifted");
-      await handleKicksGifted(payload, metadata);
-      break;
-
-    case "channel.reward.redemption.updated":
-      logger.info("CASE MATCH: channel.reward.redemption.updated");
-      await handleRewardRedemption(payload, metadata);
-      break;
-
-    default:
-      logger.warn(`UNHANDLED EVENT: "${eventType}"`);
-      logger.info(`[Kick Webhook] Unhandled event type: ${eventType}`);
+  const handler = handlers[eventType];
+  if (handler) {
+    await handler(payload, metadata);
+  } else {
+    logger.warn(`UNHANDLED EVENT: "${eventType}"`);
+    logger.info(`[Kick Webhook] Unhandled event type: ${eventType}`);
   }
 }
 
