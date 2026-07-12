@@ -1,0 +1,196 @@
+import * as _models from "../../../models";
+const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } =
+  _models as any;
+import NotificacionService from "../../notificacion.service";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+
+/**
+ * Award points to the gifter of subscription gifts.
+ */
+async function awardGifterPoints(
+  gifter: any,
+  giftees: any[],
+  pointsForGifter: any
+) {
+  const gifterKickUserId = String(gifter.user_id);
+  const gifterUsuario = await Usuario.findOne({
+    where: { user_id_ext: gifterKickUserId },
+  });
+
+  if (!gifterUsuario) {
+    return;
+  }
+
+  logger.info("[Subscription Gifts] Gifter found in DB, awarding points");
+
+  await syncUserProfileIfNeeded(
+    gifterUsuario,
+    gifter.username,
+    gifterKickUserId,
+    true,
+    gifter.profile_picture
+  );
+
+  const totalPoints = pointsForGifter * giftees.length;
+  await gifterUsuario.increment("puntos", { by: totalPoints });
+
+  await HistorialPunto.create({
+    usuario_id: gifterUsuario.id,
+    puntos: totalPoints,
+    tipo: "ganado",
+    concepto: `Gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
+    kick_event_data: {
+      event_type: "channel.subscription.gifts",
+      kick_user_id: gifterKickUserId,
+      kick_username: gifter.username,
+      gifts_count: giftees.length,
+    },
+  });
+
+  await NotificacionService.crearNotificacionPuntosGanados(gifterUsuario.id, {
+    cantidad: totalPoints,
+    concepto: `You gifted ${giftees.length} subscription${giftees.length !== 1 ? "s" : ""}`,
+    tipo_evento: "channel.subscription.gifts",
+    gifts_count: giftees.length,
+  });
+
+  await KickUserTracking.upsert({
+    kick_user_id: gifterKickUserId,
+    kick_username: gifter.username,
+    total_gifts_given: KickUserTracking.sequelize.literal(
+      `total_gifts_given + ${giftees.length}`
+    ),
+  });
+
+  logger.info(
+    `[Kick Webhook][Subscription Gifts] ${totalPoints} points to ${gifter.username} for gifting ${giftees.length} subs`
+  );
+}
+
+/**
+ * Award points to a single giftee of a subscription gift.
+ */
+async function awardGifteePoints(
+  giftee: any,
+  gifter: any,
+  pointsForGiftee: any,
+  expiresAt: any
+) {
+  const gifteeKickUserId = String(giftee.user_id);
+  const gifteeUsername = giftee.username;
+
+  const gifteeUsuario = await Usuario.findOne({
+    where: { user_id_ext: gifteeKickUserId },
+  });
+
+  if (!gifteeUsuario) {
+    return;
+  }
+
+  await syncUserProfileIfNeeded(
+    gifteeUsuario,
+    gifteeUsername,
+    gifteeKickUserId,
+    true,
+    giftee.profile_picture
+  );
+
+  await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
+
+  await HistorialPunto.create({
+    usuario_id: gifteeUsuario.id,
+    puntos: pointsForGiftee,
+    tipo: "ganado",
+    concepto: `Received gifted subscription`,
+    kick_event_data: {
+      event_type: "channel.subscription.gifts",
+      kick_user_id: gifteeKickUserId,
+      kick_username: gifteeUsername,
+      gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
+      expires_at: expiresAt,
+    },
+  });
+
+  await NotificacionService.crearNotificacionSubRegalada(gifteeUsuario.id, {
+    regalador_username: gifter.is_anonymous
+      ? "An anonymous user"
+      : gifter.username,
+    monto_subscription: 1,
+    puntos_otorgados: pointsForGiftee,
+    expires_at: expiresAt,
+  });
+
+  await KickUserTracking.upsert({
+    kick_user_id: gifteeKickUserId,
+    kick_username: gifteeUsername,
+    is_subscribed: true,
+    subscription_expires_at: expiresAt,
+    total_gifts_received: KickUserTracking.sequelize.literal(
+      "total_gifts_received + 1"
+    ),
+    total_subscriptions: KickUserTracking.sequelize.literal(
+      "total_subscriptions + 1"
+    ),
+  });
+
+  logger.info(
+    "[Subscription Gifts]",
+    pointsForGiftee,
+    "points to",
+    gifteeUsername,
+    "for receiving gifted sub"
+  );
+  logger.info(
+    "[Subscription Gifts] Total receiver points:",
+    (await gifteeUsuario.reload()).puntos
+  );
+}
+
+/**
+ * Handle subscription gifts
+ */
+export async function handleSubscriptionGifts(payload: any, _metadata: any) {
+  try {
+    const gifter = payload.gifter;
+    const giftees = payload.giftees || [];
+    const expiresAt = new Date(payload.expires_at);
+
+    logger.info("[Kick Webhook][Subscription Gifts]", {
+      broadcaster: payload.broadcaster.username,
+      gifter: gifter.is_anonymous ? "Anonymous" : gifter.username,
+      giftees: giftees.map((g: any) => g.username),
+      totalGifts: giftees.length,
+    });
+
+    // Get points configurations
+    const configs = await KickPointsConfig.findAll({
+      where: {
+        config_key: ["gift_given_points", "gift_received_points"],
+        enabled: true,
+      },
+    });
+
+    const configMap: any = {};
+    configs.forEach((c: any) => {
+      configMap[c.config_key] = c.config_value;
+    });
+
+    const pointsForGifter = configMap["gift_given_points"] || 0;
+    const pointsForGiftee = configMap["gift_received_points"] || 0;
+
+    // Award points to gifter (if not anonymous)
+    if (!gifter.is_anonymous && pointsForGifter > 0) {
+      await awardGifterPoints(gifter, giftees, pointsForGifter);
+    }
+
+    // Award points to each giftee
+    if (pointsForGiftee > 0) {
+      for (const giftee of giftees) {
+        await awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt);
+      }
+    }
+  } catch (error) {
+    logger.error("[Kick Webhook][Subscription Gifts] Error:", error.message);
+  }
+}
