@@ -17,8 +17,6 @@ async function awardGifterPoints(gifter, giftees, pointsForGifter) {
     return;
   }
 
-  logger.info("[Subscription Gifts] Gifter found in DB, awarding points");
-
   await syncUserProfileIfNeeded(
     gifterUsuario,
     gifter.username,
@@ -130,10 +128,6 @@ async function awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt) {
     "points to",
     gifteeUsername,
     "for receiving gifted sub"
-  );
-  logger.info(
-    "[Subscription Gifts] Total receiver points:",
-    (await gifteeUsuario.reload()).puntos
   );
 }
 

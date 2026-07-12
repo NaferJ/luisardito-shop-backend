@@ -19,9 +19,6 @@ async function handleLivestreamMetadataUpdated(payload, _metadata) {
       has_mature_content: payload.metadata.has_mature_content,
     });
 
-    // Get current state (do NOT modify here)
-    const currentState = await redis.get("stream:is_live");
-
     // Update only metadata info
     const streamInfo = {
       title: payload.metadata.title || "Untitled",
@@ -39,9 +36,6 @@ async function handleLivestreamMetadataUpdated(payload, _metadata) {
 
     logger.info(
       `[STREAM METADATA] Metadata updated: "${streamInfo.title}" - ${streamInfo.category}`
-    );
-    logger.info(
-      `[STREAM METADATA] Current stream state: ${currentState === "true" ? "ONLINE" : "OFFLINE"} (unchanged)`
     );
   } catch (error) {
     logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);

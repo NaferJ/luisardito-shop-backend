@@ -50,7 +50,6 @@ async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
     await handler(payload, metadata);
   } else {
     logger.warn(`UNHANDLED EVENT: "${eventType}"`);
-    logger.info(`[Kick Webhook] Unhandled event type: ${eventType}`);
   }
 }
 

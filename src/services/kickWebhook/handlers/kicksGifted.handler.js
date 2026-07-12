@@ -133,12 +133,6 @@ async function handleKicksGifted(payload, _metadata) {
       logger.info(
         `[Kick Webhook][Kicks Gifted] ${pointsToAward} points awarded to ${kickUsername} for gifting ${kickAmount} kicks`
       );
-
-      // Reload user to show updated total
-      const updatedUser = await usuario.reload();
-      logger.info(
-        `[Kick Webhook][Kicks Gifted] Total points for ${kickUsername}: ${updatedUser.puntos}`
-      );
     } catch (transactionError) {
       await transaction.rollback();
       logger.error(
