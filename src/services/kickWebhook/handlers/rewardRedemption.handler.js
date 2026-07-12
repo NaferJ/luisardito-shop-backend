@@ -1,13 +1,13 @@
-import * as _models from "../../../models";
-const { KickReward, Usuario, HistorialPunto, sequelize } = _models as any;
-import NotificacionService from "../../notificacion.service";
-import { Transaction } from "sequelize";
-import logger from "../../../utils/logger";
+const _models = require("../../../models");
+const { KickReward, Usuario, HistorialPunto, sequelize } = _models;
+const NotificacionService = require("../../notificacion.service");
+const { Transaction } = require("sequelize");
+const logger = require("../../../utils/logger");
 
 /**
  * Send chat message notifying user they are not registered for reward redemption
  */
-async function notifyUnregisteredReward(kickUsername: any, localReward: any) {
+async function notifyUnregisteredReward(kickUsername, localReward) {
   try {
     const bot = require("../../kickBot.service");
     const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
@@ -24,7 +24,7 @@ async function notifyUnregisteredReward(kickUsername: any, localReward: any) {
 /**
  * Handle channel reward redemptions
  */
-export async function handleRewardRedemption(payload: any, _metadata: any) {
+async function handleRewardRedemption(payload, _metadata) {
   try {
     const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
@@ -175,3 +175,5 @@ export async function handleRewardRedemption(payload: any, _metadata: any) {
     logger.error("[Reward Redemption] Error:", error.message);
   }
 }
+
+module.exports = { handleRewardRedemption };

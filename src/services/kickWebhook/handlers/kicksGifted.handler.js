@@ -1,21 +1,21 @@
-import * as _models from "../../../models";
+const _models = require("../../../models");
 const {
   KickPointsConfig,
   KickUserTracking,
   Usuario,
   HistorialPunto,
   sequelize,
-} = _models as any;
-import NotificacionService from "../../notificacion.service";
-import { Transaction } from "sequelize";
-import logger from "../../../utils/logger";
-import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+} = _models;
+const NotificacionService = require("../../notificacion.service");
+const { Transaction } = require("sequelize");
+const logger = require("../../../utils/logger");
+const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
 
 /**
  * Handle kicks gifts (kicks.gifted)
  * Awards points equivalent to the amount of kicks gifted
  */
-export async function handleKicksGifted(payload: any, _metadata: any) {
+async function handleKicksGifted(payload, _metadata) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -151,3 +151,5 @@ export async function handleKicksGifted(payload: any, _metadata: any) {
     logger.error("[Kick Webhook][Kicks Gifted] Error:", error.message);
   }
 }
+
+module.exports = { handleKicksGifted };

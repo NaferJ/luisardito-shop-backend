@@ -1,14 +1,26 @@
-import logger from "../../utils/logger";
-import { handleChatMessage } from "./handlers/chatMessage.handler";
-import { handleChannelFollowed } from "./handlers/channelFollowed.handler";
-import { handleNewSubscription } from "./handlers/newSubscription.handler";
-import { handleSubscriptionRenewal } from "./handlers/subscriptionRenewal.handler";
-import { handleSubscriptionGifts } from "./handlers/subscriptionGifts.handler";
-import { handleLivestreamStatusUpdated } from "./handlers/livestreamStatusUpdated.handler";
-import { handleLivestreamMetadataUpdated } from "./handlers/livestreamMetadataUpdated.handler";
-import { handleModerationBanned } from "./handlers/moderationBanned.handler";
-import { handleKicksGifted } from "./handlers/kicksGifted.handler";
-import { handleRewardRedemption } from "./handlers/rewardRedemption.handler";
+const logger = require("../../utils/logger");
+const { handleChatMessage } = require("./handlers/chatMessage.handler");
+const { handleChannelFollowed } = require("./handlers/channelFollowed.handler");
+const { handleNewSubscription } = require("./handlers/newSubscription.handler");
+const {
+  handleSubscriptionRenewal,
+} = require("./handlers/subscriptionRenewal.handler");
+const {
+  handleSubscriptionGifts,
+} = require("./handlers/subscriptionGifts.handler");
+const {
+  handleLivestreamStatusUpdated,
+} = require("./handlers/livestreamStatusUpdated.handler");
+const {
+  handleLivestreamMetadataUpdated,
+} = require("./handlers/livestreamMetadataUpdated.handler");
+const {
+  handleModerationBanned,
+} = require("./handlers/moderationBanned.handler");
+const { handleKicksGifted } = require("./handlers/kicksGifted.handler");
+const {
+  handleRewardRedemption,
+} = require("./handlers/rewardRedemption.handler");
 
 /**
  * Process event by type
@@ -17,12 +29,7 @@ import { handleRewardRedemption } from "./handlers/rewardRedemption.handler";
  * @param {object} payload - Event data
  * @param {object} metadata - Webhook metadata (messageId, subscriptionId, timestamp)
  */
-export async function processWebhookEvent(
-  eventType: any,
-  eventVersion: any,
-  payload: any,
-  metadata: any
-) {
+async function processWebhookEvent(eventType, eventVersion, payload, metadata) {
   logger.info(`[Kick Webhook] Processing event ${eventType}`);
 
   // DEBUG LOG - SEE ALL EVENTS
@@ -89,3 +96,5 @@ export async function processWebhookEvent(
       logger.info(`[Kick Webhook] Unhandled event type: ${eventType}`);
   }
 }
+
+module.exports = { processWebhookEvent };

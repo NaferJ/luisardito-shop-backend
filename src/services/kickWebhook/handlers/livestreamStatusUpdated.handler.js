@@ -1,14 +1,14 @@
-import { getRedisClient } from "../../../config/redis.config";
-import logger from "../../../utils/logger";
+const { getRedisClient } = require("../../../config/redis.config");
+const logger = require("../../../utils/logger");
 
 /**
  * Validate event timestamp — warn if event is too old.
  */
-function warnIfStaleTimestamp(timestamp: any) {
+function warnIfStaleTimestamp(timestamp) {
   if (!timestamp) return;
 
-  const eventTimestamp: any = new Date(timestamp);
-  const now: any = new Date();
+  const eventTimestamp = new Date(timestamp);
+  const now = new Date();
   const ageMinutes = (now - eventTimestamp) / 1000 / 60;
 
   if (ageMinutes > 5) {
@@ -22,10 +22,7 @@ function warnIfStaleTimestamp(timestamp: any) {
 /**
  * Handle livestream status changes
  */
-export async function handleLivestreamStatusUpdated(
-  payload: any,
-  metadata: any
-) {
+async function handleLivestreamStatusUpdated(payload, metadata) {
   try {
     logger.info("WEBHOOK LIVESTREAM.STATUS.UPDATED RECEIVED");
 
@@ -121,3 +118,5 @@ export async function handleLivestreamStatusUpdated(
     logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
   }
 }
+
+module.exports = { handleLivestreamStatusUpdated };

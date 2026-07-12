@@ -1,4 +1,4 @@
-import * as _models from "../../../models";
+const _models = require("../../../models");
 const {
   KickPointsConfig,
   KickUserTracking,
@@ -6,19 +6,19 @@ const {
   HistorialPunto,
   UserWatchtime,
   sequelize,
-} = _models as any;
-import BotrixMigrationService from "../../botrixMigration.service";
-import ModeratorCommandsService from "../../kickModeratorCommands.service";
-import { Transaction } from "sequelize";
-import { getRedisClient } from "../../../config/redis.config";
-import logger from "../../../utils/logger";
-import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+} = _models;
+const BotrixMigrationService = require("../../botrixMigration.service");
+const ModeratorCommandsService = require("../../kickModeratorCommands.service");
+const { Transaction } = require("sequelize");
+const { getRedisClient } = require("../../../config/redis.config");
+const logger = require("../../../utils/logger");
+const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
 
 /**
  * Process Botrix migration (points + watchtime) for a chat message.
  * Returns true if the message was fully consumed by migration.
  */
-async function processBotrixMigration(payload: any, botrixConfig: any) {
+async function processBotrixMigration(payload, botrixConfig) {
   if (botrixConfig.migration_enabled) {
     logger.info("[BOTRIX DEBUG] Checking message for points migration...");
     const botrixResult =
@@ -59,7 +59,7 @@ async function processBotrixMigration(payload: any, botrixConfig: any) {
 /**
  * Process moderator commands from chat. Returns true if message was consumed.
  */
-async function processModeratorCommands(payload: any) {
+async function processModeratorCommands(payload) {
   try {
     const content = String(payload.content || "").trim();
     const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
@@ -105,11 +105,7 @@ async function processModeratorCommands(payload: any) {
 /**
  * Process bot commands from chat.
  */
-async function processBotCommands(
-  payload: any,
-  kickUserId: string,
-  kickUsername: string
-) {
+async function processBotCommands(payload, kickUserId, kickUsername) {
   try {
     const content = String(payload.content || "").trim();
     if (!content.startsWith("!")) {
@@ -163,7 +159,7 @@ async function isStreamLive() {
 /**
  * Process watchtime tracking for a user on every chat message.
  */
-async function processWatchtime(kickUserId: string, usuarioId: any) {
+async function processWatchtime(kickUserId, usuarioId) {
   try {
     const wtNow = new Date();
     const redis = getRedisClient();
@@ -215,10 +211,7 @@ async function processWatchtime(kickUserId: string, usuarioId: any) {
 /**
  * Resolve subscriber status for a Kick user, deactivating expired subscriptions.
  */
-async function resolveSubscriberStatus(
-  kickUserId: string,
-  kickUsername: string
-) {
+async function resolveSubscriberStatus(kickUserId, kickUsername) {
   const userTracking = await KickUserTracking.findOne({
     where: { kick_user_id: kickUserId },
   });
@@ -255,12 +248,7 @@ async function resolveSubscriberStatus(
 /**
  * Award chat points to a user within a DB transaction.
  */
-async function awardChatPoints(
-  usuario: any,
-  pointsToAward: any,
-  userType: any,
-  ctx: any
-) {
+async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
   const { isVipActive, isSubscriber, payload, kickUserId, kickUsername } = ctx;
   const COOLDOWN_MS = 5 * 60 * 1000;
   const cooldownKey = `chat_cooldown:${kickUserId}`;
@@ -371,7 +359,7 @@ async function awardChatPoints(
 /**
  * Handle chat messages
  */
-export async function handleChatMessage(payload: any, _metadata: any) {
+async function handleChatMessage(payload, _metadata) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -435,8 +423,8 @@ export async function handleChatMessage(payload: any, _metadata: any) {
       where: { enabled: true },
     });
 
-    const configMap: any = {};
-    configs.forEach((c: any) => {
+    const configMap = {};
+    configs.forEach((c) => {
       configMap[c.config_key] = c.config_value;
     });
 
@@ -485,3 +473,5 @@ export async function handleChatMessage(payload: any, _metadata: any) {
     logger.error("[Chat Message] Error:", error.message);
   }
 }
+
+module.exports = { handleChatMessage };

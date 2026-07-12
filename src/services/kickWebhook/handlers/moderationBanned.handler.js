@@ -1,9 +1,9 @@
-import logger from "../../../utils/logger";
+const logger = require("../../../utils/logger");
 
 /**
  * Handle moderation bans
  */
-export async function handleModerationBanned(payload: any, _metadata: any) {
+async function handleModerationBanned(payload, _metadata) {
   logger.info("[Kick Webhook][Moderation Banned]", {
     broadcaster: payload.broadcaster.username,
     moderator: payload.moderator.username,
@@ -15,3 +15,5 @@ export async function handleModerationBanned(payload: any, _metadata: any) {
   // Ban business logic (register ban, update permissions, etc.) is not yet implemented.
   // Logging only — no action taken for moderation bans at this time.
 }
+
+module.exports = { handleModerationBanned };

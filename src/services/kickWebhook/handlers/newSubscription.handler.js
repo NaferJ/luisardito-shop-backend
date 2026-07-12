@@ -1,9 +1,9 @@
-import { processSubscriptionEvent } from "./subscriptionShared";
+const { processSubscriptionEvent } = require("./subscriptionShared");
 
 /**
  * Handle new subscriptions
  */
-export async function handleNewSubscription(payload: any, _metadata: any) {
+async function handleNewSubscription(payload, _metadata) {
   await processSubscriptionEvent(payload, _metadata, {
     logLabel: "New Subscription",
     configKey: "subscription_new_points",
@@ -14,3 +14,5 @@ export async function handleNewSubscription(payload: any, _metadata: any) {
     sendNotification: true,
   });
 }
+
+module.exports = { handleNewSubscription };

@@ -1,14 +1,13 @@
-import * as _models from "../../../models";
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } =
-  _models as any;
-import NotificacionService from "../../notificacion.service";
-import logger from "../../../utils/logger";
-import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+const _models = require("../../../models");
+const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
+const NotificacionService = require("../../notificacion.service");
+const logger = require("../../../utils/logger");
+const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
 
 /**
  * Handle new followers
  */
-export async function handleChannelFollowed(payload: any, _metadata: any) {
+async function handleChannelFollowed(payload, _metadata) {
   try {
     const follower = payload.follower;
     const kickUserId = String(follower.user_id);
@@ -122,3 +121,5 @@ export async function handleChannelFollowed(payload: any, _metadata: any) {
     logger.error("[Kick Webhook][Channel Followed] Error:", error.message);
   }
 }
+
+module.exports = { handleChannelFollowed };
