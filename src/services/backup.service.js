@@ -13,7 +13,7 @@ class BackupService {
       githubRepoUrl: process.env.BACKUP_GITHUB_REPO_URL,
       githubToken: process.env.BACKUP_GITHUB_TOKEN,
       githubUserEmail: process.env.BACKUP_GITHUB_USER_EMAIL,
-      retentionDays: parseInt(process.env.BACKUP_RETENTION_DAYS || "3"),
+      retentionDays: Number.parseInt(process.env.BACKUP_RETENTION_DAYS || "3"),
       localPath: path.join(__dirname, "../../backups/local"),
       githubPath: path.join(__dirname, "../../backups/github"),
       dbContainer: "luisardito-mysql",

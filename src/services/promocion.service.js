@@ -413,12 +413,12 @@ class PromocionService {
         valor_descuento: promocion.valor_descuento,
       },
       estadisticas: {
-        total_usos: parseInt(estadisticas.total_usos) || 0,
+        total_usos: Number.parseInt(estadisticas.total_usos) || 0,
         usos_maximos: promocion.cantidad_usos_maximos,
         puntos_descontados_total:
-          parseInt(estadisticas.puntos_descontados_total) || 0,
+          Number.parseInt(estadisticas.puntos_descontados_total) || 0,
         descuento_promedio: parseFloat(estadisticas.descuento_promedio) || 0,
-        usuarios_unicos: parseInt(estadisticas.usuarios_unicos) || 0,
+        usuarios_unicos: Number.parseInt(estadisticas.usuarios_unicos) || 0,
         productos_aplicables: promocion.productos.length,
       },
       topUsuarios,

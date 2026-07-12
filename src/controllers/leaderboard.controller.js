@@ -11,9 +11,9 @@ const AppError = require("../utils/AppError");
  *   - userId: ID of the user to include their specific position
  */
 exports.getLeaderboard = asyncHandler(async (req, res) => {
-  const limit = parseInt(req.query.limit) || 100;
-  const offset = parseInt(req.query.offset) || 0;
-  const userId = req.query.userId ? parseInt(req.query.userId) : null;
+  const limit = Number.parseInt(req.query.limit) || 100;
+  const offset = Number.parseInt(req.query.offset) || 0;
+  const userId = req.query.userId ? Number.parseInt(req.query.userId) : null;
 
   // Validations
   if (limit < 1 || limit > 500) {
@@ -40,10 +40,10 @@ exports.getLeaderboard = asyncHandler(async (req, res) => {
  *   - days: days of history (default: 7)
  */
 exports.getUserHistory = asyncHandler(async (req, res) => {
-  const userId = parseInt(req.params.userId);
-  const days = parseInt(req.query.days) || 7;
+  const userId = Number.parseInt(req.params.userId);
+  const days = Number.parseInt(req.query.days) || 7;
 
-  if (!userId || isNaN(userId)) {
+  if (!userId || Number.isNaN(userId)) {
     throw new AppError("Invalid user ID", 400);
   }
 
@@ -113,7 +113,7 @@ exports.createSnapshot = asyncHandler(async (req, res) => {
  * Requires admin permissions
  */
 exports.cleanOldSnapshots = asyncHandler(async (req, res) => {
-  const daysToKeep = parseInt(req.query.days) || 30;
+  const daysToKeep = Number.parseInt(req.query.days) || 30;
 
   if (daysToKeep < 7) {
     throw new AppError("You must keep at least 7 days of history", 400);

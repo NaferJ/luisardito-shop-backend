@@ -168,8 +168,12 @@ exports.updateMe = asyncHandler(async (req, res) => {
 // List all users with stats (admin by permission)
 exports.listarUsuarios = asyncHandler(async (req, res) => {
   try {
-    const limit = req.query.limit ? parseInt(req.query.limit) : undefined;
-    const offset = req.query.offset ? parseInt(req.query.offset) : undefined;
+    const limit = req.query.limit
+      ? Number.parseInt(req.query.limit)
+      : undefined;
+    const offset = req.query.offset
+      ? Number.parseInt(req.query.offset)
+      : undefined;
     const search = req.query.search ? req.query.search.trim() : undefined;
 
     // Build where clause for search
@@ -422,7 +426,7 @@ exports.hotfixActualizarRol = asyncHandler(async (req, res) => {
     }
 
     const rolAnterior = usuario.rol_id;
-    await usuario.update({ rol_id: parseInt(nuevoRolId) });
+    await usuario.update({ rol_id: Number.parseInt(nuevoRolId) });
 
     res.json({
       success: true,
@@ -431,7 +435,7 @@ exports.hotfixActualizarRol = asyncHandler(async (req, res) => {
         id: usuario.id,
         nickname: usuario.nickname,
         rol_anterior: rolAnterior,
-        rol_nuevo: parseInt(nuevoRolId),
+        rol_nuevo: Number.parseInt(nuevoRolId),
       },
       timestamp: new Date().toISOString(),
     });
@@ -751,7 +755,7 @@ exports.debugRolesPermisos = asyncHandler(async (req, res) => {
       })),
       usuarios_por_rol: usuariosPorRol.map((u) => ({
         rol_id: u.rol_id,
-        total_usuarios: parseInt(u.getDataValue("total_usuarios")),
+        total_usuarios: Number.parseInt(u.getDataValue("total_usuarios")),
       })),
       permiso_historial_puntos: permisoHistorial
         ? {

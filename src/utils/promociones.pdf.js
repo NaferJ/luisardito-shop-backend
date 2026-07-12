@@ -75,8 +75,8 @@ async function generarPDFPromociones(promociones) {
       let totalPuntosDescontados = 0;
 
       promociones.forEach((promo) => {
-        const usos = parseInt(promo.total_usos) || 0;
-        const puntos = parseInt(promo.puntos_descontados) || 0;
+        const usos = Number.parseInt(promo.total_usos) || 0;
+        const puntos = Number.parseInt(promo.puntos_descontados) || 0;
         totalUsos += usos;
         totalPuntosDescontados += puntos;
       });
@@ -179,8 +179,8 @@ async function generarPDFPromociones(promociones) {
           const estado = promo.estado || "N/A";
           const tipoDesc = promo.tipo_descuento || "N/A";
           const valorDesc = promo.valor_descuento || 0;
-          const usos = parseInt(promo.total_usos) || 0;
-          const puntosDesc = parseInt(promo.puntos_descontados) || 0;
+          const usos = Number.parseInt(promo.total_usos) || 0;
+          const puntosDesc = Number.parseInt(promo.puntos_descontados) || 0;
 
           // Determine color based on status
           let estadoColor = "#000000";

@@ -33,8 +33,8 @@ exports.getAllCommands = asyncHandler(async (req, res) => {
 
     const { count, rows } = await KickBotCommand.findAndCountAll({
       where,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: Number.parseInt(limit),
+      offset: Number.parseInt(offset),
       order: [["created_at", "DESC"]],
     });
 
@@ -47,8 +47,8 @@ exports.getAllCommands = asyncHandler(async (req, res) => {
       data: rows,
       pagination: {
         total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: Number.parseInt(page),
+        limit: Number.parseInt(limit),
         totalPages: Math.ceil(count / limit),
       },
     });
@@ -88,8 +88,8 @@ exports.getPublicCommands = asyncHandler(async (req, res) => {
 
     const { count, rows } = await KickBotCommand.findAndCountAll({
       where,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
+      limit: Number.parseInt(limit),
+      offset: Number.parseInt(offset),
       order: [["created_at", "DESC"]],
     });
 
@@ -102,8 +102,8 @@ exports.getPublicCommands = asyncHandler(async (req, res) => {
       data: rows,
       pagination: {
         total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: Number.parseInt(page),
+        limit: Number.parseInt(limit),
         totalPages: Math.ceil(count / limit),
       },
     });

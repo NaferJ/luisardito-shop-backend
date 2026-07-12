@@ -12,7 +12,7 @@ class BotMaintenanceService {
   constructor() {
     this.intervalId = null;
     this.isRunning = false;
-    this.intervalMinutes = parseInt(
+    this.intervalMinutes = Number.parseInt(
       process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60"
     ); // Default every 60 minutes
   }

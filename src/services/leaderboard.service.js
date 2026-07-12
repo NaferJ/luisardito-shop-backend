@@ -286,7 +286,7 @@ class LeaderboardService {
    */
   async _getNextResetDate() {
     try {
-      const RESET_INTERVAL_HOURS = parseInt(
+      const RESET_INTERVAL_HOURS = Number.parseInt(
         process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || 336
       );
 

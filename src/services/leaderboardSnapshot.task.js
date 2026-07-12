@@ -7,8 +7,9 @@ class LeaderboardSnapshotTask {
     this.isRunning = false;
     // Configuration: run every 6 hours by default
     this.intervalHours =
-      parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS) || 6;
-    this.cleanupDays = parseInt(process.env.LEADERBOARD_CLEANUP_DAYS) || 30;
+      Number.parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS) || 6;
+    this.cleanupDays =
+      Number.parseInt(process.env.LEADERBOARD_CLEANUP_DAYS) || 30;
   }
 
   /**

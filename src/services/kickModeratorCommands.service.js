@@ -115,7 +115,7 @@ function parseModeratorCommand(content) {
           .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
           .filter(Boolean);
       } else if (flagName === "cooldown") {
-        flags.cooldown = parseInt(flagValue) || 3;
+        flags.cooldown = Number.parseInt(flagValue) || 3;
       } else if (flagName === "desc") {
         flags.desc = flagValue;
       } else if (flagName === "response") {
