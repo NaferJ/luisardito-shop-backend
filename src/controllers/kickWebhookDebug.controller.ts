@@ -3,7 +3,6 @@
 
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
-import { KickPointsConfig } from "../models";
 import { getRedisClient } from "../config/redis.config";
 import logger from "../utils/logger";
 
@@ -233,36 +232,3 @@ export const forceStreamState = asyncHandler(async (req: any, res: any) => {
     throw new AppError(error.message, 500);
   }
 });
-
-/**
- * PUBLIC ENDPOINT: Get public Kick points configuration
- * GET /api/kick/public/points-config
- */
-export const getPublicPointsConfig = asyncHandler(
-  async (req: any, res: any) => {
-    try {
-      const configs = await KickPointsConfig.findAll({
-        order: [["id", "ASC"]],
-      });
-
-      const total = configs.length;
-      const initialized = total > 0;
-
-      res.json({
-        config: configs.map((c: any) => ({
-          id: c.id,
-          config_key: c.config_key,
-          config_value: c.config_value,
-          enabled: c.enabled,
-          description: c.description || null,
-        })),
-        total,
-        initialized,
-      });
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      logger.error("[Public Points Config] Error:", error.message);
-      throw new AppError("Internal server error", 500);
-    }
-  }
-);

@@ -18,7 +18,4 @@ router.get("/events", kickWebhookCtrl.handleWebhook); // For GET verifications
 router.get("/debug-stream-status", kickWebhookDebugCtrl.debugStreamStatus);
 router.post("/debug/force-stream-state", kickWebhookDebugCtrl.forceStreamState);
 
-// PUBLIC ENDPOINT: Points configuration
-router.get("/public/points-config", kickWebhookDebugCtrl.getPublicPointsConfig);
-
 module.exports = router;

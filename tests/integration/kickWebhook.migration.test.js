@@ -74,7 +74,7 @@ jest.mock("../../config", () => ({
   port: 3000,
 }));
 
-const { KickWebhookEvent, KickPointsConfig } = require("../../src/models");
+const { KickWebhookEvent } = require("../../src/models");
 const { getRedisClient } = require("../../src/config/redis.config");
 const { verifyWebhookSignature } = require("../../src/utils/kickWebhook.util");
 const config = require("../../config");
@@ -227,55 +227,6 @@ describe("kickWebhook.controller migration characterization", () => {
       await debugController.forceStreamState(req, res, next);
 
       expectNextCalledWithAppError(next, res, 500, "Redis down");
-    });
-  });
-
-  // ---------- getPublicPointsConfig ----------
-  describe("getPublicPointsConfig", () => {
-    test("success -> 200 body unchanged", async () => {
-      KickPointsConfig.findAll.mockResolvedValue([
-        {
-          id: 1,
-          config_key: "chat_points_regular",
-          config_value: 1,
-          enabled: true,
-          description: "Regular chat points",
-        },
-      ]);
-
-      const req = {};
-      const res = createRes();
-      const next = jest.fn();
-
-      await debugController.getPublicPointsConfig(req, res, next);
-
-      expect(res.statusCode).toBe(200);
-      expect(res.body).toEqual({
-        config: [
-          {
-            id: 1,
-            config_key: "chat_points_regular",
-            config_value: 1,
-            enabled: true,
-            description: "Regular chat points",
-          },
-        ],
-        total: 1,
-        initialized: true,
-      });
-      expect(next).not.toHaveBeenCalled();
-    });
-
-    test("error -> next(AppError) 500 'Internal server error'", async () => {
-      KickPointsConfig.findAll.mockRejectedValue(new Error("DB down"));
-
-      const req = {};
-      const res = createRes();
-      const next = jest.fn();
-
-      await debugController.getPublicPointsConfig(req, res, next);
-
-      expectNextCalledWithAppError(next, res, 500, "Internal server error");
     });
   });
 
