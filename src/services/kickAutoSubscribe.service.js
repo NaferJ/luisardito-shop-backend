@@ -48,7 +48,7 @@ async function processSubscriptionResults(
 
         if (localSub) {
           await localSub.update({
-            broadcaster_user_id: parseInt(broadcasterUserId),
+            broadcaster_user_id: Number.parseInt(broadcasterUserId),
             event_type: sub.name,
             event_version: sub.version,
             method: "webhook",
@@ -60,7 +60,7 @@ async function processSubscriptionResults(
         } else {
           localSub = await KickEventSubscription.create({
             subscription_id: sub.subscription_id,
-            broadcaster_user_id: parseInt(broadcasterUserId),
+            broadcaster_user_id: Number.parseInt(broadcasterUserId),
             event_type: sub.name,
             event_version: sub.version,
             method: "webhook",
@@ -108,7 +108,7 @@ async function autoSubscribeToEvents(
     const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
     const payload = {
-      broadcaster_user_id: parseInt(broadcasterUserId),
+      broadcaster_user_id: Number.parseInt(broadcasterUserId),
       events: DEFAULT_EVENTS,
       method: "webhook",
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
@@ -206,7 +206,7 @@ async function autoSubscribeToEvents(
 async function hasActiveSubscriptions(broadcasterUserId) {
   const count = await KickEventSubscription.count({
     where: {
-      broadcaster_user_id: parseInt(broadcasterUserId),
+      broadcaster_user_id: Number.parseInt(broadcasterUserId),
       status: "active",
     },
   });

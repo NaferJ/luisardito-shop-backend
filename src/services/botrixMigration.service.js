@@ -37,7 +37,7 @@ class BotrixMigrationService {
       }
 
       const [, targetUsername, botrixPoints] = match;
-      const pointsAmount = parseInt(botrixPoints, 10);
+      const pointsAmount = Number.parseInt(botrixPoints, 10);
 
       logger.info(
         `[BOTRIX MIGRATION] Detected: @${targetUsername} has ${pointsAmount} points`
@@ -235,8 +235,8 @@ class BotrixMigrationService {
         minutes = 0;
       const parts = timeStr.trim().split(" ").filter(Boolean);
       for (let i = 0; i < parts.length - 1; i++) {
-        const num = parseInt(parts[i], 10);
-        if (isNaN(num)) continue;
+        const num = Number.parseInt(parts[i], 10);
+        if (Number.isNaN(num)) continue;
         const unit = parts[i + 1].toLowerCase();
         if (unit.startsWith("min")) minutes = num;
         else if (unit.startsWith("h")) hours = num;

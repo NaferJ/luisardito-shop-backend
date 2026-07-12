@@ -119,8 +119,10 @@ exports.getConfig = async (req, res) => {
       migration: {
         enabled: config.migration_enabled,
         stats: {
-          migrated_users: parseInt(migrationStats[0]?.migrated_users || 0),
-          total_points_migrated: parseInt(
+          migrated_users: Number.parseInt(
+            migrationStats[0]?.migrated_users || 0
+          ),
+          total_points_migrated: Number.parseInt(
             migrationStats[0]?.total_points_migrated || 0
           ),
         },
@@ -128,10 +130,10 @@ exports.getConfig = async (req, res) => {
       watchtime_migration: {
         enabled: config.watchtime_migration_enabled,
         stats: {
-          migrated_users: parseInt(
+          migrated_users: Number.parseInt(
             watchtimeMigrationStats[0]?.migrated_users || 0
           ),
-          total_minutes_migrated: parseInt(
+          total_minutes_migrated: Number.parseInt(
             watchtimeMigrationStats[0]?.total_minutes_migrated || 0
           ),
         },
@@ -281,7 +283,7 @@ exports.updateVipConfig = async (req, res) => {
     // Validate and convert numbers
     if (vip_chat_points !== undefined) {
       const num = Number(vip_chat_points);
-      if (isNaN(num) || num < 0) {
+      if (Number.isNaN(num) || num < 0) {
         return res.status(400).json({
           success: false,
           error: "vip_chat_points must be a non-negative number",
@@ -292,7 +294,7 @@ exports.updateVipConfig = async (req, res) => {
 
     if (vip_follow_points !== undefined) {
       const num = Number(vip_follow_points);
-      if (isNaN(num) || num < 0) {
+      if (Number.isNaN(num) || num < 0) {
         return res.status(400).json({
           success: false,
           error: "vip_follow_points must be a non-negative number",
@@ -303,7 +305,7 @@ exports.updateVipConfig = async (req, res) => {
 
     if (vip_sub_points !== undefined) {
       const num = Number(vip_sub_points);
-      if (isNaN(num) || num < 0) {
+      if (Number.isNaN(num) || num < 0) {
         return res.status(400).json({
           success: false,
           error: "vip_sub_points must be a non-negative number",
@@ -809,8 +811,8 @@ exports.manualBotrixMigration = async (req, res) => {
       });
     }
 
-    const usuarioId = parseInt(rawUsuarioId, 10);
-    const points = parseInt(rawPoints, 10);
+    const usuarioId = Number.parseInt(rawUsuarioId, 10);
+    const points = Number.parseInt(rawPoints, 10);
 
     if (Number.isNaN(usuarioId) || Number.isNaN(points)) {
       return res.status(400).json({

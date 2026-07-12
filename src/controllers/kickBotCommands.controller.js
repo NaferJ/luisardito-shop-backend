@@ -5,53 +5,65 @@ const asyncHandler = require("../utils/asyncHandler");
 const AppError = require("../utils/AppError");
 
 /**
+ * Shared logic for building filters, querying, and paginating bot commands.
+ * Used by both getAllCommands and getPublicCommands.
+ * @param {Object} req - Express request
+ * @param {string} label - Label for logging (e.g. "Public command" or "Command")
+ * @returns {Promise<Object>} { count, rows, pagination }
+ */
+async function fetchCommandsList(req, label) {
+  const { page = 1, limit = 20, enabled, command_type, search } = req.query;
+
+  const offset = (page - 1) * limit;
+  const where = {};
+
+  if (enabled !== undefined) {
+    where.enabled = enabled === "true";
+  }
+
+  if (command_type) {
+    where.command_type = command_type;
+  }
+
+  if (search) {
+    where[Op.or] = [
+      { command: { [Op.like]: `%${search}%` } },
+      { description: { [Op.like]: `%${search}%` } },
+    ];
+  }
+
+  const { count, rows } = await KickBotCommand.findAndCountAll({
+    where,
+    limit: Number.parseInt(limit),
+    offset: Number.parseInt(offset),
+    order: [["created_at", "DESC"]],
+  });
+
+  logger.info(
+    `[BOT-COMMANDS] ${label} list requested: ${rows.length} commands`
+  );
+
+  return {
+    count,
+    rows,
+    pagination: {
+      total: count,
+      page: Number.parseInt(page),
+      limit: Number.parseInt(limit),
+      totalPages: Math.ceil(count / limit),
+    },
+  };
+}
+
+/**
  * Get all commands (with pagination and filters)
  * GET /api/kick-admin/bot-commands
  */
 exports.getAllCommands = asyncHandler(async (req, res) => {
   try {
-    const { page = 1, limit = 20, enabled, command_type, search } = req.query;
+    const { rows, pagination } = await fetchCommandsList(req, "Command");
 
-    const offset = (page - 1) * limit;
-    const where = {};
-
-    // Filters
-    if (enabled !== undefined) {
-      where.enabled = enabled === "true";
-    }
-
-    if (command_type) {
-      where.command_type = command_type;
-    }
-
-    if (search) {
-      where[Op.or] = [
-        { command: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } },
-      ];
-    }
-
-    const { count, rows } = await KickBotCommand.findAndCountAll({
-      where,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [["created_at", "DESC"]],
-    });
-
-    logger.info(
-      `[BOT-COMMANDS] Command list requested: ${rows.length} commands`
-    );
-
-    res.json({
-      ok: true,
-      data: rows,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit),
-      },
-    });
+    res.json({ ok: true, data: rows, pagination });
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching commands:", error);
@@ -65,48 +77,9 @@ exports.getAllCommands = asyncHandler(async (req, res) => {
  */
 exports.getPublicCommands = asyncHandler(async (req, res) => {
   try {
-    const { page = 1, limit = 20, enabled, command_type, search } = req.query;
+    const { rows, pagination } = await fetchCommandsList(req, "Public command");
 
-    const offset = (page - 1) * limit;
-    const where = {};
-
-    // Filters
-    if (enabled !== undefined) {
-      where.enabled = enabled === "true";
-    }
-
-    if (command_type) {
-      where.command_type = command_type;
-    }
-
-    if (search) {
-      where[Op.or] = [
-        { command: { [Op.like]: `%${search}%` } },
-        { description: { [Op.like]: `%${search}%` } },
-      ];
-    }
-
-    const { count, rows } = await KickBotCommand.findAndCountAll({
-      where,
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-      order: [["created_at", "DESC"]],
-    });
-
-    logger.info(
-      `[BOT-COMMANDS] Public command list requested: ${rows.length} commands`
-    );
-
-    res.json({
-      ok: true,
-      data: rows,
-      pagination: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / limit),
-      },
-    });
+    res.json({ ok: true, data: rows, pagination });
   } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("[BOT-COMMANDS] Error fetching public commands:", error);

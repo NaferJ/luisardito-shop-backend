@@ -97,7 +97,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
     const subscribeUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
     const payload = {
-      broadcaster_user_id: parseInt(broadcasterUserId),
+      broadcaster_user_id: Number.parseInt(broadcasterUserId),
       events: events,
       method: "webhook",
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
@@ -134,7 +134,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
           if (localSub) {
             // Update existing
             await localSub.update({
-              broadcaster_user_id: parseInt(broadcasterUserId),
+              broadcaster_user_id: Number.parseInt(broadcasterUserId),
               event_type: sub.name,
               event_version: sub.version,
               method: "webhook",
@@ -146,7 +146,7 @@ async function subscribeToEventsWithAppToken(broadcasterUserId) {
             // Create new
             localSub = await KickEventSubscription.create({
               subscription_id: sub.subscription_id,
-              broadcaster_user_id: parseInt(broadcasterUserId),
+              broadcaster_user_id: Number.parseInt(broadcasterUserId),
               event_type: sub.name,
               event_version: sub.version,
               method: "webhook",
@@ -216,7 +216,7 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId) {
     // Count App Token subscriptions
     const appTokenSubs = await KickEventSubscription.count({
       where: {
-        broadcaster_user_id: parseInt(broadcasterUserId),
+        broadcaster_user_id: Number.parseInt(broadcasterUserId),
         app_id: "APP_TOKEN",
         status: "active",
       },
@@ -225,7 +225,7 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId) {
     // Count User Token subscriptions
     const userTokenSubs = await KickEventSubscription.count({
       where: {
-        broadcaster_user_id: parseInt(broadcasterUserId),
+        broadcaster_user_id: Number.parseInt(broadcasterUserId),
         app_id: { [require("sequelize").Op.ne]: "APP_TOKEN" },
         status: "active",
       },

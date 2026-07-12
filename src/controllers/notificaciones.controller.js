@@ -9,8 +9,8 @@ exports.listar = asyncHandler(async (req, res) => {
 
     const resultado = await NotificacionService.listar(
       usuarioId,
-      parseInt(page),
-      parseInt(limit),
+      Number.parseInt(page),
+      Number.parseInt(limit),
       tipo,
       estado
     );
