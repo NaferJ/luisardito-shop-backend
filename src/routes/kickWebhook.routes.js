@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const kickWebhookCtrl = require("../controllers/kickWebhook.controller");
+const kickWebhookDebugCtrl = require("../controllers/kickWebhookDebug.controller");
 const {
   webhookCors,
   logWebhookRequest,
@@ -14,55 +15,58 @@ router.post("/events", kickWebhookCtrl.handleWebhook);
 router.get("/events", kickWebhookCtrl.handleWebhook); // For GET verifications
 
 // Testing and debug endpoints
-router.get("/test", kickWebhookCtrl.testWebhook);
-router.get("/debug", kickWebhookCtrl.debugWebhook);
-router.post("/simulate-chat", kickWebhookCtrl.simulateChat);
-router.post("/test-real-webhook", kickWebhookCtrl.testRealWebhook);
+router.get("/test", kickWebhookDebugCtrl.testWebhook);
+router.get("/debug", kickWebhookDebugCtrl.debugWebhook);
+router.post("/simulate-chat", kickWebhookDebugCtrl.simulateChat);
+router.post("/test-real-webhook", kickWebhookDebugCtrl.testRealWebhook);
 
 // NEW: Specific endpoint to test CORS
-router.get("/test-cors", kickWebhookCtrl.testCors);
-router.post("/test-cors", kickWebhookCtrl.testCors);
-router.options("/test-cors", kickWebhookCtrl.testCors);
+router.get("/test-cors", kickWebhookDebugCtrl.testCors);
+router.post("/test-cors", kickWebhookDebugCtrl.testCors);
+router.options("/test-cors", kickWebhookDebugCtrl.testCors);
 
 // DIAGNOSTIC: Check token issues
-router.get("/diagnostic-tokens", kickWebhookCtrl.diagnosticTokens);
-router.get("/diagnostic-tokens-db", kickWebhookCtrl.diagnosticTokensDB);
+router.get("/diagnostic-tokens", kickWebhookDebugCtrl.diagnosticTokens);
+router.get("/diagnostic-tokens-db", kickWebhookDebugCtrl.diagnosticTokensDB);
 
 // REPAIR: Reactivate main broadcaster token
 router.post(
   "/reactivate-broadcaster-token",
-  kickWebhookCtrl.reactivateBroadcasterToken
+  kickWebhookDebugCtrl.reactivateBroadcasterToken
 );
 
 // DEBUG: Debug subscription process
 router.get(
   "/debug-subscription-process",
-  kickWebhookCtrl.debugSubscriptionProcess
+  kickWebhookDebugCtrl.debugSubscriptionProcess
 );
 
 // DEBUG: Check table structure
-router.get("/debug-table-structure", kickWebhookCtrl.debugTableStructure);
+router.get("/debug-table-structure", kickWebhookDebugCtrl.debugTableStructure);
 
 // APP TOKEN: Permanent webhooks
 router.post(
   "/setup-permanent-webhooks",
-  kickWebhookCtrl.setupPermanentWebhooks
+  kickWebhookDebugCtrl.setupPermanentWebhooks
 );
-router.get("/debug-app-token", kickWebhookCtrl.debugAppTokenWebhooks);
-router.get("/compare-token-types", kickWebhookCtrl.compareTokenTypes);
+router.get("/debug-app-token", kickWebhookDebugCtrl.debugAppTokenWebhooks);
+router.get("/compare-token-types", kickWebhookDebugCtrl.compareTokenTypes);
 
 // STATUS: Webhook system
-router.get("/status", kickWebhookCtrl.systemStatus);
+router.get("/status", kickWebhookDebugCtrl.systemStatus);
 
 // DEBUG: New features
-router.post("/debug-botrix-migration", kickWebhookCtrl.debugBotrixMigration);
-router.get("/debug-system-info", kickWebhookCtrl.debugSystemInfo);
+router.post(
+  "/debug-botrix-migration",
+  kickWebhookDebugCtrl.debugBotrixMigration
+);
+router.get("/debug-system-info", kickWebhookDebugCtrl.debugSystemInfo);
 
 // Stream
-router.get("/debug-stream-status", kickWebhookCtrl.debugStreamStatus);
-router.post("/debug/force-stream-state", kickWebhookCtrl.forceStreamState);
+router.get("/debug-stream-status", kickWebhookDebugCtrl.debugStreamStatus);
+router.post("/debug/force-stream-state", kickWebhookDebugCtrl.forceStreamState);
 
 // PUBLIC ENDPOINT: Points configuration
-router.get("/public/points-config", kickWebhookCtrl.getPublicPointsConfig);
+router.get("/public/points-config", kickWebhookDebugCtrl.getPublicPointsConfig);
 
 module.exports = router;
