@@ -148,7 +148,7 @@ async function getKickUserData(userIdOrToken) {
     logger.info("[Kick API] Trying to fetch data by user ID:", userIdOrToken);
 
     const userIdStr = String(userIdOrToken);
-    if (!/^[0-9]+$/.test(userIdStr)) {
+    if (!/^\d+$/.test(userIdStr)) {
       throw new Error("Invalid Kick user ID");
     }
 
