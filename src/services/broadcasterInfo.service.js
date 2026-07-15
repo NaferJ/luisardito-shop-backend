@@ -2,6 +2,44 @@ const { getRedisClient } = require("../config/redis.config");
 const config = require("../../config");
 const logger = require("../utils/logger");
 
+function parseStreamInfo(raw) {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    logger.error("[BroadcasterInfo] Error parsing stream info:", err.message);
+    return null;
+  }
+}
+
+function computeUptime(isOnline, streamInfo) {
+  if (!isOnline || !streamInfo?.started_at) {
+    return { startedAt: null, uptimeMinutes: null };
+  }
+  const startedAt = streamInfo.started_at;
+  const startTime = new Date(startedAt);
+  const now = new Date();
+  const uptimeMinutes = Math.floor((now - startTime) / 1000 / 60);
+  return { startedAt, uptimeMinutes };
+}
+
+function formatLastLiveAgo(isOnline, lastStatusUpdate) {
+  if (isOnline || !lastStatusUpdate) return null;
+  const lastUpdate = new Date(lastStatusUpdate);
+  const now = new Date();
+  const minutesAgo = Math.floor((now - lastUpdate) / 1000 / 60);
+
+  if (minutesAgo < 60) {
+    return `${minutesAgo} minute${minutesAgo !== 1 ? "s" : ""} ago`;
+  }
+  if (minutesAgo < 1440) {
+    const hoursAgo = Math.floor(minutesAgo / 60);
+    return `${hoursAgo} hour${hoursAgo !== 1 ? "s" : ""} ago`;
+  }
+  const daysAgo = Math.floor(minutesAgo / 1440);
+  return `${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago`;
+}
+
 /**
  * Service to get complete information about the main broadcaster
  * Includes stream status, metadata, statistics and more
@@ -24,50 +62,18 @@ class BroadcasterInfoService {
       const isOnline = isLive === "true";
 
       // Get detailed stream info
-      let streamInfo = null;
       const streamInfoRaw = await redis.get("stream:current_info");
-      if (streamInfoRaw) {
-        try {
-          streamInfo = JSON.parse(streamInfoRaw);
-        } catch (err) {
-          logger.error(
-            "[BroadcasterInfo] Error parsing stream info:",
-            err.message
-          );
-        }
-      }
+      const streamInfo = parseStreamInfo(streamInfoRaw);
 
       // Get relevant timestamps
       const lastStatusUpdate = await redis.get("stream:last_status_update");
       const lastMetadataUpdate = await redis.get("stream:last_metadata_update");
 
       // Calculate uptime (if online)
-      let uptimeMinutes = null;
-      let startedAt = null;
-      if (isOnline && streamInfo?.started_at) {
-        startedAt = streamInfo.started_at;
-        const startTime = new Date(startedAt);
-        const now = new Date();
-        uptimeMinutes = Math.floor((now - startTime) / 1000 / 60);
-      }
+      const { startedAt, uptimeMinutes } = computeUptime(isOnline, streamInfo);
 
       // Calculate time since last stream (if offline)
-      let lastLiveAgo = null;
-      if (!isOnline && lastStatusUpdate) {
-        const lastUpdate = new Date(lastStatusUpdate);
-        const now = new Date();
-        const minutesAgo = Math.floor((now - lastUpdate) / 1000 / 60);
-
-        if (minutesAgo < 60) {
-          lastLiveAgo = `${minutesAgo} minute${minutesAgo !== 1 ? "s" : ""} ago`;
-        } else if (minutesAgo < 1440) {
-          const hoursAgo = Math.floor(minutesAgo / 60);
-          lastLiveAgo = `${hoursAgo} hour${hoursAgo !== 1 ? "s" : ""} ago`;
-        } else {
-          const daysAgo = Math.floor(minutesAgo / 1440);
-          lastLiveAgo = `${daysAgo} day${daysAgo !== 1 ? "s" : ""} ago`;
-        }
-      }
+      const lastLiveAgo = formatLastLiveAgo(isOnline, lastStatusUpdate);
 
       // Build complete response
       const broadcasterInfo = {
