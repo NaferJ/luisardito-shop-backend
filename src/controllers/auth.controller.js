@@ -238,6 +238,282 @@ exports.redirectKickBot = (req, res) => {
   }
 };
 
+// Helper: resolve local user from Kick profile (find-by-user_id_ext / collision-link / create-new)
+async function resolveKickUserFromProfile(kickUser) {
+  let usuario = await Usuario.findOne({
+    where: { user_id_ext: String(kickUser.user_id) },
+  });
+  let isNewUser = false;
+
+  if (!usuario) {
+    // If not found, search by nickname (case-insensitive) or email
+    const colision = await Usuario.findOne({
+      where: {
+        [Op.or]: [
+          { email: kickUser.email },
+          { nickname: kickUser.name },
+          // Case-insensitive lookup for nickname
+          sequelize.where(
+            sequelize.fn("LOWER", sequelize.col("nickname")),
+            sequelize.fn("LOWER", kickUser.name)
+          ),
+        ],
+      },
+    });
+
+    if (colision) {
+      logger.info(
+        "[Kick OAuth][callbackKick] Collision detected, linking existing user:",
+        {
+          usuario_id: colision.id,
+          usuario_nickname: colision.nickname,
+          kick_nickname: kickUser.name,
+          kick_email: kickUser.email,
+          kick_user_id: kickUser.user_id,
+        }
+      );
+
+      // Link the user_id_ext to the existing user
+      // Get Kick avatar
+      const kickAvatarUrl = processKickAvatar(kickUser);
+
+      await colision.update({
+        user_id_ext: String(kickUser.user_id),
+        nickname: kickUser.name, // Update with exact Kick name
+        email: kickUser.email || colision.email, // Update email when provided by Kick
+        kick_data: {
+          avatar_url: kickAvatarUrl || kickUser.profile_picture,
+          username: kickUser.name,
+        },
+      });
+
+      usuario = colision;
+      isNewUser = false;
+    } else {
+      // Create new user
+      // Create the user first to obtain the ID
+      const newUserData = {
+        nickname: kickUser.name,
+        email: kickUser.email || `${kickUser.name}@kick.user`,
+        puntos: 1000,
+        rol_id: 1, // New users start as "basic user"
+        user_id_ext: String(kickUser.user_id),
+        password_hash: null,
+        kick_data: {
+          avatar_url: kickUser.profile_picture, // Temporary
+          username: kickUser.name,
+        },
+      };
+
+      logger.info(
+        "[Kick OAuth][callbackKick] Data to create user:",
+        newUserData
+      );
+
+      usuario = await Usuario.create(newUserData);
+
+      // Get Kick avatar after creating the user
+      const kickAvatarUrl = processKickAvatar(kickUser);
+
+      if (kickAvatarUrl) {
+        await usuario.update({
+          kick_data: {
+            avatar_url: kickAvatarUrl,
+            username: kickUser.name,
+          },
+        });
+      }
+
+      isNewUser = true;
+      logger.info("[Kick OAuth][callbackKick] User created:", usuario.id);
+    }
+  } else {
+    const colision = await Usuario.findOne({
+      where: {
+        [Op.or]: [{ email: kickUser.email }, { nickname: kickUser.name }],
+        id: { [Op.ne]: usuario.id },
+      },
+    });
+    if (colision) {
+      return { conflict: true };
+    }
+
+    // Log data before updating user
+    logger.info("[Kick OAuth][callbackKick] Data to update user:", {
+      nickname: kickUser.name,
+      email: kickUser.email || `${kickUser.name}@kick.user`,
+      kick_data: {
+        avatar_url: kickUser.profile_picture,
+        username: kickUser.name,
+      },
+    });
+
+    // Get Kick avatar
+    const kickAvatarUrl = processKickAvatar(kickUser);
+
+    await usuario.update({
+      nickname: kickUser.name,
+      email: kickUser.email || `${kickUser.name}@kick.user`,
+      kick_data: {
+        avatar_url: kickAvatarUrl || kickUser.profile_picture,
+        username: kickUser.name,
+      },
+    });
+    logger.info("[Kick OAuth][callbackKick] User updated:", usuario.id);
+  }
+
+  return { usuario, isNewUser };
+}
+
+// Helper: persist broadcaster token (findOrCreate + update)
+async function persistBroadcasterToken(kickUserId, kickUser, tokenData) {
+  const accessToken = tokenData.access_token;
+  const refreshToken = tokenData.refresh_token || null;
+  const expiresIn = tokenData.expires_in || null;
+
+  let tokenExpiresAt = null;
+  if (expiresIn) {
+    tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
+  }
+
+  // AUTOMATIC DETECTION: Is this the main broadcaster?
+  const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
+
+  if (isBroadcasterPrincipal) {
+    logger.info(
+      "[MAIN BROADCASTER] Luisardito authenticated - Setting up webhooks..."
+    );
+  }
+
+  // Save or update token
+  const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate({
+    where: { kick_user_id: kickUserId },
+    defaults: {
+      kick_user_id: kickUserId,
+      kick_username: kickUser.name,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_expires_at: tokenExpiresAt,
+      is_active: true,
+      auto_subscribed: false,
+    },
+  });
+
+  if (!created) {
+    await broadcasterToken.update({
+      kick_username: kickUser.name,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_expires_at: tokenExpiresAt,
+      is_active: true,
+    });
+  }
+
+  logger.info(
+    "[Kick OAuth][callbackKick] Token saved:",
+    created ? "new" : "updated"
+  );
+
+  return { broadcasterToken, created, accessToken, isBroadcasterPrincipal };
+}
+
+// Helper: auto-subscribe main broadcaster to events
+async function maybeAutoSubscribe(
+  broadcasterToken,
+  accessToken,
+  kickUserId,
+  isBroadcasterPrincipal
+) {
+  if (!isBroadcasterPrincipal) {
+    logger.info(
+      "[NORMAL USER] Authenticated, no webhook configuration required"
+    );
+    return null;
+  }
+
+  logger.info("[MAIN BROADCASTER] Setting up webhook subscriptions...");
+
+  try {
+    // Use ITS OWN token to subscribe to ITS OWN channel events
+    const autoSubscribeResult = await autoSubscribeToEvents(
+      accessToken,
+      kickUserId,
+      kickUserId
+    );
+
+    await broadcasterToken.update({
+      auto_subscribed: autoSubscribeResult.success,
+      last_subscription_attempt: new Date(),
+      subscription_error: autoSubscribeResult.success
+        ? null
+        : JSON.stringify(autoSubscribeResult.error),
+    });
+
+    if (autoSubscribeResult.success) {
+      logger.info(
+        `[MAIN BROADCASTER] ${autoSubscribeResult.totalSubscribed} events configured. System ready.`
+      );
+    } else {
+      logger.error(
+        "[MAIN BROADCASTER] Configuration error:",
+        autoSubscribeResult.error
+      );
+    }
+
+    return autoSubscribeResult;
+  } catch (subscribeError) {
+    logger.error("[MAIN BROADCASTER] Critical error:", subscribeError.message);
+    await broadcasterToken.update({
+      auto_subscribed: false,
+      last_subscription_attempt: new Date(),
+      subscription_error: subscribeError.message,
+    });
+    return null;
+  }
+}
+
+// Helper: handle callbackKick errors
+function handleCallbackKickError(res, error) {
+  logger.error(
+    "[Kick OAuth][callbackKick] General error:",
+    error?.message || error
+  );
+
+  // Show Sequelize validation error details if present
+  if (error.errors) {
+    logger.error(
+      "[Kick OAuth][callbackKick] Validation error details:",
+      error.errors
+    );
+    // Respond with the validation message if it is a uniqueness collision
+    const uniqueError = error.errors.find((e) => e.type === "unique violation");
+    if (uniqueError) {
+      return res.status(409).json({
+        error: uniqueError.message,
+        campo: uniqueError.path,
+        valor: uniqueError.value,
+      });
+    }
+  }
+
+  if (error.response) {
+    logger.info(
+      "[Kick OAuth][callbackKick] error.response.data:",
+      error.response.data
+    );
+    return res.status(error.response.status).json({
+      error: "Error communicating with Kick",
+      provider_status: error.response.status,
+      details: error.response.data,
+    });
+  }
+
+  return res.status(502).json({
+    error: "Provider network failure",
+    detalle: error.errors || error.message || error,
+  });
+}
+
 // Kick OAuth callback
 exports.callbackKick = async (req, res) => {
   try {
@@ -350,230 +626,25 @@ exports.callbackKick = async (req, res) => {
       ? userRes.data.data[0]
       : userRes.data;
 
-    // First, look up by user_id_ext (already linked user)
-    let usuario = await Usuario.findOne({
-      where: { user_id_ext: String(kickUser.user_id) },
-    });
-    let isNewUser = false;
-
-    if (!usuario) {
-      // If not found, search by nickname (case-insensitive) or email
-      const colision = await Usuario.findOne({
-        where: {
-          [Op.or]: [
-            { email: kickUser.email },
-            { nickname: kickUser.name },
-            // Case-insensitive lookup for nickname
-            sequelize.where(
-              sequelize.fn("LOWER", sequelize.col("nickname")),
-              sequelize.fn("LOWER", kickUser.name)
-            ),
-          ],
-        },
-      });
-
-      if (colision) {
-        logger.info(
-          "[Kick OAuth][callbackKick] Collision detected, linking existing user:",
-          {
-            usuario_id: colision.id,
-            usuario_nickname: colision.nickname,
-            kick_nickname: kickUser.name,
-            kick_email: kickUser.email,
-            kick_user_id: kickUser.user_id,
-          }
-        );
-
-        // Link the user_id_ext to the existing user
-        // Get Kick avatar
-        const kickAvatarUrl = processKickAvatar(kickUser);
-
-        await colision.update({
-          user_id_ext: String(kickUser.user_id),
-          nickname: kickUser.name, // Update with exact Kick name
-          email: kickUser.email || colision.email, // Update email when provided by Kick
-          kick_data: {
-            avatar_url: kickAvatarUrl || kickUser.profile_picture,
-            username: kickUser.name,
-          },
-        });
-
-        usuario = colision;
-        isNewUser = false;
-      } else {
-        // Create new user
-        // Create the user first to obtain the ID
-        const newUserData = {
-          nickname: kickUser.name,
-          email: kickUser.email || `${kickUser.name}@kick.user`,
-          puntos: 1000,
-          rol_id: 1, // New users start as "basic user"
-          user_id_ext: String(kickUser.user_id),
-          password_hash: null,
-          kick_data: {
-            avatar_url: kickUser.profile_picture, // Temporary
-            username: kickUser.name,
-          },
-        };
-
-        logger.info(
-          "[Kick OAuth][callbackKick] Data to create user:",
-          newUserData
-        );
-
-        usuario = await Usuario.create(newUserData);
-
-        // Get Kick avatar after creating the user
-        const kickAvatarUrl = processKickAvatar(kickUser);
-
-        if (kickAvatarUrl) {
-          await usuario.update({
-            kick_data: {
-              avatar_url: kickAvatarUrl,
-              username: kickUser.name,
-            },
-          });
-        }
-
-        isNewUser = true;
-        logger.info("[Kick OAuth][callbackKick] User created:", usuario.id);
-      }
-    } else {
-      const colision = await Usuario.findOne({
-        where: {
-          [Op.or]: [{ email: kickUser.email }, { nickname: kickUser.name }],
-          id: { [Op.ne]: usuario.id },
-        },
-      });
-      if (colision) {
-        return res
-          .status(409)
-          .json({ error: "Email or nickname already in use by another user." });
-      }
-
-      // Log data before updating user
-      logger.info("[Kick OAuth][callbackKick] Data to update user:", {
-        nickname: kickUser.name,
-        email: kickUser.email || `${kickUser.name}@kick.user`,
-        kick_data: {
-          avatar_url: kickUser.profile_picture,
-          username: kickUser.name,
-        },
-      });
-
-      // Get Kick avatar
-      const kickAvatarUrl = processKickAvatar(kickUser);
-
-      await usuario.update({
-        nickname: kickUser.name,
-        email: kickUser.email || `${kickUser.name}@kick.user`,
-        kick_data: {
-          avatar_url: kickAvatarUrl || kickUser.profile_picture,
-          username: kickUser.name,
-        },
-      });
-      logger.info("[Kick OAuth][callbackKick] User updated:", usuario.id);
+    const userResult = await resolveKickUserFromProfile(kickUser);
+    if (userResult.conflict) {
+      return res
+        .status(409)
+        .json({ error: "Email or nickname already in use by another user." });
     }
+    const { usuario, isNewUser } = userResult;
 
     // Save broadcaster token and auto-subscribe to events
     const kickUserId = String(kickUser.user_id);
-    const accessToken = tokenData.access_token;
-    const refreshToken = tokenData.refresh_token || null;
-    const expiresIn = tokenData.expires_in || null;
+    const { broadcasterToken, accessToken, isBroadcasterPrincipal } =
+      await persistBroadcasterToken(kickUserId, kickUser, tokenData);
 
-    let tokenExpiresAt = null;
-    if (expiresIn) {
-      tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
-    }
-
-    // AUTOMATIC DETECTION: Is this the main broadcaster?
-    const isBroadcasterPrincipal = kickUserId === config.kick.broadcasterId;
-
-    if (isBroadcasterPrincipal) {
-      logger.info(
-        "[MAIN BROADCASTER] Luisardito authenticated - Setting up webhooks..."
-      );
-    }
-
-    // Save or update token
-    const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate(
-      {
-        where: { kick_user_id: kickUserId },
-        defaults: {
-          kick_user_id: kickUserId,
-          kick_username: kickUser.name,
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          token_expires_at: tokenExpiresAt,
-          is_active: true,
-          auto_subscribed: false,
-        },
-      }
+    const autoSubscribeResult = await maybeAutoSubscribe(
+      broadcasterToken,
+      accessToken,
+      kickUserId,
+      isBroadcasterPrincipal
     );
-
-    if (!created) {
-      await broadcasterToken.update({
-        kick_username: kickUser.name,
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        token_expires_at: tokenExpiresAt,
-        is_active: true,
-      });
-    }
-
-    logger.info(
-      "[Kick OAuth][callbackKick] Token saved:",
-      created ? "new" : "updated"
-    );
-
-    let autoSubscribeResult = null;
-
-    // ONLY the main broadcaster should subscribe to events
-    if (isBroadcasterPrincipal) {
-      logger.info("[MAIN BROADCASTER] Setting up webhook subscriptions...");
-
-      try {
-        // Use ITS OWN token to subscribe to ITS OWN channel events
-        autoSubscribeResult = await autoSubscribeToEvents(
-          accessToken,
-          kickUserId,
-          kickUserId
-        );
-
-        await broadcasterToken.update({
-          auto_subscribed: autoSubscribeResult.success,
-          last_subscription_attempt: new Date(),
-          subscription_error: autoSubscribeResult.success
-            ? null
-            : JSON.stringify(autoSubscribeResult.error),
-        });
-
-        if (autoSubscribeResult.success) {
-          logger.info(
-            `[MAIN BROADCASTER] ${autoSubscribeResult.totalSubscribed} events configured. System ready.`
-          );
-        } else {
-          logger.error(
-            "[MAIN BROADCASTER] Configuration error:",
-            autoSubscribeResult.error
-          );
-        }
-      } catch (subscribeError) {
-        logger.error(
-          "[MAIN BROADCASTER] Critical error:",
-          subscribeError.message
-        );
-        await broadcasterToken.update({
-          auto_subscribed: false,
-          last_subscription_attempt: new Date(),
-          subscription_error: subscribeError.message,
-        });
-      }
-    } else {
-      logger.info(
-        "[NORMAL USER] Authenticated, no webhook configuration required"
-      );
-    }
 
     // Generate access token and refresh token
     const jwtAccessToken = generateAccessToken({
@@ -647,46 +718,7 @@ exports.callbackKick = async (req, res) => {
 
     return res.redirect(redirectUrl);
   } catch (error) {
-    logger.error(
-      "[Kick OAuth][callbackKick] General error:",
-      error?.message || error
-    );
-
-    // Show Sequelize validation error details if present
-    if (error.errors) {
-      logger.error(
-        "[Kick OAuth][callbackKick] Validation error details:",
-        error.errors
-      );
-      // Respond with the validation message if it is a uniqueness collision
-      const uniqueError = error.errors.find(
-        (e) => e.type === "unique violation"
-      );
-      if (uniqueError) {
-        return res.status(409).json({
-          error: uniqueError.message,
-          campo: uniqueError.path,
-          valor: uniqueError.value,
-        });
-      }
-    }
-
-    if (error.response) {
-      logger.info(
-        "[Kick OAuth][callbackKick] error.response.data:",
-        error.response.data
-      );
-      return res.status(error.response.status).json({
-        error: "Error communicating with Kick",
-        provider_status: error.response.status,
-        details: error.response.data,
-      });
-    }
-
-    return res.status(502).json({
-      error: "Provider network failure",
-      detalle: error.errors || error.message || error,
-    });
+    return handleCallbackKickError(res, error);
   }
 };
 

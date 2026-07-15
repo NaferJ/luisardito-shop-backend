@@ -72,7 +72,48 @@ jest.mock("../../src/utils/pkce.util", () => ({
   generatePkce: jest.fn(),
 }));
 
-const { Usuario, DiscordUserLink } = require("../../src/models");
+jest.mock("../../config", () => ({
+  db: {},
+  jwtSecret: "test-jwt-secret",
+  kick: {
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    redirectUri: "http://localhost:3000/api/auth/kick-callback",
+    broadcasterId: "broadcaster-123",
+    apiBaseUrl: "https://api.kick.com",
+    oauthAuthorize: "https://id.kick.com/oauth/authorize",
+    oauthToken: "https://id.kick.com/oauth/token",
+    oauthRevoke: "https://id.kick.com/oauth/revoke",
+  },
+  kickBot: {
+    clientId: "test-bot-client-id",
+    clientSecret: "test-bot-client-secret",
+    redirectUri: "http://localhost:3000/api/auth/kick-bot/callback",
+    accessToken: "test-bot-token",
+    username: "testbot",
+  },
+  cloudinary: {},
+  cookies: { domain: undefined, secure: false, sameSite: "lax" },
+  frontendUrl: "http://localhost:5173",
+  port: 3000,
+  discord: {
+    botToken: "test-bot-token",
+    clientId: "test-discord-client-id",
+    clientSecret: "test-discord-client-secret",
+    guildId: "test-guild-id",
+    oauthAuthorize: "https://discord.com/api/oauth2/authorize",
+    oauthToken: "https://discord.com/api/oauth2/token",
+    oauthRevoke: "https://discord.com/api/oauth2/token/revoke",
+    apiBaseUrl: "https://discord.com/api",
+    redirectUri: "http://localhost:3000/api/auth/discord/callback",
+  },
+}));
+
+const {
+  Usuario,
+  DiscordUserLink,
+  KickBroadcasterToken,
+} = require("../../src/models");
 const tokenService = require("../../src/services/tokenService");
 const {
   setAuthCookies,
@@ -82,18 +123,28 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const axios = require("axios");
 const authCtrl = require("../../src/controllers/auth.controller");
+const {
+  autoSubscribeToEvents,
+} = require("../../src/services/kickAutoSubscribe.service");
+const { extractAvatarUrl } = require("../../src/utils/kickApi");
+const config = require("../../config");
 const AppError = require("../../src/utils/AppError");
 
 function createRes() {
   return {
     statusCode: 200,
     body: null,
+    redirectUrl: null,
     status: jest.fn(function (c) {
       this.statusCode = c;
       return this;
     }),
     json: jest.fn(function (b) {
       this.body = b;
+      return this;
+    }),
+    redirect: jest.fn(function (url) {
+      this.redirectUrl = url;
       return this;
     }),
   };
@@ -733,6 +784,291 @@ describe("auth.controller migration characterization", () => {
       expect(res.body.user.id).toBe(1);
       expect(res.body.user.discord_info).toBeNull();
       expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  // ---------- callbackKick ----------
+  describe("callbackKick", () => {
+    const defaultKickUser = {
+      user_id: "123",
+      name: "testuser",
+      email: "test@kick.com",
+      profile_picture: "pic.jpg",
+    };
+    const defaultTokenData = {
+      access_token: "kick-access-token",
+      refresh_token: "kick-refresh-token",
+      expires_in: 3600,
+    };
+    const defaultDecodedState = {
+      cv: "test-code-verifier",
+      ruri: "http://localhost:3000/api/auth/kick-callback",
+    };
+
+    function setupBaseMocks() {
+      jwt.verify.mockReturnValue(defaultDecodedState);
+      axios.post.mockResolvedValue({ data: defaultTokenData });
+      axios.get.mockResolvedValue({
+        data: { data: [defaultKickUser] },
+      });
+      extractAvatarUrl.mockReturnValue(null);
+      DiscordUserLink.findOne.mockResolvedValue(null);
+      tokenService.generateAccessToken.mockReturnValue("jwt-access");
+      tokenService.createRefreshToken.mockResolvedValue({
+        token: "jwt-refresh",
+      });
+    }
+
+    function createCallbackReq(query = {}) {
+      return {
+        query: { code: "test-code", state: "test-state", ...query },
+        ip: "127.0.0.1",
+        headers: { "user-agent": "jest" },
+        connection: { remoteAddress: "127.0.0.1" },
+      };
+    }
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      config.kick.clientId = "test-client-id";
+      config.kick.clientSecret = "test-client-secret";
+      config.kick.broadcasterId = "broadcaster-123";
+      setupBaseMocks();
+    });
+
+    test("missing code/state -> 400 'Missing code/state parameters'", async () => {
+      const req = createCallbackReq({ code: undefined, state: undefined });
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "Missing code/state parameters" });
+    });
+
+    test("invalid/expired state (jwt.verify throws) -> 400 'Invalid or expired state'", async () => {
+      jwt.verify.mockImplementation(() => {
+        throw new Error("jwt expired");
+      });
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "Invalid or expired state" });
+    });
+
+    test("missing code_verifier -> 400 'Invalid PKCE or redirect_uri'", async () => {
+      jwt.verify.mockReturnValue({
+        ruri: "http://localhost:3000/api/auth/kick-callback",
+      });
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "Invalid PKCE or redirect_uri" });
+    });
+
+    test("missing clientId/clientSecret -> 500 'Incomplete provider configuration'", async () => {
+      config.kick.clientId = undefined;
+      config.kick.clientSecret = undefined;
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(res.statusCode).toBe(500);
+      expect(res.body).toEqual({ error: "Incomplete provider configuration" });
+    });
+
+    test("new-user path -> Usuario.create called, redirect", async () => {
+      Usuario.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      const mockUser = {
+        id: 1,
+        nickname: "testuser",
+        rol_id: 1,
+        puntos: 1000,
+        user_id_ext: "123",
+        kick_data: { avatar_url: null, username: "testuser" },
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-01",
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      Usuario.create.mockResolvedValue(mockUser);
+      KickBroadcasterToken.findOrCreate.mockResolvedValue([
+        { update: jest.fn().mockResolvedValue(undefined) },
+        true,
+      ]);
+
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(Usuario.create).toHaveBeenCalledTimes(1);
+      expect(res.redirect).toHaveBeenCalledTimes(1);
+      expect(res.redirectUrl).toContain(
+        "http://localhost:5173/auth/callback?data="
+      );
+    });
+
+    test("collision-link path -> colision.update called", async () => {
+      const mockCollision = {
+        id: 10,
+        nickname: "oldname",
+        email: "old@email.com",
+        rol_id: 2,
+        puntos: 500,
+        user_id_ext: null,
+        kick_data: null,
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-01",
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      Usuario.findOne
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(mockCollision);
+      KickBroadcasterToken.findOrCreate.mockResolvedValue([
+        { update: jest.fn().mockResolvedValue(undefined) },
+        true,
+      ]);
+
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(mockCollision.update).toHaveBeenCalledTimes(1);
+      expect(mockCollision.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id_ext: "123",
+          nickname: "testuser",
+        })
+      );
+      expect(res.redirect).toHaveBeenCalledTimes(1);
+    });
+
+    test("already-linked with different-user collision -> 409", async () => {
+      const mockExisting = {
+        id: 5,
+        nickname: "testuser",
+        email: "test@kick.com",
+        rol_id: 1,
+        puntos: 1000,
+        user_id_ext: "123",
+        kick_data: { avatar_url: "old.jpg", username: "testuser" },
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-01",
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      const mockCollision = {
+        id: 99,
+        nickname: "testuser",
+        email: "test@kick.com",
+      };
+      Usuario.findOne
+        .mockResolvedValueOnce(mockExisting)
+        .mockResolvedValueOnce(mockCollision);
+
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(res.statusCode).toBe(409);
+      expect(res.body).toEqual({
+        error: "Email or nickname already in use by another user.",
+      });
+    });
+
+    test("already-linked happy path -> usuario.update called", async () => {
+      const mockExisting = {
+        id: 5,
+        nickname: "testuser",
+        email: "test@kick.com",
+        rol_id: 1,
+        puntos: 1000,
+        user_id_ext: "123",
+        kick_data: { avatar_url: "old.jpg", username: "testuser" },
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-01",
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      Usuario.findOne
+        .mockResolvedValueOnce(mockExisting)
+        .mockResolvedValueOnce(null);
+      KickBroadcasterToken.findOrCreate.mockResolvedValue([
+        { update: jest.fn().mockResolvedValue(undefined) },
+        true,
+      ]);
+
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(mockExisting.update).toHaveBeenCalledTimes(1);
+      expect(mockExisting.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nickname: "testuser",
+          email: "test@kick.com",
+        })
+      );
+      expect(res.redirect).toHaveBeenCalledTimes(1);
+    });
+
+    test("main-broadcaster branch -> autoSubscribeToEvents called, token auto_subscribed updated", async () => {
+      const broadcasterUser = {
+        ...defaultKickUser,
+        user_id: "broadcaster-123",
+        name: "broadcasteruser",
+      };
+      axios.get.mockResolvedValue({
+        data: { data: [broadcasterUser] },
+      });
+      Usuario.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+      const mockUser = {
+        id: 1,
+        nickname: "broadcasteruser",
+        rol_id: 1,
+        puntos: 1000,
+        user_id_ext: "broadcaster-123",
+        kick_data: { avatar_url: null, username: "broadcasteruser" },
+        createdAt: "2024-01-01",
+        updatedAt: "2024-01-01",
+        update: jest.fn().mockResolvedValue(undefined),
+      };
+      Usuario.create.mockResolvedValue(mockUser);
+      const mockTokenUpdate = jest.fn().mockResolvedValue(undefined);
+      KickBroadcasterToken.findOrCreate.mockResolvedValue([
+        { update: mockTokenUpdate },
+        true,
+      ]);
+      autoSubscribeToEvents.mockResolvedValue({
+        success: true,
+        totalSubscribed: 5,
+        totalErrors: 0,
+        error: null,
+      });
+
+      const req = createCallbackReq();
+      const res = createRes();
+
+      await authCtrl.callbackKick(req, res);
+
+      expect(autoSubscribeToEvents).toHaveBeenCalledTimes(1);
+      expect(autoSubscribeToEvents).toHaveBeenCalledWith(
+        "kick-access-token",
+        "broadcaster-123",
+        "broadcaster-123"
+      );
+      expect(mockTokenUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ auto_subscribed: true })
+      );
+      expect(res.redirect).toHaveBeenCalledTimes(1);
     });
   });
 });
