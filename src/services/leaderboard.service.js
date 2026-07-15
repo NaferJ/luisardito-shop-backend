@@ -7,6 +7,75 @@ const logger = require("../utils/logger");
 const { Op } = require("sequelize");
 
 /**
+ * Resolves whether a user is an active subscriber based on KickUserTracking
+ * @param {string|null} userIdExt - Kick user ID
+ * @returns {Promise<boolean>} true if actively subscribed
+ */
+async function resolveSubscriberStatus(userIdExt) {
+  if (!userIdExt) return false;
+
+  const userTracking = await KickUserTracking.findOne({
+    where: { kick_user_id: userIdExt },
+    attributes: ["is_subscribed", "subscription_expires_at"],
+    raw: true,
+  });
+
+  if (!userTracking?.is_subscribed) return false;
+
+  const expiresAt = userTracking.subscription_expires_at
+    ? new Date(userTracking.subscription_expires_at)
+    : null;
+  return !expiresAt || expiresAt > new Date();
+}
+
+/**
+ * Builds a userPosition object for a user outside the current ranking
+ * @param {number} userId - Usuario ID
+ * @param {Array} currentRanking - Current ranking array
+ * @returns {Promise<Object|undefined>} userPosition object or undefined if user not found
+ */
+async function buildUserPositionOutsideRanking(userId, currentRanking) {
+  const { UserWatchtime } = require("../models");
+
+  const usuario = await Usuario.findByPk(userId, {
+    include: [
+      {
+        model: UserWatchtime,
+        as: "watchtime",
+        attributes: ["total_watchtime_minutes", "message_count"],
+        required: false,
+      },
+    ],
+  });
+
+  if (!usuario) return undefined;
+
+  const position = currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
+
+  const isSubscriber = await resolveSubscriberStatus(usuario.user_id_ext);
+
+  const { discord_info, display_name } =
+    await enrichUserWithDiscordInfo(usuario);
+
+  return {
+    usuario_id: usuario.id,
+    nickname: usuario.nickname,
+    display_name,
+    puntos: usuario.puntos,
+    max_puntos: usuario.max_puntos || 0,
+    watchtime_minutes: usuario.watchtime?.total_watchtime_minutes || 0,
+    message_count: usuario.watchtime?.message_count || 0,
+    position: position || currentRanking.length + 1,
+    position_change: 0,
+    change_indicator: "neutral",
+    is_vip: usuario.is_vip && usuario.isVipActive(),
+    is_subscriber: isSubscriber,
+    kick_data: usuario.kick_data,
+    discord_info,
+  };
+}
+
+/**
  * Helper function to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
  * @returns {Object} Enriched Discord info
@@ -69,64 +138,10 @@ class LeaderboardService {
           (u) => u.usuario_id === userId
         );
         if (!userPosition) {
-          // User is outside the current ranking, find them manually
-          const { UserWatchtime } = require("../models");
-
-          const usuario = await Usuario.findByPk(userId, {
-            include: [
-              {
-                model: UserWatchtime,
-                as: "watchtime",
-                attributes: ["total_watchtime_minutes", "message_count"],
-                required: false,
-              },
-            ],
-          });
-
-          if (usuario) {
-            const position =
-              currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
-
-            // Get subscriber status from KickUserTracking
-            let isSubscriber = false;
-            if (usuario.user_id_ext) {
-              const userTracking = await KickUserTracking.findOne({
-                where: { kick_user_id: usuario.user_id_ext },
-                attributes: ["is_subscribed", "subscription_expires_at"],
-                raw: true,
-              });
-
-              if (userTracking?.is_subscribed) {
-                const now = new Date();
-                const expiresAt = userTracking.subscription_expires_at
-                  ? new Date(userTracking.subscription_expires_at)
-                  : null;
-                isSubscriber = !expiresAt || expiresAt > now;
-              }
-            }
-
-            // Enrich with Discord info
-            const { discord_info, display_name } =
-              await enrichUserWithDiscordInfo(usuario);
-
-            userPosition = {
-              usuario_id: usuario.id,
-              nickname: usuario.nickname,
-              display_name,
-              puntos: usuario.puntos,
-              max_puntos: usuario.max_puntos || 0,
-              watchtime_minutes:
-                usuario.watchtime?.total_watchtime_minutes || 0,
-              message_count: usuario.watchtime?.message_count || 0,
-              position: position || currentRanking.length + 1,
-              position_change: 0,
-              change_indicator: "neutral",
-              is_vip: usuario.is_vip && usuario.isVipActive(),
-              is_subscriber: isSubscriber,
-              kick_data: usuario.kick_data,
-              discord_info,
-            };
-          }
+          userPosition = await buildUserPositionOutsideRanking(
+            userId,
+            currentRanking
+          );
         }
       }
 
@@ -206,23 +221,8 @@ class LeaderboardService {
           (!usuario.vip_expires_at ||
             new Date(usuario.vip_expires_at) > new Date());
 
-        // Get subscriber status from KickUserTracking
-        let isSubscriber = false;
-        if (usuario.user_id_ext) {
-          const userTracking = await KickUserTracking.findOne({
-            where: { kick_user_id: usuario.user_id_ext },
-            attributes: ["is_subscribed", "subscription_expires_at"],
-            raw: true,
-          });
-
-          if (userTracking?.is_subscribed) {
-            const now = new Date();
-            const expiresAt = userTracking.subscription_expires_at
-              ? new Date(userTracking.subscription_expires_at)
-              : null;
-            isSubscriber = !expiresAt || expiresAt > now;
-          }
-        }
+        // Get subscriber status
+        const isSubscriber = await resolveSubscriberStatus(usuario.user_id_ext);
 
         // Enrich with Discord info
         const { discord_info, display_name } = await enrichUserWithDiscordInfo({
