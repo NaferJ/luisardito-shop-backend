@@ -1,9 +1,12 @@
-const { processSubscriptionEvent } = require("./subscriptionShared.handler");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import { processSubscriptionEvent } from "./subscriptionShared.handler";
 
 /**
  * Handle new subscriptions
  */
-async function handleNewSubscription(payload, _metadata) {
+async function handleNewSubscription(payload: any, _metadata: any) {
   await processSubscriptionEvent(payload, _metadata, {
     logLabel: "New Subscription",
     configKey: "subscription_new_points",
@@ -15,4 +18,4 @@ async function handleNewSubscription(payload, _metadata) {
   });
 }
 
-module.exports = { handleNewSubscription };
+export { handleNewSubscription };
