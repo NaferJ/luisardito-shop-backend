@@ -4,8 +4,12 @@ These rules are mandatory. Follow them on every task in this repository.
 
 ## 0. Working branch
 
-- All dev-environment work goes on `chore/dev-environment-overhaul`.
-- Never commit directly to main. Never open a PR unless explicitly told to.
+- One concern per branch. Name branches `refactor/...`, `fix/...`,
+  `feat/...`, `chore/...`, `test/...`, or `docs/...` matching the change type.
+- Never commit directly to `main`. Never open a PR or commit unless explicitly
+  told to.
+- The agent makes the change, runs the full verification gate (below), and
+  reports the diff plus command output WITHOUT committing.
 
 ## 1. Language: English only
 
@@ -49,3 +53,35 @@ These rules are mandatory. Follow them on every task in this repository.
 - Make only the change requested for the current step. Do not refactor unrelated files.
 - Do NOT change public API contracts, DB schema, or migrations unless explicitly told to.
 - If a task is ambiguous, state your assumption before proceeding.
+
+## 9. Verification gate (run on every change)
+
+The agent must run all of these and report their output before handing back:
+
+- `npm ci`
+- `npm run lint`
+- `npm run format:check`
+- `npm run typecheck`
+- `npm test -- --forceExit`
+- `npm run build`
+- `npm run smoke`
+
+`build` + `smoke` are the real production-parity check. All must be green.
+
+## 10. Refactors: characterization-test-first
+
+- Before refactoring any function for maintainability (e.g. reducing
+  SonarCloud Cognitive Complexity), write a characterization test FIRST that
+  pins current behavior.
+- The test must pass against BOTH the original and the refactored code; state
+  this explicitly in the report.
+- Refactors must be behavior-preserving: no field names, string values, log
+  messages, response shapes, status codes, defaults, ordering, Redis
+  keys/TTL, or route paths may change.
+
+## 11. Pull requests
+
+- PR descriptions MUST follow the repo template at
+  `.github/pull_request_template.md`
+  (What / Why / Scope-Non-goals / Verification / Rollback).
+- Keep PRs small and single-concern.
