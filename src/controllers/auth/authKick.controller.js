@@ -110,7 +110,6 @@ async function resolveKickUserFromProfile(kickUser) {
       });
 
       usuario = colision;
-      isNewUser = false;
     } else {
       // Create new user
       // Create the user first to obtain the ID

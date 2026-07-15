@@ -12,6 +12,55 @@ const AppError = require("../../utils/AppError");
 // DISCORD OAUTH
 // ==========================================
 
+function computeTokenExpiry(expiresIn) {
+  return expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+}
+
+async function upsertDiscordLink(
+  existingLink,
+  userId,
+  usuario,
+  discordUser,
+  tokenData
+) {
+  if (existingLink) {
+    if (existingLink.tienda_user_id === userId) {
+      logger.info(
+        "[Discord OAuth][callbackDiscord] User already linked, updating tokens"
+      );
+      // Update tokens
+      await existingLink.update({
+        discord_username: discordUser.username,
+        discord_discriminator: discordUser.discriminator,
+        discord_avatar: discordUser.avatar,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || null,
+        token_expires_at: computeTokenExpiry(tokenData.expires_in),
+      });
+    } else {
+      logger.warn(
+        "[Discord OAuth][callbackDiscord] Discord ID already linked to another user"
+      );
+      return { conflict: true };
+    }
+  } else {
+    // Create new link
+    logger.info("[Discord OAuth][callbackDiscord] Creating new link");
+    await DiscordUserLink.create({
+      discord_user_id: discordUser.id,
+      discord_username: discordUser.username,
+      discord_discriminator: discordUser.discriminator,
+      discord_avatar: discordUser.avatar,
+      tienda_user_id: userId,
+      kick_user_id: usuario.user_id_ext,
+      access_token: tokenData.access_token,
+      refresh_token: tokenData.refresh_token || null,
+      token_expires_at: computeTokenExpiry(tokenData.expires_in),
+    });
+  }
+  return { conflict: false };
+}
+
 /**
  * Starts the Discord OAuth flow
  */
@@ -177,45 +226,16 @@ exports.callbackDiscord = async (req, res) => {
       where: { discord_user_id: discordUser.id },
     });
 
-    if (existingLink) {
-      if (existingLink.tienda_user_id === userId) {
-        logger.info(
-          "[Discord OAuth][callbackDiscord] User already linked, updating tokens"
-        );
-        // Update tokens
-        await existingLink.update({
-          discord_username: discordUser.username,
-          discord_discriminator: discordUser.discriminator,
-          discord_avatar: discordUser.avatar,
-          access_token: tokenData.access_token,
-          refresh_token: tokenData.refresh_token || null,
-          token_expires_at: tokenData.expires_in
-            ? new Date(Date.now() + tokenData.expires_in * 1000)
-            : null,
-        });
-      } else {
-        logger.warn(
-          "[Discord OAuth][callbackDiscord] Discord ID already linked to another user"
-        );
-        return res.status(409).json({
-          error: "This Discord account is already linked to another user",
-        });
-      }
-    } else {
-      // Create new link
-      logger.info("[Discord OAuth][callbackDiscord] Creating new link");
-      await DiscordUserLink.create({
-        discord_user_id: discordUser.id,
-        discord_username: discordUser.username,
-        discord_discriminator: discordUser.discriminator,
-        discord_avatar: discordUser.avatar,
-        tienda_user_id: userId,
-        kick_user_id: usuario.user_id_ext,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || null,
-        token_expires_at: tokenData.expires_in
-          ? new Date(Date.now() + tokenData.expires_in * 1000)
-          : null,
+    const linkResult = await upsertDiscordLink(
+      existingLink,
+      userId,
+      usuario,
+      discordUser,
+      tokenData
+    );
+    if (linkResult.conflict) {
+      return res.status(409).json({
+        error: "This Discord account is already linked to another user",
       });
     }
 
@@ -294,7 +314,7 @@ exports.unlinkDiscord = asyncHandler(async (req, res) => {
 
   // Clear discord_username on the user if present
   const usuario = await Usuario.findByPk(userId);
-  if (usuario && usuario.discord_username) {
+  if (usuario?.discord_username) {
     await usuario.update({ discord_username: null });
   }
 

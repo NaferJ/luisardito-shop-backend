@@ -89,7 +89,7 @@ exports.callbackKickBot = async (req, res) => {
 
     // Get bot data
     const botUser = await getKickUserData(access_token);
-    if (!botUser || !botUser.id) {
+    if (!botUser?.id) {
       throw new Error("Could not fetch bot data from Kick");
     }
 
