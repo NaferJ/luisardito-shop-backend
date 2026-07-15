@@ -1,15 +1,26 @@
-const _models = require("../../../models");
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
-const NotificacionService = require("../../notificacion.service");
-const logger = require("../../../utils/logger");
-const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import {
+  KickPointsConfig,
+  KickUserTracking,
+  Usuario,
+  HistorialPunto,
+} from "../../../models";
+import NotificacionService from "../../notificacion.service";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
 /**
  * Award points to the gifter of subscription gifts.
  */
-async function awardGifterPoints(gifter, giftees, pointsForGifter) {
+async function awardGifterPoints(
+  gifter: any,
+  giftees: any,
+  pointsForGifter: any
+) {
   const gifterKickUserId = String(gifter.user_id);
-  const gifterUsuario = await Usuario.findOne({
+  const gifterUsuario: any = await Usuario.findOne({
     where: { user_id_ext: gifterKickUserId },
   });
 
@@ -64,11 +75,16 @@ async function awardGifterPoints(gifter, giftees, pointsForGifter) {
 /**
  * Award points to a single giftee of a subscription gift.
  */
-async function awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt) {
+async function awardGifteePoints(
+  giftee: any,
+  gifter: any,
+  pointsForGiftee: any,
+  expiresAt: any
+) {
   const gifteeKickUserId = String(giftee.user_id);
   const gifteeUsername = giftee.username;
 
-  const gifteeUsuario = await Usuario.findOne({
+  const gifteeUsuario: any = await Usuario.findOne({
     where: { user_id_ext: gifteeKickUserId },
   });
 
@@ -134,7 +150,7 @@ async function awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt) {
 /**
  * Handle subscription gifts
  */
-async function handleSubscriptionGifts(payload, _metadata) {
+async function handleSubscriptionGifts(payload: any, _metadata: any) {
   try {
     const gifter = payload.gifter;
     const giftees = payload.giftees || [];
@@ -148,7 +164,7 @@ async function handleSubscriptionGifts(payload, _metadata) {
     });
 
     // Get points configurations
-    const configs = await KickPointsConfig.findAll({
+    const configs: any = await KickPointsConfig.findAll({
       where: {
         config_key: ["gift_given_points", "gift_received_points"],
         enabled: true,
@@ -179,4 +195,4 @@ async function handleSubscriptionGifts(payload, _metadata) {
   }
 }
 
-module.exports = { handleSubscriptionGifts };
+export { handleSubscriptionGifts };

@@ -1,21 +1,23 @@
-const _models = require("../../../models");
-const {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import {
   KickPointsConfig,
   KickUserTracking,
   Usuario,
   HistorialPunto,
   sequelize,
-} = _models;
-const NotificacionService = require("../../notificacion.service");
-const { Transaction } = require("sequelize");
-const logger = require("../../../utils/logger");
-const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
+} from "../../../models";
+import NotificacionService from "../../notificacion.service";
+import { Transaction } from "sequelize";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
 /**
  * Handle kicks gifts (kicks.gifted)
  * Awards points equivalent to the amount of kicks gifted
  */
-async function handleKicksGifted(payload, _metadata) {
+async function handleKicksGifted(payload: any, _metadata: any) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -36,7 +38,7 @@ async function handleKicksGifted(payload, _metadata) {
     });
 
     // Check if user exists in our DB
-    const usuario = await Usuario.findOne({
+    const usuario: any = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -57,7 +59,7 @@ async function handleKicksGifted(payload, _metadata) {
     );
 
     // Get multiplier from configuration
-    const config = await KickPointsConfig.findOne({
+    const config: any = await KickPointsConfig.findOne({
       where: {
         config_key: "kicks_gifted_multiplier",
         enabled: true,
@@ -146,4 +148,4 @@ async function handleKicksGifted(payload, _metadata) {
   }
 }
 
-module.exports = { handleKicksGifted };
+export { handleKicksGifted };
