@@ -1,13 +1,16 @@
-const _models = require("../../../models");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import _models from "../../../models";
 const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
-const NotificacionService = require("../../notificacion.service");
-const logger = require("../../../utils/logger");
-const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
+import NotificacionService from "../../notificacion.service";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
 /**
  * Handle new followers
  */
-async function handleChannelFollowed(payload, _metadata) {
+async function handleChannelFollowed(payload: any, _metadata: any) {
   try {
     const follower = payload.follower;
     const kickUserId = String(follower.user_id);
@@ -19,7 +22,7 @@ async function handleChannelFollowed(payload, _metadata) {
     });
 
     // Check if user exists in our DB
-    const usuario = await Usuario.findOne({
+    const usuario: any = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -40,7 +43,7 @@ async function handleChannelFollowed(payload, _metadata) {
     );
 
     // Check if already followed before (first time only)
-    const userTracking = await KickUserTracking.findOne({
+    const userTracking: any = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
     });
 
@@ -52,7 +55,7 @@ async function handleChannelFollowed(payload, _metadata) {
     }
 
     // Get follow points configuration
-    const config = await KickPointsConfig.findOne({
+    const config: any = await KickPointsConfig.findOne({
       where: {
         config_key: "follow_points",
         enabled: true,
@@ -122,4 +125,4 @@ async function handleChannelFollowed(payload, _metadata) {
   }
 }
 
-module.exports = { handleChannelFollowed };
+export { handleChannelFollowed };
