@@ -1,5 +1,8 @@
-const { getRedisClient } = require("../../../config/redis.config");
-const logger = require("../../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import { getRedisClient } from "../../../config/redis.config";
+import logger from "../../../utils/logger";
 
 /**
  * Handle livestream metadata updates
@@ -7,7 +10,7 @@ const logger = require("../../../utils/logger");
  * Only updates stream info (title, category, etc.)
  * Must NOT change stream:is_live state
  */
-async function handleLivestreamMetadataUpdated(payload, _metadata) {
+async function handleLivestreamMetadataUpdated(payload: any, _metadata: any) {
   try {
     const redis = getRedisClient();
 
@@ -42,4 +45,4 @@ async function handleLivestreamMetadataUpdated(payload, _metadata) {
   }
 }
 
-module.exports = { handleLivestreamMetadataUpdated };
+export { handleLivestreamMetadataUpdated };
