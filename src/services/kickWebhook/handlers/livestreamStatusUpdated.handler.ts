@@ -1,15 +1,18 @@
-const { getRedisClient } = require("../../../config/redis.config");
-const logger = require("../../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import { getRedisClient } from "../../../config/redis.config";
+import logger from "../../../utils/logger";
 
 /**
  * Validate event timestamp — warn if event is too old.
  */
-function warnIfStaleTimestamp(timestamp) {
+function warnIfStaleTimestamp(timestamp: any) {
   if (!timestamp) return;
 
   const eventTimestamp = new Date(timestamp);
   const now = new Date();
-  const ageMinutes = (now - eventTimestamp) / 1000 / 60;
+  const ageMinutes = (now.getTime() - eventTimestamp.getTime()) / 1000 / 60;
 
   if (ageMinutes > 5) {
     logger.warn(
@@ -22,7 +25,7 @@ function warnIfStaleTimestamp(timestamp) {
 /**
  * Handle livestream status changes
  */
-async function handleLivestreamStatusUpdated(payload, metadata) {
+async function handleLivestreamStatusUpdated(payload: any, metadata: any) {
   try {
     const isLive = payload.is_live;
     const redis = getRedisClient();
@@ -106,4 +109,4 @@ async function handleLivestreamStatusUpdated(payload, metadata) {
   }
 }
 
-module.exports = { handleLivestreamStatusUpdated };
+export { handleLivestreamStatusUpdated };
