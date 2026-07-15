@@ -174,17 +174,26 @@ class KickBotService {
   }
 
   /**
-   * Resolves the access token, renewing it if necessary
-   * PRIORITY: DB first, file as fallback
-   * @returns {Promise<string>} - Access token
+   * Returns true if the token at the given expiry date expires in less than
+   * 45 minutes or is already expired.
+   * @param {string|Date} expiresAt - Token expiry timestamp
+   * @returns {boolean}
    */
-  async resolveAccessToken() {
-    logger.info("[KickBot] Resolving access token...");
+  _isTokenExpiringSoon(expiresAt) {
+    const now = new Date();
+    const expiry = new Date(expiresAt);
+    const expiresIn = expiry - now;
+    const fortyFiveMinutes = 45 * 60 * 1000;
+    return expiresIn < fortyFiveMinutes;
+  }
 
-    // Always use DB/file, never trust in-memory token
-    // (the in-memory token may have expired)
-
-    // PRIORITY 1: Try the database first (more reliable)
+  /**
+   * Attempts to resolve a valid access token from the database.
+   * Iterates active tokens (newest first); renews tokens that are expired or
+   * expiring soon, falling through to the next record on renewal failure.
+   * @returns {Promise<string|null>} Access token or null
+   */
+  async _resolveTokenFromDb() {
     try {
       const where = this.botUsername
         ? {
@@ -200,59 +209,66 @@ class KickBotService {
         order: [["updated_at", "DESC"]],
       });
 
-      if (records && records.length > 0) {
-        logger.info(`[KickBot] Found ${records.length} active tokens in DB`);
+      if (!records || records.length === 0) {
+        return null;
+      }
 
-        // Try each token until a valid one is found
-        for (const record of records) {
-          // Check if the token is about to expire (in less than 45 minutes) or already expired
-          const now = new Date();
-          const expiresAt = new Date(record.token_expires_at);
-          const expiresIn = expiresAt - now;
-          const fortyFiveMinutes = 45 * 60 * 1000;
+      logger.info(`[KickBot] Found ${records.length} active tokens in DB`);
 
-          if (expiresIn < fortyFiveMinutes) {
-            const isExpired = expiresIn < 0;
-            const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
+      // Try each token until a valid one is found
+      for (const record of records) {
+        const expiresAt = new Date(record.token_expires_at);
+        const expiresIn = expiresAt - new Date();
 
-            if (isExpired) {
-              logger.info(
-                `[KickBot] Token expired ${Math.abs(minutesUntilExpiry)} minutes ago, renewing...`
-              );
-            } else {
-              logger.info(
-                `[KickBot] Token expires in ${minutesUntilExpiry} minutes, proactively renewing...`
-              );
-            }
+        // Valid token, use it
+        if (!this._isTokenExpiringSoon(record.token_expires_at)) {
+          logger.info(
+            `[KickBot] Valid token from DB for ${record.kick_username} (expires in ${Math.round(expiresIn / 1000 / 60)} min)`
+          );
+          return record.access_token;
+        }
 
-            try {
-              const updatedRecord = await this.refreshToken(record);
-              logger.info(
-                `[KickBot] Token renewed from DB for ${record.kick_username}`
-              );
-              return updatedRecord.access_token;
-            } catch (error) {
-              logger.error(
-                `[KickBot] Renewal failed for ${record.kick_username}:`,
-                error.message
-              );
-              // Continue with the next token
-              continue;
-            }
-          } else {
-            // Valid token, use it
-            logger.info(
-              `[KickBot] Valid token from DB for ${record.kick_username} (expires in ${Math.round(expiresIn / 1000 / 60)} min)`
-            );
-            return record.access_token;
-          }
+        // Token is about to expire (in less than 45 minutes) or already expired
+        const isExpired = expiresIn < 0;
+        const minutesUntilExpiry = Math.round(expiresIn / 1000 / 60);
+
+        if (isExpired) {
+          logger.info(
+            `[KickBot] Token expired ${Math.abs(minutesUntilExpiry)} minutes ago, renewing...`
+          );
+        } else {
+          logger.info(
+            `[KickBot] Token expires in ${minutesUntilExpiry} minutes, proactively renewing...`
+          );
+        }
+
+        try {
+          const updatedRecord = await this.refreshToken(record);
+          logger.info(
+            `[KickBot] Token renewed from DB for ${record.kick_username}`
+          );
+          return updatedRecord.access_token;
+        } catch (error) {
+          logger.error(
+            `[KickBot] Renewal failed for ${record.kick_username}:`,
+            error.message
+          );
+          // Continue with the next token
+          continue;
         }
       }
     } catch (dbError) {
       logger.warn("[KickBot] Error querying DB, trying file:", dbError.message);
     }
 
-    // PRIORITY 2: Fallback to tokens.json if the DB has no tokens
+    return null;
+  }
+
+  /**
+   * Attempts to resolve a valid access token from the tokens.json file.
+   * @returns {Promise<string|null>} Access token or null
+   */
+  async _resolveTokenFromFile() {
     try {
       const tokens = await this.readTokensFromFile();
       if (tokens && tokens.accessToken) {
@@ -260,16 +276,41 @@ class KickBotService {
         if (tokens.expiresAt > Date.now() + 45 * 60 * 1000) {
           logger.info("[KickBot] Valid token from file (fallback)");
           return tokens.accessToken;
-        } else {
-          logger.info("[KickBot] File token about to expire, renewing...");
-          return await this.refreshAccessToken();
         }
+        logger.info("[KickBot] File token about to expire, renewing...");
+        return await this.refreshAccessToken();
       }
     } catch (fileError) {
       logger.warn(
         "[KickBot] tokens.json file not available or invalid:",
         fileError.message
       );
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolves the access token, renewing it if necessary
+   * PRIORITY: DB first, file as fallback
+   * @returns {Promise<string>} - Access token
+   */
+  async resolveAccessToken() {
+    logger.info("[KickBot] Resolving access token...");
+
+    // Always use DB/file, never trust in-memory token
+    // (the in-memory token may have expired)
+
+    // PRIORITY 1: Try the database first (more reliable)
+    const dbToken = await this._resolveTokenFromDb();
+    if (dbToken) {
+      return dbToken;
+    }
+
+    // PRIORITY 2: Fallback to tokens.json if the DB has no tokens
+    const fileToken = await this._resolveTokenFromFile();
+    if (fileToken) {
+      return fileToken;
     }
 
     // If we get here, no tokens are available
