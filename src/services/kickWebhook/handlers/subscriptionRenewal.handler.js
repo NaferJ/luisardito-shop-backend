@@ -1,4 +1,4 @@
-const { processSubscriptionEvent } = require("./subscriptionShared");
+const { processSubscriptionEvent } = require("./subscriptionShared.handler");
 
 /**
  * Handle subscription renewals

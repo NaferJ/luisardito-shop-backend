@@ -1,10 +1,21 @@
-const _models = require("../../../models");
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
-const NotificacionService = require("../../notificacion.service");
-const logger = require("../../../utils/logger");
-const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
 
-async function processSubscriptionEvent(payload, _metadata, opts) {
+import {
+  KickPointsConfig,
+  KickUserTracking,
+  Usuario,
+  HistorialPunto,
+} from "../../../models";
+import NotificacionService from "../../notificacion.service";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+
+async function processSubscriptionEvent(
+  payload: any,
+  _metadata: any,
+  opts: any
+) {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -20,7 +31,7 @@ async function processSubscriptionEvent(payload, _metadata, opts) {
     });
 
     // Check if user exists in our DB
-    const usuario = await Usuario.findOne({
+    const usuario: any = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -41,7 +52,7 @@ async function processSubscriptionEvent(payload, _metadata, opts) {
     );
 
     // Get points configuration
-    const config = await KickPointsConfig.findOne({
+    const config: any = await KickPointsConfig.findOne({
       where: {
         config_key: opts.configKey,
         enabled: true,
@@ -66,7 +77,7 @@ async function processSubscriptionEvent(payload, _metadata, opts) {
         ? `${opts.conceptPrefix} (${durationStr}) - ${userType}`
         : `${opts.conceptPrefix} (${durationStr})`;
 
-      const kickEventData = {
+      const kickEventData: Record<string, any> = {
         event_type: opts.eventType,
         kick_user_id: kickUserId,
         kick_username: kickUsername,
@@ -119,4 +130,4 @@ async function processSubscriptionEvent(payload, _metadata, opts) {
   }
 }
 
-module.exports = { processSubscriptionEvent };
+export { processSubscriptionEvent };
