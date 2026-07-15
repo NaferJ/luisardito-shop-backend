@@ -6,3 +6,4 @@ logs/
 coverage/
 dist/
 build/
+.github/git-commit-instructions.md
