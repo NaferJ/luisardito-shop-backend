@@ -3,15 +3,38 @@ const { extractAvatarUrl } = require("../../utils/kickApi");
 const logger = require("../../utils/logger");
 
 /**
+ * Find a DiscordUserLink by tienda_user_id
+ * @param {number} userId - Usuario id
+ * @returns {Promise<Object|null>}
+ */
+async function findDiscordLinkByUserId(userId) {
+  return DiscordUserLink.findOne({
+    where: { tienda_user_id: userId },
+  });
+}
+
+/**
+ * Build a Discord display name from username and discriminator.
+ * Returns "username#discriminator" when a non-zero discriminator exists,
+ * otherwise just the username.
+ * @param {string} username
+ * @param {string} discriminator
+ * @returns {string}
+ */
+function buildDiscordDisplayName(username, discriminator) {
+  return discriminator && discriminator !== "0"
+    ? `${username}#${discriminator}`
+    : username;
+}
+
+/**
  * Helper to enrich user info with Discord data
  * @param {Object} user - Usuario model instance
  * @returns {Promise<{discord_info: Object|null, display_name: string}>} Enriched Discord info
  */
 async function enrichUserWithDiscordInfo(user) {
   let discordInfo = null;
-  const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: user.id },
-  });
+  const discordLink = await findDiscordLinkByUserId(user.id);
 
   if (discordLink) {
     discordInfo = {
@@ -21,11 +44,10 @@ async function enrichUserWithDiscordInfo(user) {
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
       linked_at: discordLink.createdAt,
-      display_name:
-        discordLink.discord_discriminator &&
-        discordLink.discord_discriminator !== "0"
-          ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-          : discordLink.discord_username,
+      display_name: buildDiscordDisplayName(
+        discordLink.discord_username,
+        discordLink.discord_discriminator
+      ),
     };
   }
 
@@ -60,4 +82,9 @@ function processKickAvatar(kickUser) {
   }
 }
 
-module.exports = { enrichUserWithDiscordInfo, processKickAvatar };
+module.exports = {
+  enrichUserWithDiscordInfo,
+  processKickAvatar,
+  findDiscordLinkByUserId,
+  buildDiscordDisplayName,
+};

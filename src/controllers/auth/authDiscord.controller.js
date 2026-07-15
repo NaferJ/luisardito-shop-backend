@@ -3,7 +3,11 @@ const axios = require("axios");
 const config = require("../../../config");
 const { Usuario, DiscordUserLink } = require("../../models");
 const { generatePkce } = require("../../utils/pkce.util");
-const { enrichUserWithDiscordInfo } = require("./auth.shared");
+const {
+  enrichUserWithDiscordInfo,
+  findDiscordLinkByUserId,
+  buildDiscordDisplayName,
+} = require("./auth.shared");
 const logger = require("../../utils/logger");
 const asyncHandler = require("../../utils/asyncHandler");
 const AppError = require("../../utils/AppError");
@@ -14,6 +18,17 @@ const AppError = require("../../utils/AppError");
 
 function computeTokenExpiry(expiresIn) {
   return expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
+}
+
+function buildDiscordLinkFields(discordUser, tokenData) {
+  return {
+    discord_username: discordUser.username,
+    discord_discriminator: discordUser.discriminator,
+    discord_avatar: discordUser.avatar,
+    access_token: tokenData.access_token,
+    refresh_token: tokenData.refresh_token || null,
+    token_expires_at: computeTokenExpiry(tokenData.expires_in),
+  };
 }
 
 async function upsertDiscordLink(
@@ -29,14 +44,7 @@ async function upsertDiscordLink(
         "[Discord OAuth][callbackDiscord] User already linked, updating tokens"
       );
       // Update tokens
-      await existingLink.update({
-        discord_username: discordUser.username,
-        discord_discriminator: discordUser.discriminator,
-        discord_avatar: discordUser.avatar,
-        access_token: tokenData.access_token,
-        refresh_token: tokenData.refresh_token || null,
-        token_expires_at: computeTokenExpiry(tokenData.expires_in),
-      });
+      await existingLink.update(buildDiscordLinkFields(discordUser, tokenData));
     } else {
       logger.warn(
         "[Discord OAuth][callbackDiscord] Discord ID already linked to another user"
@@ -48,14 +56,9 @@ async function upsertDiscordLink(
     logger.info("[Discord OAuth][callbackDiscord] Creating new link");
     await DiscordUserLink.create({
       discord_user_id: discordUser.id,
-      discord_username: discordUser.username,
-      discord_discriminator: discordUser.discriminator,
-      discord_avatar: discordUser.avatar,
+      ...buildDiscordLinkFields(discordUser, tokenData),
       tienda_user_id: userId,
       kick_user_id: usuario.user_id_ext,
-      access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token || null,
-      token_expires_at: computeTokenExpiry(tokenData.expires_in),
     });
   }
   return { conflict: false };
@@ -242,7 +245,10 @@ exports.callbackDiscord = async (req, res) => {
     // Update discord_username on the user if missing
     if (!usuario.discord_username) {
       await usuario.update({
-        discord_username: `${discordUser.username}#${discordUser.discriminator}`,
+        discord_username: buildDiscordDisplayName(
+          discordUser.username,
+          discordUser.discriminator
+        ),
       });
     }
 
@@ -297,9 +303,7 @@ exports.unlinkDiscord = asyncHandler(async (req, res) => {
   );
 
   // Find and delete the Discord link
-  const discordLink = await DiscordUserLink.findOne({
-    where: { tienda_user_id: userId },
-  });
+  const discordLink = await findDiscordLinkByUserId(userId);
 
   if (!discordLink) {
     logger.warn(
