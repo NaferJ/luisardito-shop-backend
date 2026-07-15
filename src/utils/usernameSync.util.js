@@ -3,6 +3,76 @@ const { Op } = require("sequelize");
 const { getRedisClient } = require("../config/redis.config");
 const logger = require("./logger");
 
+const THROTTLE_TTL_SECONDS = 86400;
+
+function getThrottleKey(prefix, kickUserId) {
+  return `${prefix}:${kickUserId}`;
+}
+
+async function checkThrottle(prefix, kickUserId, logPrefix, debugPrefix) {
+  try {
+    const redis = getRedisClient();
+    const syncKey = getThrottleKey(prefix, kickUserId);
+    const lastSync = await redis.get(syncKey);
+
+    if (!lastSync) {
+      return null;
+    }
+
+    const lastSyncDate = new Date(lastSync);
+    const hoursSinceSync =
+      (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
+
+    logger.info(
+      `[${logPrefix}] Last sync ${hoursSinceSync.toFixed(1)}h ago - Throttling active (24h)`
+    );
+    logger.debug(
+      `[${debugPrefix}] Return: Throttling active (${hoursSinceSync.toFixed(1)}h)`
+    );
+
+    return { throttled: true, hoursSinceSync };
+  } catch (redisError) {
+    logger.warn(
+      `[${logPrefix}] Error in Redis, continuing without throttling:`,
+      redisError.message
+    );
+    logger.debug(`[${debugPrefix}] Redis error, continuing without throttling`);
+    return null;
+  }
+}
+
+async function hasNicknameCollision(usuario, kickUsername) {
+  return await Usuario.findOne({
+    where: {
+      nickname: kickUsername,
+      id: { [Op.ne]: usuario.id },
+    },
+  });
+}
+
+async function saveThrottle(prefix, kickUserId, logPrefix, debugPrefix) {
+  try {
+    const redis = getRedisClient();
+    const syncKey = getThrottleKey(prefix, kickUserId);
+    await redis.set(
+      syncKey,
+      new Date().toISOString(),
+      "EX",
+      THROTTLE_TTL_SECONDS
+    );
+    logger.info(
+      `[${logPrefix}] Throttling activated for 24h for user ${kickUserId}`
+    );
+    logger.debug(`[${debugPrefix}] Throttling saved in Redis`);
+  } catch (redisError) {
+    logger.warn(
+      `[${logPrefix}] Error saving throttling in Redis:`,
+      redisError.message
+    );
+    logger.debug(`[${debugPrefix}] Error saving throttling in Redis`);
+  }
+}
+
 /**
  * Syncs the username if it has changed in Kick
  *
@@ -19,18 +89,15 @@ async function syncUsernameIfNeeded(
   forceSync = false
 ) {
   try {
-    // DEBUG: Log al inicio
     logger.debug(
       `[DEBUG SYNC] Starting sync for ${kickUserId}: current '${usuario?.nickname}' vs new '${kickUsername}'`
     );
 
-    // Basic validations
     if (!usuario || !kickUsername || !kickUserId) {
       logger.debug(`[DEBUG SYNC] Return: Invalid parameters`);
       return { updated: false, reason: "Invalid parameters" };
     }
 
-    // If the name has not changed, do nothing
     if (usuario.nickname === kickUsername) {
       logger.debug(`[DEBUG SYNC] Return: Name unchanged`);
       return { updated: false, reason: "Name unchanged" };
@@ -40,45 +107,22 @@ async function syncUsernameIfNeeded(
       `[Username Sync] Change detected: "${usuario.nickname}" -> "${kickUsername}" (ID: ${kickUserId})`
     );
 
-    // If not forced, check throttling with Redis
     if (!forceSync) {
-      try {
-        const redis = getRedisClient();
-        const syncKey = `username_sync:${kickUserId}`;
-        const lastSync = await redis.get(syncKey);
-
-        if (lastSync) {
-          const lastSyncDate = new Date(lastSync);
-          const hoursSinceSync =
-            (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
-
-          logger.info(
-            `[Username Sync] Last sync ${hoursSinceSync.toFixed(1)}h ago - Throttling active (24h)`
-          );
-          logger.debug(
-            `[DEBUG SYNC] Return: Throttling active (${hoursSinceSync.toFixed(1)}h)`
-          );
-          return {
-            updated: false,
-            reason: `Throttling: last sync ${hoursSinceSync.toFixed(1)}h ago`,
-          };
-        }
-      } catch (redisError) {
-        logger.warn(
-          `[Username Sync] Error in Redis, continuing without throttling:`,
-          redisError.message
-        );
-        logger.debug(`[DEBUG SYNC] Redis error, continuing without throttling`);
+      const throttle = await checkThrottle(
+        "username_sync",
+        kickUserId,
+        "Username Sync",
+        "DEBUG SYNC"
+      );
+      if (throttle) {
+        return {
+          updated: false,
+          reason: `Throttling: last sync ${throttle.hoursSinceSync.toFixed(1)}h ago`,
+        };
       }
     }
 
-    // Check collision: the new name already exists on another user
-    const colision = await Usuario.findOne({
-      where: {
-        nickname: kickUsername,
-        id: { [Op.ne]: usuario.id },
-      },
-    });
+    const colision = await hasNicknameCollision(usuario, kickUsername);
 
     if (colision) {
       logger.warn(
@@ -91,8 +135,8 @@ async function syncUsernameIfNeeded(
       };
     }
 
-    // Update the user
     const oldNickname = usuario.nickname;
+
     try {
       await usuario.update({
         nickname: kickUsername,
@@ -115,24 +159,13 @@ async function syncUsernameIfNeeded(
       `[DEBUG SYNC] Update successful: "${oldNickname}" -> "${kickUsername}"`
     );
 
-    // Save in Redis that we synced (expires in 24 hours)
     if (!forceSync) {
-      try {
-        const redis = getRedisClient();
-        const syncKey = `username_sync:${kickUserId}`;
-        await redis.set(syncKey, new Date().toISOString(), "EX", 86400); // 24 hours
-        logger.info(
-          `[Username Sync] Throttling activated for 24h for user ${kickUserId}`
-        );
-        logger.debug(`[DEBUG SYNC] Throttling saved in Redis`);
-      } catch (redisError) {
-        logger.warn(
-          `[Username Sync] Error saving throttling in Redis:`,
-          redisError.message
-        );
-        logger.debug(`[DEBUG SYNC] Error saving throttling in Redis`);
-        // Do not fail if Redis fails
-      }
+      await saveThrottle(
+        "username_sync",
+        kickUserId,
+        "Username Sync",
+        "DEBUG SYNC"
+      );
     }
 
     return {
@@ -169,12 +202,10 @@ async function syncUserProfileIfNeeded(
   kickProfilePicture = null
 ) {
   try {
-    // DEBUG: Log al inicio
     logger.debug(
       `[DEBUG SYNC PROFILE] Starting full sync for ${kickUserId}: current '${usuario?.nickname}' vs new '${kickUsername}'`
     );
 
-    // Basic validations
     if (!usuario || !kickUsername || !kickUserId) {
       logger.debug(`[DEBUG SYNC PROFILE] Return: Invalid parameters`);
       return { updated: false, reason: "Invalid parameters" };
@@ -184,7 +215,6 @@ async function syncUserProfileIfNeeded(
     let avatarChanged = false;
     let needsUpdate = false;
 
-    // Check if the name changed
     if (usuario.nickname !== kickUsername) {
       logger.info(
         `[Profile Sync] Username change detected: "${usuario.nickname}" -> "${kickUsername}" (ID: ${kickUserId})`
@@ -193,11 +223,9 @@ async function syncUserProfileIfNeeded(
       needsUpdate = true;
     }
 
-    // Check if the avatar changed
-    // The Kick webhook ALWAYS includes profile_picture according to the docs
-    let newAvatarUrl = kickProfilePicture || null;
-
+    const newAvatarUrl = kickProfilePicture || null;
     const currentAvatarUrl = usuario.kick_data?.avatar_url;
+
     if (newAvatarUrl && currentAvatarUrl !== newAvatarUrl) {
       logger.info(`[Profile Sync] Avatar change detected for ${kickUsername}`);
       logger.info(
@@ -208,7 +236,6 @@ async function syncUserProfileIfNeeded(
       needsUpdate = true;
     }
 
-    // If no changes, do nothing
     if (!needsUpdate) {
       logger.debug(`[DEBUG SYNC PROFILE] Return: Profile unchanged`);
       return {
@@ -219,50 +246,25 @@ async function syncUserProfileIfNeeded(
       };
     }
 
-    // If not forced, check throttling with Redis
     if (!forceSync) {
-      try {
-        const redis = getRedisClient();
-        const syncKey = `profile_sync:${kickUserId}`;
-        const lastSync = await redis.get(syncKey);
-
-        if (lastSync) {
-          const lastSyncDate = new Date(lastSync);
-          const hoursSinceSync =
-            (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
-
-          logger.info(
-            `[Profile Sync] Last sync ${hoursSinceSync.toFixed(1)}h ago - Throttling active (24h)`
-          );
-          logger.debug(
-            `[DEBUG SYNC PROFILE] Return: Throttling active (${hoursSinceSync.toFixed(1)}h)`
-          );
-          return {
-            updated: false,
-            reason: `Throttling: last sync ${hoursSinceSync.toFixed(1)}h ago`,
-            usernameChanged: false,
-            avatarChanged: false,
-          };
-        }
-      } catch (redisError) {
-        logger.warn(
-          `[Profile Sync] Error in Redis, continuing without throttling:`,
-          redisError.message
-        );
-        logger.debug(
-          `[DEBUG SYNC PROFILE] Redis error, continuing without throttling`
-        );
+      const throttle = await checkThrottle(
+        "profile_sync",
+        kickUserId,
+        "Profile Sync",
+        "DEBUG SYNC PROFILE"
+      );
+      if (throttle) {
+        return {
+          updated: false,
+          reason: `Throttling: last sync ${throttle.hoursSinceSync.toFixed(1)}h ago`,
+          usernameChanged: false,
+          avatarChanged: false,
+        };
       }
     }
 
-    // Check collision: the new name already exists on another user
     if (usernameChanged) {
-      const colision = await Usuario.findOne({
-        where: {
-          nickname: kickUsername,
-          id: { [Op.ne]: usuario.id },
-        },
-      });
+      const colision = await hasNicknameCollision(usuario, kickUsername);
 
       if (colision) {
         logger.warn(
@@ -280,7 +282,6 @@ async function syncUserProfileIfNeeded(
       }
     }
 
-    // Prepare data for update
     const updateData = {
       kick_data: {
         ...usuario.kick_data,
@@ -297,7 +298,6 @@ async function syncUserProfileIfNeeded(
       updateData.kick_data.avatar_url = newAvatarUrl;
     }
 
-    // Update the user
     const oldNickname = usuario.nickname;
     const oldAvatarUrl = usuario.kick_data?.avatar_url;
 
@@ -321,24 +321,13 @@ async function syncUserProfileIfNeeded(
       `[DEBUG SYNC PROFILE] Update successful: username=${usernameChanged}, avatar=${avatarChanged}`
     );
 
-    // Save in Redis that we synced (expires in 24 hours)
     if (!forceSync) {
-      try {
-        const redis = getRedisClient();
-        const syncKey = `profile_sync:${kickUserId}`;
-        await redis.set(syncKey, new Date().toISOString(), "EX", 86400); // 24 hours
-        logger.info(
-          `[Profile Sync] Throttling activated for 24h for user ${kickUserId}`
-        );
-        logger.debug(`[DEBUG SYNC PROFILE] Throttling saved in Redis`);
-      } catch (redisError) {
-        logger.warn(
-          `[Profile Sync] Error saving throttling in Redis:`,
-          redisError.message
-        );
-        logger.debug(`[DEBUG SYNC PROFILE] Error saving throttling in Redis`);
-        // Do not fail if Redis fails
-      }
+      await saveThrottle(
+        "profile_sync",
+        kickUserId,
+        "Profile Sync",
+        "DEBUG SYNC PROFILE"
+      );
     }
 
     return {
