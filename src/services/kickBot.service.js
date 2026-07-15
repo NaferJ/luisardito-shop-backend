@@ -180,9 +180,7 @@ class KickBotService {
    * @returns {boolean}
    */
   _isTokenExpiringSoon(expiresAt) {
-    const now = new Date();
-    const expiry = new Date(expiresAt);
-    const expiresIn = expiry - now;
+    const expiresIn = new Date(expiresAt).getTime() - Date.now();
     const fortyFiveMinutes = 45 * 60 * 1000;
     return expiresIn < fortyFiveMinutes;
   }
@@ -218,7 +216,7 @@ class KickBotService {
       // Try each token until a valid one is found
       for (const record of records) {
         const expiresAt = new Date(record.token_expires_at);
-        const expiresIn = expiresAt - new Date();
+        const expiresIn = expiresAt.getTime() - Date.now();
 
         // Valid token, use it
         if (!this._isTokenExpiringSoon(record.token_expires_at)) {
