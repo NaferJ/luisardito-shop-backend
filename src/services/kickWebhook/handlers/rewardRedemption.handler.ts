@@ -1,15 +1,22 @@
-const _models = require("../../../models");
-const { KickReward, Usuario, HistorialPunto, sequelize } = _models;
-const NotificacionService = require("../../notificacion.service");
-const { Transaction } = require("sequelize");
-const logger = require("../../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import {
+  KickReward,
+  Usuario,
+  HistorialPunto,
+  sequelize,
+} from "../../../models";
+import NotificacionService from "../../notificacion.service";
+import { Transaction } from "sequelize";
+import logger from "../../../utils/logger";
 
 /**
  * Send chat message notifying user they are not registered for reward redemption
  */
-async function notifyUnregisteredReward(kickUsername, localReward) {
+async function notifyUnregisteredReward(kickUsername: any, localReward: any) {
   try {
-    const bot = require("../../kickBot.service");
+    const bot = (await import("../../kickBot.service")).default;
     const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
     await bot.sendMessage(message);
     logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
@@ -24,7 +31,7 @@ async function notifyUnregisteredReward(kickUsername, localReward) {
 /**
  * Handle channel reward redemptions
  */
-async function handleRewardRedemption(payload, _metadata) {
+async function handleRewardRedemption(payload: any, _metadata: any) {
   try {
     const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
@@ -36,7 +43,7 @@ async function handleRewardRedemption(payload, _metadata) {
     );
 
     // Find reward in our DB
-    const localReward = await KickReward.findOne({
+    const localReward: any = await KickReward.findOne({
       where: { kick_reward_id: kickRewardId },
     });
 
@@ -48,7 +55,7 @@ async function handleRewardRedemption(payload, _metadata) {
     }
 
     // ALWAYS find user in our DB (for both cases: pending and accepted)
-    let usuario = await Usuario.findOne({
+    let usuario: any = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -112,7 +119,7 @@ async function handleRewardRedemption(payload, _metadata) {
       return;
     }
 
-    const transaction = await sequelize.transaction({
+    const transaction: any = await sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     });
 
@@ -176,4 +183,4 @@ async function handleRewardRedemption(payload, _metadata) {
   }
 }
 
-module.exports = { handleRewardRedemption };
+export { handleRewardRedemption };

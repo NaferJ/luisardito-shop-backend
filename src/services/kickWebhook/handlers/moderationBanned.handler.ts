@@ -1,9 +1,12 @@
-const logger = require("../../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import logger from "../../../utils/logger";
 
 /**
  * Handle moderation bans
  */
-async function handleModerationBanned(payload, _metadata) {
+async function handleModerationBanned(payload: any, _metadata: any) {
   logger.info("[Kick Webhook][Moderation Banned]", {
     broadcaster: payload.broadcaster.username,
     moderator: payload.moderator.username,
@@ -16,4 +19,4 @@ async function handleModerationBanned(payload, _metadata) {
   // Logging only — no action taken for moderation bans at this time.
 }
 
-module.exports = { handleModerationBanned };
+export { handleModerationBanned };

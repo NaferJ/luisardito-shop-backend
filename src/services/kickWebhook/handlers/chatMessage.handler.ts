@@ -1,24 +1,27 @@
-const _models = require("../../../models");
-const {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import {
   KickPointsConfig,
   KickUserTracking,
   Usuario,
   HistorialPunto,
   UserWatchtime,
   sequelize,
-} = _models;
-const BotrixMigrationService = require("../../botrixMigration.service");
-const ModeratorCommandsService = require("../../kickModeratorCommands.service");
-const { Transaction } = require("sequelize");
-const { getRedisClient } = require("../../../config/redis.config");
-const logger = require("../../../utils/logger");
-const { syncUserProfileIfNeeded } = require("../../../utils/usernameSync.util");
+  BotrixMigrationConfig,
+} from "../../../models";
+import BotrixMigrationService from "../../botrixMigration.service";
+import * as ModeratorCommandsService from "../../kickModeratorCommands.service";
+import { Transaction } from "sequelize";
+import { getRedisClient } from "../../../config/redis.config";
+import logger from "../../../utils/logger";
+import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
 /**
  * Process Botrix migration (points + watchtime) for a chat message.
  * Returns true if the message was fully consumed by migration.
  */
-async function processBotrixMigration(payload, botrixConfig) {
+async function processBotrixMigration(payload: any, botrixConfig: any) {
   if (botrixConfig.migration_enabled) {
     const botrixResult =
       await BotrixMigrationService.processChatMessage(payload);
@@ -53,7 +56,7 @@ async function processBotrixMigration(payload, botrixConfig) {
 /**
  * Process moderator commands from chat. Returns true if message was consumed.
  */
-async function processModeratorCommands(payload) {
+async function processModeratorCommands(payload: any) {
   try {
     const content = String(payload.content || "").trim();
     const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
@@ -75,7 +78,7 @@ async function processModeratorCommands(payload) {
 
     if (modResult.message) {
       try {
-        const bot = require("../../kickBot.service");
+        const bot = (await import("../../kickBot.service")).default;
         await bot.sendMessage(modResult.message);
         logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
       } catch (botError) {
@@ -99,15 +102,20 @@ async function processModeratorCommands(payload) {
 /**
  * Process bot commands from chat.
  */
-async function processBotCommands(payload, kickUserId, kickUsername) {
+async function processBotCommands(
+  payload: any,
+  kickUserId: any,
+  kickUsername: any
+) {
   try {
     const content = String(payload.content || "").trim();
     if (!content.startsWith("!")) {
       return;
     }
 
-    const bot = require("../../kickBot.service");
-    const commandHandler = require("../../kickBotCommandHandler.service");
+    const bot = (await import("../../kickBot.service")).default;
+    const commandHandler = (await import("../../kickBotCommandHandler.service"))
+      .default;
 
     const commandProcessed = await commandHandler.processMessage(
       content,
@@ -153,7 +161,7 @@ async function isStreamLive() {
 /**
  * Process watchtime tracking for a user on every chat message.
  */
-async function processWatchtime(kickUserId, usuarioId) {
+async function processWatchtime(kickUserId: any, usuarioId: any) {
   try {
     const wtNow = new Date();
     const redis = getRedisClient();
@@ -205,8 +213,8 @@ async function processWatchtime(kickUserId, usuarioId) {
 /**
  * Resolve subscriber status for a Kick user, deactivating expired subscriptions.
  */
-async function resolveSubscriberStatus(kickUserId, kickUsername) {
-  const userTracking = await KickUserTracking.findOne({
+async function resolveSubscriberStatus(kickUserId: any, kickUsername: any) {
+  const userTracking: any = await KickUserTracking.findOne({
     where: { kick_user_id: kickUserId },
   });
 
@@ -242,7 +250,12 @@ async function resolveSubscriberStatus(kickUserId, kickUsername) {
 /**
  * Award chat points to a user within a DB transaction.
  */
-async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
+async function awardChatPoints(
+  usuario: any,
+  pointsToAward: any,
+  userType: any,
+  ctx: any
+) {
   const { isVipActive, isSubscriber, payload, kickUserId, kickUsername } = ctx;
   const COOLDOWN_MS = 5 * 60 * 1000;
   const cooldownKey = `chat_cooldown:${kickUserId}`;
@@ -266,7 +279,7 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
     logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
   }
 
-  const transaction = await sequelize.transaction({
+  const transaction: any = await sequelize.transaction({
     isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
   });
 
@@ -332,15 +345,14 @@ async function awardChatPoints(usuario, pointsToAward, userType, ctx) {
 /**
  * Handle chat messages
  */
-async function handleChatMessage(payload, _metadata) {
+async function handleChatMessage(payload: any, _metadata: any) {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
     const kickUsername = sender.username;
 
     // PRIORITY 1: Check if it's a Botrix migration
-    const { BotrixMigrationConfig } = require("../../../models");
-    const botrixConfig = await BotrixMigrationConfig.getConfig();
+    const botrixConfig: any = await (BotrixMigrationConfig as any).getConfig();
 
     const botrixConsumed = await processBotrixMigration(payload, botrixConfig);
     if (botrixConsumed) return;
@@ -368,7 +380,7 @@ async function handleChatMessage(payload, _metadata) {
     logger.info(`[STREAM] LIVE - Processing points for ${kickUsername}`);
 
     // Check if user exists in our DB
-    const usuario = await Usuario.findOne({
+    const usuario: any = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -392,7 +404,7 @@ async function handleChatMessage(payload, _metadata) {
     await processWatchtime(kickUserId, usuario.id);
 
     // Get points configuration
-    const configs = await KickPointsConfig.findAll({
+    const configs: any = await KickPointsConfig.findAll({
       where: { enabled: true },
     });
 
@@ -443,4 +455,4 @@ async function handleChatMessage(payload, _metadata) {
   }
 }
 
-module.exports = { handleChatMessage };
+export { handleChatMessage };
