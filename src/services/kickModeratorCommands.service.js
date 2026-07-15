@@ -49,6 +49,65 @@ function isModerator(sender, broadcaster) {
 }
 
 /**
+ * Reads a flag's value from the token list starting at index `i`.
+ * Handles quoted multi-word values and returns the consumed value plus
+ * the index of the next unprocessed token.
+ * @param {string[]} parts - Tokenized message parts
+ * @param {number} i - Index of the first value token
+ * @returns {{ value: string, nextIndex: number }}
+ */
+function readFlagValue(parts, i) {
+  if (i >= parts.length) {
+    return { value: "", nextIndex: i };
+  }
+
+  if (!parts[i].startsWith('"')) {
+    return { value: parts[i], nextIndex: i + 1 };
+  }
+
+  // Quoted value spanning multiple words
+  const quotedParts = [];
+  while (i < parts.length) {
+    quotedParts.push(parts[i]);
+    if (parts[i].endsWith('"')) {
+      return {
+        value: quotedParts.join(" ").replace(/^"|"$/g, ""),
+        nextIndex: i + 1,
+      };
+    }
+    i++;
+  }
+
+  // Unclosed quote: consume the rest of the input
+  return {
+    value: quotedParts.join(" ").replace(/^"|"$/g, ""),
+    nextIndex: i,
+  };
+}
+
+/**
+ * Assigns a parsed flag name and value into the flags object.
+ * Unknown flag names are silently ignored.
+ * @param {object} flags - Flags object to mutate
+ * @param {string} flagName - Flag name without the leading "--"
+ * @param {string} flagValue - Raw flag value string
+ */
+function assignFlag(flags, flagName, flagValue) {
+  if (flagName === "aliases") {
+    flags.aliases = flagValue
+      .split(",")
+      .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
+      .filter(Boolean);
+  } else if (flagName === "cooldown") {
+    flags.cooldown = Number.parseInt(flagValue) || 3;
+  } else if (flagName === "desc") {
+    flags.desc = flagValue;
+  } else if (flagName === "response") {
+    flags.response = flagValue;
+  }
+}
+
+/**
  * Parses a moderator command message and extracts parameters
  * @param {string} content - Full message content
  * @returns {object|null} - { command, name, flags } or null if not a valid command
@@ -85,42 +144,9 @@ function parseModeratorCommand(content) {
 
     if (part.startsWith("--")) {
       const flagName = part.substring(2);
-      i++;
-
-      // Handle quoted values
-      let flagValue = "";
-      if (i < parts.length) {
-        if (parts[i].startsWith('"')) {
-          // Quoted value
-          const quotedParts = [];
-          while (i < parts.length) {
-            quotedParts.push(parts[i]);
-            if (parts[i].endsWith('"')) {
-              i++;
-              break;
-            }
-            i++;
-          }
-          flagValue = quotedParts.join(" ").replace(/^"|"$/g, "");
-        } else {
-          // Simple value
-          flagValue = parts[i];
-          i++;
-        }
-      }
-
-      if (flagName === "aliases") {
-        flags.aliases = flagValue
-          .split(",")
-          .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
-          .filter(Boolean);
-      } else if (flagName === "cooldown") {
-        flags.cooldown = Number.parseInt(flagValue) || 3;
-      } else if (flagName === "desc") {
-        flags.desc = flagValue;
-      } else if (flagName === "response") {
-        flags.response = flagValue;
-      }
+      const { value: flagValue, nextIndex } = readFlagValue(parts, i + 1);
+      i = nextIndex;
+      assignFlag(flags, flagName, flagValue);
     } else {
       // Response part
       responseWords.push(part);
