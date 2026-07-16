@@ -68,4 +68,4 @@ class BackupScheduler {
   }
 }
 
-export default new BackupScheduler();
+export = new BackupScheduler();

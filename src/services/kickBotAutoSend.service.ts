@@ -184,4 +184,4 @@ class KickBotAutoSendService {
   }
 }
 
-export default new KickBotAutoSendService();
+export = new KickBotAutoSendService();

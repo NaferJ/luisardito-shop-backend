@@ -529,4 +529,4 @@ class BackupService {
 }
 
 const backupService = new BackupService();
-export default backupService;
+export = backupService;

@@ -180,4 +180,4 @@ class LeaderboardSnapshotTask {
   }
 }
 
-export default new LeaderboardSnapshotTask();
+export = new LeaderboardSnapshotTask();

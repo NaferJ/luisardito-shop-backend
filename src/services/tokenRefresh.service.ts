@@ -183,4 +183,4 @@ class TokenRefreshService {
 // Singleton instance
 const tokenRefreshService = new TokenRefreshService();
 
-export default tokenRefreshService;
+export = tokenRefreshService;
