@@ -1,12 +1,11 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import { HistorialPunto } from "../models";
-import { Op } from "sequelize";
+import { Op, WhereOptions } from "sequelize";
 import { sequelize } from "../models/database";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
 
-const listar = asyncHandler(async (req: any, res: any) => {
+const listar = asyncHandler(async (req: Request, res: Response) => {
   const { usuarioId } = req.params;
 
   // Regular users only see their own history
@@ -20,7 +19,7 @@ const listar = asyncHandler(async (req: any, res: any) => {
   const isAdmin = req.user.rol_id >= 3;
   const showAllEvents = include_all === "true" && isAdmin;
 
-  let whereClause: any = { usuario_id: usuarioId };
+  let whereClause: WhereOptions = { usuario_id: usuarioId };
 
   // If not admin or not requesting all, filter events
   if (!showAllEvents) {
@@ -63,7 +62,7 @@ const listar = asyncHandler(async (req: any, res: any) => {
 /**
  * List full history (including chat events) - Admins only
  */
-const listarCompleto = asyncHandler(async (req: any, res: any) => {
+const listarCompleto = asyncHandler(async (req: Request, res: Response) => {
   const { usuarioId } = req.params;
 
   // The permission middleware already validates the 'editar_puntos' permission

@@ -1,21 +1,50 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-import axios from "axios";
+import axios, { type AxiosResponse, type AxiosRequestConfig } from "axios";
 import config from "../../config";
 import KickBotToken from "../models/kickBotToken.model";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import logger from "../utils/logger";
 
+interface TokenFileData {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  refreshExpiresAt?: number;
+  username?: string;
+}
+
+interface TokenRefreshResponse {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+interface SendMessageResult {
+  ok: boolean;
+  error?: string;
+  status?: number;
+  data?: {
+    messageId?: string;
+    isSent: boolean;
+    raw: unknown;
+  };
+  headers?: unknown;
+}
+
+interface RefreshTokenError extends Error {
+  code?: string;
+  originalError?: unknown;
+}
+
 /**
  * Service to send messages to Kick chat using the BOT
  * Requires a bot user access token (KICK_BOT_ACCESS_TOKEN)
  */
 class KickBotService {
-  apiBase: any;
-  botUsername: any;
-  tokensFile: any;
-  _refreshInFlight: any;
+  apiBase: string;
+  botUsername: string;
+  tokensFile: string;
+  _refreshInFlight: Map<string, Promise<KickBotToken | string>>;
 
   constructor() {
     this.apiBase = String(config.kick.apiBaseUrl || "").replace(/\/$/, "");
@@ -34,14 +63,14 @@ class KickBotService {
    * Concurrent calls for the same token share a single in-flight network
    * request (single-flight) to avoid race conditions caused by Kick's
    * rotating refresh tokens.
-   * @param {Object} tokenRecord - KickBotToken model instance
-   * @returns {Promise<Object>} - Updated token
+   * @param tokenRecord - KickBotToken model instance
+   * @returns Updated token
    */
-  refreshToken(tokenRecord: any) {
-    const key = tokenRecord.id ?? tokenRecord.kick_username;
+  refreshToken(tokenRecord: KickBotToken): Promise<KickBotToken> {
+    const key = String(tokenRecord.id ?? tokenRecord.kick_username);
 
     if (this._refreshInFlight.has(key)) {
-      return this._refreshInFlight.get(key);
+      return this._refreshInFlight.get(key) as Promise<KickBotToken>;
     }
 
     const promise = this._performRefresh(tokenRecord).finally(() => {
@@ -55,20 +84,20 @@ class KickBotService {
   /**
    * Internal refresh implementation. Callers should use refreshToken()
    * which adds the single-flight guard.
-   * @param {Object} tokenRecord - KickBotToken model instance
-   * @returns {Promise<Object>} - Updated token
+   * @param tokenRecord - KickBotToken model instance
+   * @returns Updated token
    */
-  async _performRefresh(tokenRecord: any) {
+  async _performRefresh(tokenRecord: KickBotToken): Promise<KickBotToken> {
     try {
       logger.info(
         `[KickBot] Attempting to renew token for ${tokenRecord.kick_username}`
       );
 
-      const response = await axios.post(
+      const response: AxiosResponse<TokenRefreshResponse> = await axios.post(
         "https://id.kick.com/oauth/token",
         new URLSearchParams({
           grant_type: "refresh_token",
-          refresh_token: tokenRecord.refresh_token,
+          refresh_token: tokenRecord.refresh_token as string,
           client_id: config.kickBot.clientId,
           client_secret: config.kickBot.clientSecret,
           // Do not include scope when refreshing - the refresh token already has the scopes
@@ -91,9 +120,9 @@ class KickBotService {
 
       // Also update tokens.json to keep it in sync
       try {
-        const tokensForFile = {
+        const tokensForFile: TokenFileData = {
           accessToken: access_token,
-          refreshToken: refresh_token || tokenRecord.refresh_token,
+          refreshToken: refresh_token || (tokenRecord.refresh_token as string),
           expiresAt: Date.now() + expires_in * 1000,
           refreshExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // ~1 year
           username: tokenRecord.kick_username,
@@ -102,10 +131,12 @@ class KickBotService {
         logger.info(
           `[KickBot] tokens.json updated for ${tokenRecord.kick_username}`
         );
-      } catch (fileError: any) {
+      } catch (fileError: unknown) {
+        const msg =
+          fileError instanceof Error ? fileError.message : String(fileError);
         logger.warn(
           `[KickBot] Could not update tokens.json (non-critical):`,
-          fileError.message
+          msg
         );
       }
 
@@ -113,14 +144,18 @@ class KickBotService {
         `[KickBot] Token renewed successfully for ${tokenRecord.kick_username}`
       );
       return tokenRecord;
-    } catch (error: any) {
-      const errorData = error.response?.data;
-      const errorStatus = error.response?.status;
+    } catch (error: unknown) {
+      const axiosErr = error as {
+        response?: { data?: unknown; status?: number };
+      };
+      const errorData = axiosErr?.response?.data;
+      const errorStatus = axiosErr?.response?.status;
+      const msg = error instanceof Error ? error.message : String(error);
 
       logger.error("[KickBot] Error renewing token:", {
         status: errorStatus,
         data: errorData,
-        message: error.message,
+        message: msg,
       });
 
       // If the error is authentication-related or invalid refresh token
@@ -134,11 +169,11 @@ class KickBotService {
         });
 
         // Create a more descriptive error
-        const refreshTokenError: any = new Error(
+        const refreshTokenError = new Error(
           errorStatus === 400
             ? "Expired or invalid refresh token"
             : "Unauthorized refresh token"
-        );
+        ) as RefreshTokenError;
         refreshTokenError.code = "REFRESH_TOKEN_EXPIRED";
         refreshTokenError.originalError = error;
 
@@ -160,20 +195,21 @@ class KickBotService {
 
   /**
    * Renews a specific token (used by maintenance)
-   * @param {Object} tokenRecord - KickBotToken model instance
-   * @returns {Promise<boolean>} - True if renewed successfully
+   * @param tokenRecord - KickBotToken model instance
+   * @returns True if renewed successfully
    */
-  async renewAccessToken(tokenRecord: any) {
+  async renewAccessToken(tokenRecord: KickBotToken): Promise<boolean> {
     try {
       logger.info(
         `[KickBot] Renewing token for ${tokenRecord.kick_username}...`
       );
       await this.refreshToken(tokenRecord);
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
         `[KickBot] Error renewing token for ${tokenRecord.kick_username}:`,
-        error.message
+        msg
       );
       return false;
     }
@@ -182,9 +218,9 @@ class KickBotService {
   /**
    * Resolves the access token, renewing it if necessary
    * PRIORITY: DB first, file as fallback
-   * @returns {Promise<string>} - Access token
+   * @returns Access token
    */
-  async resolveAccessToken() {
+  async resolveAccessToken(): Promise<string | null> {
     logger.info("[KickBot] Resolving access token...");
 
     // Always use DB/file, never trust in-memory token
@@ -196,8 +232,9 @@ class KickBotService {
       if (token !== undefined) {
         return token;
       }
-    } catch (dbError: any) {
-      logger.warn("[KickBot] Error querying DB, trying file:", dbError.message);
+    } catch (dbError: unknown) {
+      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      logger.warn("[KickBot] Error querying DB, trying file:", msg);
     }
 
     // PRIORITY 2: Fallback to tokens.json if the DB has no tokens
@@ -206,11 +243,10 @@ class KickBotService {
       if (token !== undefined) {
         return token;
       }
-    } catch (fileError: any) {
-      logger.warn(
-        "[KickBot] tokens.json file not available or invalid:",
-        fileError.message
-      );
+    } catch (fileError: unknown) {
+      const msg =
+        fileError instanceof Error ? fileError.message : String(fileError);
+      logger.warn("[KickBot] tokens.json file not available or invalid:", msg);
     }
 
     // If we get here, no tokens are available
@@ -225,7 +261,7 @@ class KickBotService {
    * Resolves an access token from the database (PRIORITY 1).
    * Returns the token string if found, or undefined if no valid token is available.
    */
-  async _resolveFromDb() {
+  async _resolveFromDb(): Promise<string | undefined> {
     const where = this.botUsername
       ? {
           kick_username: this.botUsername,
@@ -235,7 +271,7 @@ class KickBotService {
           is_active: true,
         };
 
-    const records: any = await KickBotToken.findAll({
+    const records = await KickBotToken.findAll({
       where,
       order: [["updated_at", "DESC"]],
     });
@@ -259,11 +295,11 @@ class KickBotService {
    * Renews the token if it is expired or about to expire.
    * Returns the token string if usable, or undefined to continue with the next record.
    */
-  async _tryTokenFromRecord(record: any) {
+  async _tryTokenFromRecord(record: KickBotToken): Promise<string | undefined> {
     // Check if the token is about to expire (in less than 45 minutes) or already expired
     const now = new Date();
     const expiresAt = new Date(record.token_expires_at);
-    const expiresIn = (expiresAt as any) - (now as any);
+    const expiresIn = expiresAt.getTime() - now.getTime();
     const fortyFiveMinutes = 45 * 60 * 1000;
 
     if (expiresIn < fortyFiveMinutes) {
@@ -286,10 +322,11 @@ class KickBotService {
           `[KickBot] Token renewed from DB for ${record.kick_username}`
         );
         return updatedRecord.access_token;
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : String(error);
         logger.error(
           `[KickBot] Renewal failed for ${record.kick_username}:`,
-          error.message
+          msg
         );
         // Continue with the next token
         return undefined;
@@ -307,7 +344,7 @@ class KickBotService {
    * Resolves an access token from tokens.json (PRIORITY 2 fallback).
    * Returns the token string if found, or undefined if no valid token is available.
    */
-  async _resolveFromFile() {
+  async _resolveFromFile(): Promise<string | undefined> {
     const tokens = await this.readTokensFromFile();
     if (tokens?.accessToken) {
       // Check if the token is about to expire (in less than 45 minutes)
@@ -324,10 +361,10 @@ class KickBotService {
 
   /**
    * Sends a message to the chat as the bot
-   * @param {string} message - The message to send (max 500 characters)
-   * @returns {Promise<{ok: boolean, data?: Object, error?: string}>} Operation result
+   * @param message - The message to send (max 500 characters)
+   * @returns Operation result
    */
-  async sendMessage(message: any) {
+  async sendMessage(message: string): Promise<SendMessageResult> {
     const token = await this.resolveAccessToken();
     if (!token) {
       logger.error("[KickBot] No access token available (config nor DB)");
@@ -362,7 +399,7 @@ class KickBotService {
 
     try {
       logger.info(`[KickBot] Sending message: "${payload.content}"`);
-      const response = await axios.post(url, payload, {
+      const axiosConfig: AxiosRequestConfig = {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -370,8 +407,9 @@ class KickBotService {
           "User-Agent": "LuisarditoShop/1.0",
         },
         timeout: 10000,
-        validateStatus: (status: any) => status < 500, // Do not throw for 4xx codes
-      });
+        validateStatus: (status: number) => status < 500, // Do not throw for 4xx codes
+      };
+      const response = await axios.post(url, payload, axiosConfig);
 
       logger.info("[KickBot] API response:", {
         status: response.status,
@@ -388,33 +426,43 @@ class KickBotService {
         });
       }
 
+      const responseData = response.data as {
+        data?: { message_id?: string; is_sent?: boolean };
+      };
       return {
         ok: response.status < 400,
         status: response.status,
         data: {
-          messageId: response.data?.data?.message_id,
-          isSent: response.data?.data?.is_sent === true,
+          messageId: responseData?.data?.message_id,
+          isSent: responseData?.data?.is_sent === true,
           raw: response.data,
         },
         headers: response.headers,
       };
-    } catch (error: any) {
-      const errorData = error.response?.data || error.message;
+    } catch (error: unknown) {
+      const axiosErr = error as {
+        response?: { data?: unknown; status?: number };
+      };
+      const errorData =
+        axiosErr?.response?.data ||
+        (error instanceof Error ? error.message : String(error));
       logger.error("[KickBot] Error sending message:", errorData);
       return {
         ok: false,
         error:
-          typeof errorData === "object" ? JSON.stringify(errorData) : errorData,
-        status: error.response?.status,
+          typeof errorData === "object"
+            ? JSON.stringify(errorData)
+            : String(errorData),
+        status: axiosErr?.response?.status,
       };
     }
   }
 
   /**
    * Generates authorization URL to get new tokens
-   * @returns {string} Authorization URL
+   * @returns Authorization URL
    */
-  generateAuthUrl() {
+  generateAuthUrl(): string {
     const scopes = "user:read chat:write channel:read channel:write";
     const url = `https://id.kick.com/oauth/authorize?client_id=${config.kickBot.clientId}&redirect_uri=${encodeURIComponent(config.kickBot.redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes)}`;
     return url;
@@ -422,15 +470,18 @@ class KickBotService {
 
   /**
    * Exchanges authorization code for tokens (for manual re-authorization)
-   * @param {string} code - Authorization code
-   * @param {string} username - Bot username
-   * @returns {Promise<Object>} Obtained tokens
+   * @param code - Authorization code
+   * @param username - Bot username
+   * @returns Obtained tokens
    */
-  async exchangeCodeForTokens(code: any, username: any) {
+  async exchangeCodeForTokens(
+    code: string,
+    username: string
+  ): Promise<KickBotToken> {
     try {
       logger.info(`[KickBot] Exchanging code for tokens for ${username}...`);
 
-      const response = await axios.post(
+      const response: AxiosResponse<TokenRefreshResponse> = await axios.post(
         "https://id.kick.com/oauth/token",
         {
           grant_type: "authorization_code",
@@ -448,7 +499,7 @@ class KickBotService {
       const tokenExpiresAt = new Date(Date.now() + expires_in * 1000);
 
       // Save to tokens.json for auto-refresh
-      const tokensForFile = {
+      const tokensForFile: TokenFileData = {
         accessToken: access_token,
         refreshToken: refresh_token,
         expiresAt: Date.now() + expires_in * 1000,
@@ -458,7 +509,7 @@ class KickBotService {
       await this.writeTokensToFile(tokensForFile);
 
       // Also save to DB as backup
-      let tokenRecord: any = await KickBotToken.findOne({
+      let tokenRecord = await KickBotToken.findOne({
         where: { kick_username: username },
       });
       if (tokenRecord) {
@@ -481,8 +532,9 @@ class KickBotService {
 
       logger.info(`[KickBot] New tokens saved for ${username}`);
       return tokenRecord;
-    } catch (error: any) {
-      logger.error("[KickBot] Error exchanging code:", error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[KickBot] Error exchanging code:", msg);
       throw error;
     }
   }
@@ -502,8 +554,9 @@ class KickBotService {
         logger.info("[KickBot] First token check...");
         try {
           await this.performAutoRefresh();
-        } catch (error: any) {
-          logger.error("[KickBot] Error on first check:", error.message);
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.error("[KickBot] Error on first check:", msg);
         }
       },
       2 * 60 * 1000
@@ -514,8 +567,9 @@ class KickBotService {
       async () => {
         try {
           await this.performAutoRefresh();
-        } catch (error: any) {
-          logger.error("[KickBot] Error in automatic refresh:", error.message);
+        } catch (error: unknown) {
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.error("[KickBot] Error in automatic refresh:", msg);
         }
       },
       10 * 60 * 1000
@@ -538,7 +592,7 @@ class KickBotService {
             is_active: true,
           };
 
-      const records: any = await KickBotToken.findAll({
+      const records = await KickBotToken.findAll({
         where,
         order: [["updated_at", "DESC"]],
       });
@@ -551,7 +605,7 @@ class KickBotService {
       for (const record of records) {
         const now = new Date();
         const expiresAt = new Date(record.token_expires_at);
-        const expiresIn = (expiresAt as any) - (now as any);
+        const expiresIn = expiresAt.getTime() - now.getTime();
         const fortyFiveMinutes = 45 * 60 * 1000;
 
         if (expiresIn < fortyFiveMinutes) {
@@ -565,14 +619,16 @@ class KickBotService {
             logger.info(
               `[KickBot] Token auto-renewed successfully for ${record.kick_username}`
             );
-          } catch (error: any) {
+          } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
             logger.error(
               `[KickBot] Error auto-renewing token for ${record.kick_username}:`,
-              error.message
+              msg
             );
 
             // If the refresh token expired, alert
-            if (error.code === "REFRESH_TOKEN_EXPIRED") {
+            const refreshErr = error as RefreshTokenError;
+            if (refreshErr.code === "REFRESH_TOKEN_EXPIRED") {
               logger.error(
                 `[KickBot] ALERT: Refresh token expired for ${record.kick_username}. Re-authentication required.`
               );
@@ -588,21 +644,23 @@ class KickBotService {
           );
         }
       }
-    } catch (error: any) {
-      logger.error("[KickBot] Error in performAutoRefresh:", error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[KickBot] Error in performAutoRefresh:", msg);
     }
   }
 
   /**
    * Reads tokens from the tokens.json file
-   * @returns {Promise<Object|null>} Tokens or null if it does not exist
+   * @returns Tokens or null if it does not exist
    */
-  async readTokensFromFile() {
+  async readTokensFromFile(): Promise<TokenFileData | null> {
     try {
       const data = await fs.readFile(this.tokensFile, "utf8");
-      return JSON.parse(data);
-    } catch (error: any) {
-      if (error.code === "ENOENT") {
+      return JSON.parse(data) as TokenFileData;
+    } catch (error: unknown) {
+      const nodeErr = error as { code?: string };
+      if (nodeErr.code === "ENOENT") {
         logger.info("[KickBot] tokens.json file does not exist yet");
         return null;
       }
@@ -612,9 +670,9 @@ class KickBotService {
 
   /**
    * Writes tokens to the tokens.json file
-   * @param {Object} tokens - Tokens to save
+   * @param tokens - Tokens to save
    */
-  async writeTokensToFile(tokens: any) {
+  async writeTokensToFile(tokens: TokenFileData) {
     const fullPath = path.resolve(this.tokensFile);
     logger.info("[KickBot] Attempting to save tokens to:", fullPath);
     await fs.writeFile(this.tokensFile, JSON.stringify(tokens, null, 2));
@@ -625,13 +683,13 @@ class KickBotService {
    * Renews the access token using the refresh token from the file.
    * Concurrent calls share a single in-flight network request
    * (single-flight) to avoid rotating the file refresh token twice.
-   * @returns {Promise<string>} New access token
+   * @returns New access token
    */
-  refreshAccessToken() {
+  refreshAccessToken(): Promise<string> {
     const key = "__file__";
 
     if (this._refreshInFlight.has(key)) {
-      return this._refreshInFlight.get(key);
+      return this._refreshInFlight.get(key) as Promise<string>;
     }
 
     const promise = this._performFileRefresh().finally(() => {
@@ -645,9 +703,9 @@ class KickBotService {
   /**
    * Internal file-based refresh implementation. Callers should use
    * refreshAccessToken() which adds the single-flight guard.
-   * @returns {Promise<string>} New access token
+   * @returns New access token
    */
-  async _performFileRefresh() {
+  async _performFileRefresh(): Promise<string> {
     try {
       const tokens = await this.readTokensFromFile();
       if (!tokens?.refreshToken) {
@@ -656,7 +714,7 @@ class KickBotService {
 
       logger.info("[KickBot] Renewing access token...");
 
-      const response = await axios.post(
+      const response: AxiosResponse<TokenRefreshResponse> = await axios.post(
         "https://id.kick.com/oauth/token",
         new URLSearchParams({
           grant_type: "refresh_token",
@@ -680,7 +738,7 @@ class KickBotService {
       }
 
       // Update tokens (Kick rotates the refresh token)
-      const updatedTokens = {
+      const updatedTokens: TokenFileData = {
         accessToken: access_token,
         refreshToken: refresh_token, // Always use the new one
         expiresAt: Date.now() + expires_in * 1000,
@@ -692,8 +750,9 @@ class KickBotService {
       logger.info("[KickBot] Access token renewed successfully");
 
       return updatedTokens.accessToken;
-    } catch (error: any) {
-      logger.error("[KickBot] Error renewing access token:", error.message);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[KickBot] Error renewing access token:", msg);
       throw error;
     }
   }
@@ -701,5 +760,7 @@ class KickBotService {
 
 // Export both the class and a singleton instance
 const instance = new KickBotService();
-(instance as any).KickBotService = KickBotService;
+(
+  instance as KickBotService & { KickBotService: typeof KickBotService }
+).KickBotService = KickBotService;
 export = instance;

@@ -1,9 +1,29 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 import Usuario from "./usuario.model";
 
-const UserWatchtime = sequelize.define(
-  "UserWatchtime",
+class UserWatchtime extends Model<
+  InferAttributes<UserWatchtime>,
+  InferCreationAttributes<UserWatchtime>
+> {
+  declare id: CreationOptional<number>;
+  declare usuario_id: number;
+  declare kick_user_id: string | null;
+  declare total_watchtime_minutes: CreationOptional<number>;
+  declare message_count: CreationOptional<number>;
+  declare first_message_date: Date | null;
+  declare last_message_at: Date | null;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+UserWatchtime.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -46,8 +66,15 @@ const UserWatchtime = sequelize.define(
       allowNull: true,
       comment: "Fecha del último mensaje registrado",
     },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+    },
   },
   {
+    sequelize,
     tableName: "user_watchtime",
     timestamps: true,
     createdAt: "created_at",
@@ -55,8 +82,5 @@ const UserWatchtime = sequelize.define(
   }
 );
 
-// Relaciones
-UserWatchtime.belongsTo(Usuario, { foreignKey: "usuario_id" });
-Usuario.hasOne(UserWatchtime, { foreignKey: "usuario_id" });
-
+// Associations are defined in models/index.ts to avoid duplicate registration
 export = UserWatchtime;

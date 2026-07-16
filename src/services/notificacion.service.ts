@@ -1,28 +1,66 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import { Notificacion } from "../models";
 import logger from "../utils/logger";
+import type { Transaction, WhereOptions } from "sequelize";
+
+type NotificacionTipo =
+  | "sub_regalada"
+  | "puntos_ganados"
+  | "canje_creado"
+  | "canje_entregado"
+  | "canje_cancelado"
+  | "canje_devuelto"
+  | "historial_evento"
+  | "sistema";
+
+interface ListarResult {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+  notificaciones: Notificacion[];
+}
+
+interface GiftData {
+  regalador_username?: string;
+  monto_subscription?: string | number;
+  [key: string]: unknown;
+}
+
+interface PointsData {
+  cantidad?: number;
+  concepto?: string;
+  [key: string]: unknown;
+}
+
+interface CanjeData {
+  nombre_producto?: string;
+  precio?: number;
+  canje_id?: number;
+  motivo?: string;
+  puntos_devueltos?: number;
+  [key: string]: unknown;
+}
 
 class NotificacionService {
   /**
    * Create a new notification
-   * @param {number} usuarioId - Recipient user ID
-   * @param {string} titulo - Notification title
-   * @param {string} descripcion - Detailed description
-   * @param {string} tipo - Notification type (enum)
-   * @param {Object} datosRelacionados - Contextual data in JSON
-   * @param {string} enlaceDetalle - Relative detail route
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - Recipient user ID
+   * @param titulo - Notification title
+   * @param descripcion - Detailed description
+   * @param tipo - Notification type (enum)
+   * @param datosRelacionados - Contextual data in JSON
+   * @param enlaceDetalle - Relative detail route
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crear(
-    usuarioId: any,
-    titulo: any,
-    descripcion: any,
-    tipo: any = "sistema",
-    datosRelacionados: any = null,
-    enlaceDetalle: any = null,
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    titulo: string,
+    descripcion: string,
+    tipo: NotificacionTipo = "sistema",
+    datosRelacionados: Record<string, unknown> | null = null,
+    enlaceDetalle: string | null = null,
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     try {
       const notificacion = await Notificacion.create(
         {
@@ -42,9 +80,10 @@ class NotificacionService {
       );
 
       return notificacion;
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
-        `[Notification] Error creating notification for user ${usuarioId}: ${error.message}`
+        `[Notification] Error creating notification for user ${usuarioId}: ${msg}`
       );
       throw error;
     }
@@ -52,25 +91,25 @@ class NotificacionService {
 
   /**
    * Get a user's notifications (paginated)
-   * @param {number} usuarioId - User ID
-   * @param {number} page - Page (default 1)
-   * @param {number} limit - Limit per page (default 20, max 100)
-   * @param {string} tipo - Filter by type (optional)
-   * @param {string} estado - Filter by status: 'leida', 'no_leida' (optional)
+   * @param usuarioId - User ID
+   * @param page - Page (default 1)
+   * @param limit - Limit per page (default 20, max 100)
+   * @param tipo - Filter by type (optional)
+   * @param estado - Filter by status: 'leida', 'no_leida' (optional)
    */
   static async listar(
-    usuarioId: any,
-    page: any = 1,
-    limit: any = 20,
-    tipo: any = null,
-    estado: any = null
-  ) {
+    usuarioId: number,
+    page: number = 1,
+    limit: number = 20,
+    tipo: string | null = null,
+    estado: string | null = null
+  ): Promise<ListarResult> {
     try {
       // Validate max limit
       const actualLimit = Math.min(Math.max(1, limit), 100);
       const offset = (Math.max(1, page) - 1) * actualLimit;
 
-      const where: any = {
+      const where: WhereOptions = {
         usuario_id: usuarioId,
         deleted_at: null,
       };
@@ -111,22 +150,24 @@ class NotificacionService {
         pages: Math.ceil(count / actualLimit),
         notificaciones: rows,
       };
-    } catch (error: any) {
-      logger.error(
-        `[Notification] Error listing notifications: ${error.message}`
-      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error listing notifications: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Get notification by ID
-   * @param {number} notificacionId - Notification ID
-   * @param {number} usuarioId - User ID (to validate ownership)
+   * @param notificacionId - Notification ID
+   * @param usuarioId - User ID (to validate ownership)
    */
-  static async obtenerDetalle(notificacionId: any, usuarioId: any) {
+  static async obtenerDetalle(
+    notificacionId: string | number,
+    usuarioId: number
+  ): Promise<Notificacion> {
     try {
-      const notificacion: any = await Notificacion.findOne({
+      const notificacion = await Notificacion.findOne({
         where: {
           id: notificacionId,
           usuario_id: usuarioId,
@@ -139,20 +180,24 @@ class NotificacionService {
       }
 
       return notificacion;
-    } catch (error: any) {
-      logger.error(`[Notification] Error getting detail: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error getting detail: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Mark a notification as read
-   * @param {number} notificacionId - Notification ID
-   * @param {number} usuarioId - User ID (to validate ownership)
+   * @param notificacionId - Notification ID
+   * @param usuarioId - User ID (to validate ownership)
    */
-  static async marcarComoLeida(notificacionId: any, usuarioId: any) {
+  static async marcarComoLeida(
+    notificacionId: string | number,
+    usuarioId: number
+  ): Promise<Notificacion> {
     try {
-      const notificacion: any = await Notificacion.findOne({
+      const notificacion = await Notificacion.findOne({
         where: {
           id: notificacionId,
           usuario_id: usuarioId,
@@ -178,23 +223,26 @@ class NotificacionService {
         `[Notification] Notification #${notificacionId} marked as read`
       );
       return notificacion;
-    } catch (error: any) {
-      logger.error(`[Notification] Error marking as read: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error marking as read: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Mark all notifications for a user as read
-   * @param {number} usuarioId - User ID
+   * @param usuarioId - User ID
    */
-  static async marcarTodasComoLeidas(usuarioId: any) {
+  static async marcarTodasComoLeidas(
+    usuarioId: number
+  ): Promise<{ cantidad_actualizadas: number }> {
     try {
-      const ahora = new Date();
-      const [, count] = (await Notificacion.update(
+      const agora = new Date();
+      const [count] = await Notificacion.update(
         {
           estado: "leida",
-          fecha_lectura: ahora,
+          fecha_lectura: agora,
         },
         {
           where: {
@@ -203,28 +251,30 @@ class NotificacionService {
             deleted_at: null,
           },
         }
-      )) as any;
+      );
 
       logger.info(
         `[Notification] ${count} notifications marked as read for user ${usuarioId}`
       );
       return { cantidad_actualizadas: count };
-    } catch (error: any) {
-      logger.error(
-        `[Notification] Error marking all as read: ${error.message}`
-      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error marking all as read: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Delete a notification (soft delete)
-   * @param {number} notificacionId - Notification ID
-   * @param {number} usuarioId - User ID (to validate ownership)
+   * @param notificacionId - Notification ID
+   * @param usuarioId - User ID (to validate ownership)
    */
-  static async eliminar(notificacionId: any, usuarioId: any) {
+  static async eliminar(
+    notificacionId: string | number,
+    usuarioId: number
+  ): Promise<{ id: number; mensaje: string }> {
     try {
-      const notificacion: any = await Notificacion.findOne({
+      const notificacion = await Notificacion.findOne({
         where: {
           id: notificacionId,
           usuario_id: usuarioId,
@@ -239,20 +289,21 @@ class NotificacionService {
       await notificacion.update({ deleted_at: new Date() });
 
       logger.info(`[Notification] Notification #${notificacionId} deleted`);
-      return { id: notificacionId, mensaje: "Notification deleted" };
-    } catch (error: any) {
-      logger.error(
-        `[Notification] Error deleting notification: ${error.message}`
-      );
+      return { id: notificacionId as number, mensaje: "Notification deleted" };
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error deleting notification: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Count unread notifications for a user
-   * @param {number} usuarioId - User ID
+   * @param usuarioId - User ID
    */
-  static async contarNoLeidas(usuarioId: any) {
+  static async contarNoLeidas(
+    usuarioId: number
+  ): Promise<{ cantidad: number }> {
     try {
       const cantidad = await Notificacion.count({
         where: {
@@ -263,23 +314,24 @@ class NotificacionService {
       });
 
       return { cantidad };
-    } catch (error: any) {
-      logger.error(`[Notification] Error counting unread: ${error.message}`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(`[Notification] Error counting unread: ${msg}`);
       throw error;
     }
   }
 
   /**
    * Create gifted sub notification
-   * @param {number} usuarioId - ID of the user receiving the gift
-   * @param {Object} datosRegalo - Gift data (amount, gifter, tier, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - ID of the user receiving the gift
+   * @param datosRegalo - Gift data (amount, gifter, tier, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionSubRegalada(
-    usuarioId: any,
-    datosRegalo: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosRegalo: GiftData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const regalador = datosRegalo.regalador_username || "A user";
     const monto = datosRegalo.monto_subscription || "One";
     const titulo = `You received a gifted subscription!`;
@@ -298,15 +350,15 @@ class NotificacionService {
 
   /**
    * Create points earned notification
-   * @param {number} usuarioId - User ID
-   * @param {Object} datosPuntos - Points data (amount, concept, event, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - User ID
+   * @param datosPuntos - Points data (amount, concept, event, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionPuntosGanados(
-    usuarioId: any,
-    datosPuntos: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosPuntos: PointsData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const cantidad = datosPuntos.cantidad || 0;
     const concepto = datosPuntos.concepto || "Event";
     const titulo = `You earned ${cantidad} points!`;
@@ -325,15 +377,15 @@ class NotificacionService {
 
   /**
    * Create redemption created notification
-   * @param {number} usuarioId - User ID
-   * @param {Object} datosCanjeCreado - Redemption data (product, price, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - User ID
+   * @param datosCanjeCreado - Redemption data (product, price, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionCanjeCreado(
-    usuarioId: any,
-    datosCanjeCreado: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosCanjeCreado: CanjeData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const producto = datosCanjeCreado.nombre_producto || "Product";
     const precio = datosCanjeCreado.precio || 0;
     const titulo = `Redemption created!`;
@@ -352,15 +404,15 @@ class NotificacionService {
 
   /**
    * Create redemption delivered notification
-   * @param {number} usuarioId - User ID
-   * @param {Object} datosCanjeEntregado - Redemption data (product, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - User ID
+   * @param datosCanjeEntregado - Redemption data (product, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionCanjeEntregado(
-    usuarioId: any,
-    datosCanjeEntregado: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosCanjeEntregado: CanjeData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const producto = datosCanjeEntregado.nombre_producto || "Product";
     const titulo = `Your redemption was delivered!`;
     const descripcion = `Your redemption of "${producto}" has been marked as delivered`;
@@ -378,15 +430,15 @@ class NotificacionService {
 
   /**
    * Create redemption cancelled notification
-   * @param {number} usuarioId - User ID
-   * @param {Object} datosCanjesCancelado - Redemption data (product, reason, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - User ID
+   * @param datosCanjesCancelado - Redemption data (product, reason, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionCanjeCancelado(
-    usuarioId: any,
-    datosCanjesCancelado: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosCanjesCancelado: CanjeData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const producto = datosCanjesCancelado.nombre_producto || "Product";
     const motivo = datosCanjesCancelado.motivo || "Unspecified";
     const titulo = `Your redemption was cancelled`;
@@ -405,15 +457,15 @@ class NotificacionService {
 
   /**
    * Create redemption returned notification
-   * @param {number} usuarioId - User ID
-   * @param {Object} datosCanjeDevuelto - Redemption data (product, points returned, etc.)
-   * @param {Object} transaction - Sequelize transaction (optional)
+   * @param usuarioId - User ID
+   * @param datosCanjeDevuelto - Redemption data (product, points returned, etc.)
+   * @param transaction - Sequelize transaction (optional)
    */
   static async crearNotificacionCanjeDevuelto(
-    usuarioId: any,
-    datosCanjeDevuelto: any = {},
-    transaction: any = null
-  ) {
+    usuarioId: number,
+    datosCanjeDevuelto: CanjeData = {},
+    transaction: Transaction | null = null
+  ): Promise<Notificacion> {
     const producto = datosCanjeDevuelto.nombre_producto || "Product";
     const puntosDevueltos = datosCanjeDevuelto.puntos_devueltos || 0;
     const titulo = `Your redemption was returned`;

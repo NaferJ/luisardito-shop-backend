@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import { KickBotCommand } from "../models";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
@@ -12,8 +10,8 @@ import kickBotService from "./kickBot.service"; // Import the singleton instance
  * NOTE: This system is exclusive to Kick, it does NOT send to Discord
  */
 class KickBotAutoSendService {
-  kickBotService: any;
-  intervalId: any;
+  kickBotService: typeof kickBotService;
+  intervalId: NodeJS.Timeout | null;
   isRunning: boolean;
   checkInterval: number;
 
@@ -69,7 +67,7 @@ class KickBotAutoSendService {
   async checkAndSendCommands() {
     try {
       // Get commands with auto-send enabled
-      const autoSendCommands: any = await KickBotCommand.findAll({
+      const autoSendCommands = await KickBotCommand.findAll({
         where: {
           enabled: true,
           auto_send_interval_seconds: {
@@ -93,28 +91,30 @@ class KickBotAutoSendService {
             command.last_used_at = now;
             await command.save();
           }
-        } catch (error: any) {
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
           logger.error(
             `[AUTO-SEND] Error processing command ${command.command}:`,
-            error
+            msg
           );
         }
       }
-    } catch (error: any) {
-      logger.error("[AUTO-SEND] Error in checkAndSendCommands:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[AUTO-SEND] Error in checkAndSendCommands:", msg);
     }
   }
 
   /**
    * Checks if a command should be sent at this time
    */
-  async shouldSendCommand(command: any, now: any) {
+  async shouldSendCommand(command: KickBotCommand, now: Date) {
     if (!command.last_used_at) {
       // Never sent, send now
       return true;
     }
 
-    const timeSinceLastSend = now - command.last_used_at;
+    const timeSinceLastSend = now.getTime() - command.last_used_at.getTime();
     const intervalMs = command.auto_send_interval_seconds * 1000;
 
     return timeSinceLastSend >= intervalMs;
@@ -123,11 +123,11 @@ class KickBotAutoSendService {
   /**
    * Sends a command automatically
    */
-  async sendCommand(command: any) {
+  async sendCommand(command: KickBotCommand) {
     try {
       logger.info(`[AUTO-SEND] Sending automatic command: !${command.command}`);
 
-      let response;
+      let response: string | null;
 
       if (command.command_type === "dynamic") {
         // For dynamic commands, we need to simulate the context
@@ -164,10 +164,11 @@ class KickBotAutoSendService {
         // Increment usage counter
         await command.incrementUsage();
       }
-    } catch (error: any) {
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
         `[AUTO-SEND] Error sending command ${command.command}:`,
-        error
+        msg
       );
     }
   }

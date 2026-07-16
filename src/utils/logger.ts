@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 /**
  * Centralized logging system with environment variable control
  * Debug logs can be disabled in production without affecting critical errors
@@ -19,7 +16,7 @@ const logger = {
   /**
    * Info logs - can be disabled in production
    */
-  info: (...args: any[]) => {
+  info: (...args: unknown[]) => {
     if (shouldLog) {
       console.log(...args);
     }
@@ -28,7 +25,7 @@ const logger = {
   /**
    * Warning logs - can be disabled in production
    */
-  warn: (...args: any[]) => {
+  warn: (...args: unknown[]) => {
     if (shouldLog) {
       console.warn(...args);
     }
@@ -37,14 +34,14 @@ const logger = {
   /**
    * Error logs - ALWAYS logged (critical)
    */
-  error: (...args: any[]) => {
+  error: (...args: unknown[]) => {
     console.error(...args);
   },
 
   /**
    * Debug logs - only in development or when DEBUG_LOGS=true
    */
-  debug: (...args: any[]) => {
+  debug: (...args: unknown[]) => {
     if (shouldLog) {
       console.log("[DEBUG]", ...args);
     }

@@ -1,13 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import { Producto, Promocion, PromocionProducto, sequelize } from "../models";
-import { Op } from "sequelize";
+import { Op, WhereOptions } from "sequelize";
 import promocionService from "../services/promocion.service";
 import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
 
-const CANJES_COUNT_ATTRIBUTES: any = {
+const CANJES_COUNT_ATTRIBUTES: {
+  include: Array<[ReturnType<typeof sequelize.literal>, string]>;
+} = {
   include: [
     [
       sequelize.literal(
@@ -18,7 +19,7 @@ const CANJES_COUNT_ATTRIBUTES: any = {
   ],
 };
 
-function parseSortOrder(sortParam: any): any {
+function parseSortOrder(sortParam: unknown): Array<[string, string]> {
   switch ((sortParam || "").toString().toLowerCase()) {
     case "price_asc":
     case "precio_asc":
@@ -30,7 +31,10 @@ function parseSortOrder(sortParam: any): any {
   }
 }
 
-async function enrichProductoWithDiscounts(producto: any, usuarioId: any) {
+async function enrichProductoWithDiscounts(
+  producto: Producto,
+  usuarioId: number | null
+) {
   const infoDescuento = await promocionService.calcularMejorDescuento(
     producto.id,
     producto.precio,
@@ -46,7 +50,7 @@ async function enrichProductoWithDiscounts(producto: any, usuarioId: any) {
   return {
     ...producto.toJSON(),
     descuento: infoDescuento,
-    promociones_activas: promocionesActivas.map((p: any) => ({
+    promociones_activas: promocionesActivas.map((p) => ({
       id: p.id,
       codigo: p.codigo,
       titulo: p.titulo,
@@ -57,7 +61,10 @@ async function enrichProductoWithDiscounts(producto: any, usuarioId: any) {
   };
 }
 
-async function buildProductoDetailResponse(producto: any, usuarioId: any) {
+async function buildProductoDetailResponse(
+  producto: Producto,
+  usuarioId: number | null
+) {
   const infoDescuento = await promocionService.calcularMejorDescuento(
     producto.id,
     producto.precio,
@@ -73,7 +80,7 @@ async function buildProductoDetailResponse(producto: any, usuarioId: any) {
   return {
     ...producto.toJSON(),
     descuento: infoDescuento,
-    promociones_activas: promocionesActivas.map((p: any) => ({
+    promociones_activas: promocionesActivas.map((p) => ({
       id: p.id,
       codigo: p.codigo,
       titulo: p.titulo,
@@ -89,8 +96,8 @@ async function buildProductoDetailResponse(producto: any, usuarioId: any) {
 }
 
 // List all (with price sort; default DESC). For public, usually only published.
-const listar = asyncHandler(async (req: any, res: any) => {
-  const where: any = {};
+const listar = asyncHandler(async (req: Request, res: Response) => {
+  const where: WhereOptions = {};
 
   if (!req.user || req.user.rol_id <= 2) {
     // Non-logged-in or basic users (role 1-2) only see published products
@@ -108,7 +115,7 @@ const listar = asyncHandler(async (req: any, res: any) => {
   // Add discount info to each product
   const usuarioId = req.user ? req.user.id : null;
   const productosConDescuentos = await Promise.all(
-    productos.map((producto: any) =>
+    productos.map((producto) =>
       enrichProductoWithDiscounts(producto, usuarioId)
     )
   );
@@ -116,8 +123,8 @@ const listar = asyncHandler(async (req: any, res: any) => {
   res.json(productosConDescuentos);
 });
 
-const obtener = asyncHandler(async (req: any, res: any) => {
-  const producto: any = await Producto.findByPk(req.params.id, {
+const obtener = asyncHandler(async (req: Request, res: Response) => {
+  const producto = await Producto.findByPk(req.params.id as string, {
     attributes: CANJES_COUNT_ATTRIBUTES,
   });
   if (!producto) throw new AppError("Not found", 404);
@@ -126,9 +133,9 @@ const obtener = asyncHandler(async (req: any, res: any) => {
   res.json(await buildProductoDetailResponse(producto, usuarioId));
 });
 
-const obtenerPorSlug = asyncHandler(async (req: any, res: any) => {
+const obtenerPorSlug = asyncHandler(async (req: Request, res: Response) => {
   const { slug } = req.params;
-  const where: any = { slug };
+  const where: WhereOptions = { slug };
 
   if (!req.user || req.user.rol_id <= 2) {
     where.estado = "publicado";
@@ -136,7 +143,7 @@ const obtenerPorSlug = asyncHandler(async (req: any, res: any) => {
     where.estado = { [Op.in]: ["publicado", "borrador"] };
   }
 
-  const producto: any = await Producto.findOne({
+  const producto = await Producto.findOne({
     where,
     attributes: CANJES_COUNT_ATTRIBUTES,
   });
@@ -147,28 +154,28 @@ const obtenerPorSlug = asyncHandler(async (req: any, res: any) => {
   res.json(await buildProductoDetailResponse(producto, usuarioId));
 });
 
-const crear = asyncHandler(async (req: any, res: any) => {
+const crear = asyncHandler(async (req: Request, res: Response) => {
   try {
     const producto = await Producto.create(req.body);
     res.status(201).json(producto);
-  } catch (err: any) {
-    throw new AppError(err.message, 400);
+  } catch (err) {
+    throw new AppError(err instanceof Error ? err.message : String(err), 400);
   }
 });
 
-const editar = asyncHandler(async (req: any, res: any) => {
-  const producto: any = await Producto.findByPk(req.params.id);
+const editar = asyncHandler(async (req: Request, res: Response) => {
+  const producto = await Producto.findByPk(req.params.id as string);
   if (!producto) throw new AppError("Not found", 404);
   try {
     await producto.update(req.body);
     res.json(producto);
-  } catch (err: any) {
-    throw new AppError(err.message, 400);
+  } catch (err) {
+    throw new AppError(err instanceof Error ? err.message : String(err), 400);
   }
 });
 
-const eliminar = asyncHandler(async (req: any, res: any) => {
-  const producto: any = await Producto.findByPk(req.params.id);
+const eliminar = asyncHandler(async (req: Request, res: Response) => {
+  const producto = await Producto.findByPk(req.params.id as string);
   if (!producto) throw new AppError("Not found", 404);
   await producto.destroy();
   res.json({ message: "Product deleted" });
@@ -177,62 +184,64 @@ const eliminar = asyncHandler(async (req: any, res: any) => {
 /**
  * Update product promotions
  */
-const actualizarPromociones = asyncHandler(async (req: any, res: any) => {
-  try {
-    const { id } = req.params;
-    const { promocion_ids } = req.body; // Array of promotion IDs to assign
+const actualizarPromociones = asyncHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const id = req.params.id as string;
+      const { promocion_ids } = req.body; // Array of promotion IDs to assign
 
-    if (!Array.isArray(promocion_ids)) {
-      throw new AppError("promocion_ids must be an array", 400);
-    }
+      if (!Array.isArray(promocion_ids)) {
+        throw new AppError("promocion_ids must be an array", 400);
+      }
 
-    const producto: any = await Producto.findByPk(id);
-    if (!producto) {
-      throw new AppError("Product not found", 404);
-    }
+      const producto = await Producto.findByPk(id);
+      if (!producto) {
+        throw new AppError("Product not found", 404);
+      }
 
-    // For each selected promotion, update its product list
-    // For each selected promotion, update its product list
+      // For each selected promotion, update its product list
+      // For each selected promotion, update its product list
 
-    const todasPromociones = await Promocion.findAll({
-      attributes: ["id"],
-    });
-
-    for (const promo of todasPromociones) {
-      const debeEstar = promocion_ids.includes(promo.id);
-      const estaAsignado: any = await PromocionProducto.findOne({
-        where: {
-          promocion_id: promo.id,
-          producto_id: id,
-        },
+      const todasPromociones = await Promocion.findAll({
+        attributes: ["id"],
       });
 
-      if (debeEstar && !estaAsignado) {
-        // Add relation
-        await PromocionProducto.create({
-          promocion_id: promo.id,
-          producto_id: id,
+      for (const promo of todasPromociones) {
+        const debeEstar = promocion_ids.includes(promo.id);
+        const estaAsignado = await PromocionProducto.findOne({
+          where: {
+            promocion_id: promo.id,
+            producto_id: id as unknown as number,
+          },
         });
-      } else if (!debeEstar && estaAsignado) {
-        // Remove relation
-        await estaAsignado.destroy();
-      }
-    }
 
-    res.json({
-      message: "Promotions updated successfully",
-      producto_id: id,
-      promociones_asignadas: promocion_ids,
-    });
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    logger.error("Error updating product promotions:", error);
-    throw new AppError("Error updating promotions", 500);
+        if (debeEstar && !estaAsignado) {
+          // Add relation
+          await PromocionProducto.create({
+            promocion_id: promo.id,
+            producto_id: id as unknown as number,
+          });
+        } else if (!debeEstar && estaAsignado) {
+          // Remove relation
+          await estaAsignado.destroy();
+        }
+      }
+
+      res.json({
+        message: "Promotions updated successfully",
+        producto_id: id,
+        promociones_asignadas: promocion_ids,
+      });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error("Error updating product promotions:", error);
+      throw new AppError("Error updating promotions", 500);
+    }
   }
-});
+);
 
 // Debug endpoint to list all products without filters
-const debugListar = asyncHandler(async (req: any, res: any) => {
+const debugListar = asyncHandler(async (_req: Request, res: Response) => {
   const productos = await Producto.findAll({
     order: [["id", "ASC"]],
     attributes: CANJES_COUNT_ATTRIBUTES,
@@ -240,13 +249,15 @@ const debugListar = asyncHandler(async (req: any, res: any) => {
 
   res.json({
     total: productos.length,
-    productos: productos.map((p: any) => ({
+    productos: productos.map((p) => ({
       id: p.id,
       nombre: p.nombre,
       estado: p.estado,
       precio: p.precio,
       stock: p.stock,
-      canjes_count: p.get ? p.get("canjes_count") : p.canjes_count,
+      canjes_count: p.get
+        ? p.get("canjes_count")
+        : (p.getDataValue as (key: string) => unknown)("canjes_count"),
       creado: p.creado,
       actualizado: p.actualizado,
     })),
@@ -254,7 +265,7 @@ const debugListar = asyncHandler(async (req: any, res: any) => {
 });
 
 // ADMIN endpoint: lists all products with canjes_count (requires auth/permission at route level)
-const listarAdmin = asyncHandler(async (req: any, res: any) => {
+const listarAdmin = asyncHandler(async (req: Request, res: Response) => {
   const order = parseSortOrder(req.query.sort);
 
   const productos = await Producto.findAll({
@@ -265,9 +276,7 @@ const listarAdmin = asyncHandler(async (req: any, res: any) => {
   // Add discount info to each product
   // ADMIN: Do not filter by user - show all product promotions
   const productosConDescuentos = await Promise.all(
-    productos.map((producto: any) =>
-      enrichProductoWithDiscounts(producto, null)
-    )
+    productos.map((producto) => enrichProductoWithDiscounts(producto, null))
   );
 
   res.json(productosConDescuentos);

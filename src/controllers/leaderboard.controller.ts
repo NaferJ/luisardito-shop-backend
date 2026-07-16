@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import leaderboardService from "../services/leaderboard.service";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
@@ -12,10 +11,12 @@ import AppError from "../utils/AppError";
  *   - offset: offset for pagination (default: 0)
  *   - userId: ID of the user to include their specific position
  */
-const getLeaderboard = asyncHandler(async (req: any, res: any) => {
-  const limit = Number.parseInt(req.query.limit) || 100;
-  const offset = Number.parseInt(req.query.offset) || 0;
-  const userId = req.query.userId ? Number.parseInt(req.query.userId) : null;
+const getLeaderboard = asyncHandler(async (req: Request, res: Response) => {
+  const limit = Number.parseInt(req.query.limit as string) || 100;
+  const offset = Number.parseInt(req.query.offset as string) || 0;
+  const userId = req.query.userId
+    ? Number.parseInt(req.query.userId as string)
+    : null;
 
   // Validations
   if (limit < 1 || limit > 500) {
@@ -41,9 +42,9 @@ const getLeaderboard = asyncHandler(async (req: any, res: any) => {
  * Query params:
  *   - days: days of history (default: 7)
  */
-const getUserHistory = asyncHandler(async (req: any, res: any) => {
-  const userId = Number.parseInt(req.params.userId);
-  const days = Number.parseInt(req.query.days) || 7;
+const getUserHistory = asyncHandler(async (req: Request, res: Response) => {
+  const userId = Number.parseInt(req.params.userId as string);
+  const days = Number.parseInt(req.query.days as string) || 7;
 
   if (!userId || Number.isNaN(userId)) {
     throw new AppError("Invalid user ID", 400);
@@ -62,7 +63,7 @@ const getUserHistory = asyncHandler(async (req: any, res: any) => {
  * Gets general leaderboard statistics
  * GET /api/leaderboard/stats
  */
-const getStats = asyncHandler(async (req: any, res: any) => {
+const getStats = asyncHandler(async (_req: Request, res: Response) => {
   const result = await leaderboardService.getLeaderboardStats();
 
   res.json(result);
@@ -73,7 +74,7 @@ const getStats = asyncHandler(async (req: any, res: any) => {
  * GET /api/leaderboard/me
  * Requires authentication
  */
-const getMyPosition = asyncHandler(async (req: any, res: any) => {
+const getMyPosition = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user.id; // Comes from the auth middleware
 
   const result = await leaderboardService.getLeaderboard({
@@ -101,7 +102,7 @@ const getMyPosition = asyncHandler(async (req: any, res: any) => {
  * POST /api/leaderboard/snapshot
  * Requires admin permissions
  */
-const createSnapshot = asyncHandler(async (req: any, res: any) => {
+const createSnapshot = asyncHandler(async (_req: Request, res: Response) => {
   const result = await leaderboardService.createSnapshot();
 
   res.json(result);
@@ -114,8 +115,8 @@ const createSnapshot = asyncHandler(async (req: any, res: any) => {
  *   - days: days of history to keep (default: 30)
  * Requires admin permissions
  */
-const cleanOldSnapshots = asyncHandler(async (req: any, res: any) => {
-  const daysToKeep = Number.parseInt(req.query.days) || 30;
+const cleanOldSnapshots = asyncHandler(async (req: Request, res: Response) => {
+  const daysToKeep = Number.parseInt(req.query.days as string) || 30;
 
   if (daysToKeep < 7) {
     throw new AppError("You must keep at least 7 days of history", 400);
@@ -130,11 +131,11 @@ const cleanOldSnapshots = asyncHandler(async (req: any, res: any) => {
  * Gets the top 10 leaderboard (fast and simple endpoint)
  * GET /api/leaderboard/top10
  */
-const getTop10 = asyncHandler(async (req: any, res: any) => {
+const getTop10 = asyncHandler(async (_req: Request, res: Response) => {
   const result = await leaderboardService.getLeaderboard({
     limit: 10,
     offset: 0,
-  } as any);
+  });
 
   res.json({
     success: true,

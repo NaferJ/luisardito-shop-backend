@@ -1,10 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import cors from "cors";
+import type { RequestHandler } from "express";
 
 // CORS optimized for production
-const corsHandler = (req: any, res: any, next: any) => {
+const corsHandler: RequestHandler = (req, res, next) => {
   // Detect webhooks to allow full access
   const isWebhook =
     req.originalUrl && req.originalUrl.includes("/api/kick-webhook");
@@ -18,14 +16,16 @@ const corsHandler = (req: any, res: any, next: any) => {
     res.header("Access-Control-Expose-Headers", "*");
 
     if (req.method === "OPTIONS") {
-      return res.sendStatus(200);
+      res.sendStatus(200);
+      return;
     }
-    return next();
+    next();
+    return;
   }
 
   // For everything else: specific CORS
-  return cors({
-    origin: function (origin: any, callback: any) {
+  cors({
+    origin: (origin, callback) => {
       const allowedOrigins = [
         "https://luisardito.com",
         "https://shop.luisardito.com",

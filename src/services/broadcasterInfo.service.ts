@@ -1,35 +1,48 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import { getRedisClient } from "../config/redis.config";
 import config from "../../config";
 import logger from "../utils/logger";
 
-function parseStreamInfo(raw: any) {
+interface StreamInfo {
+  title?: string;
+  category?: string;
+  category_id?: number;
+  language?: string;
+  has_mature_content?: boolean;
+  started_at?: string;
+  [key: string]: unknown;
+}
+
+function parseStreamInfo(raw: string | null): StreamInfo | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw);
-  } catch (err: any) {
-    logger.error("[BroadcasterInfo] Error parsing stream info:", err.message);
+    return JSON.parse(raw) as StreamInfo;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error("[BroadcasterInfo] Error parsing stream info:", msg);
     return null;
   }
 }
 
-function computeUptime(isOnline: any, streamInfo: any) {
+function computeUptime(isOnline: boolean, streamInfo: StreamInfo | null) {
   if (!isOnline || !streamInfo?.started_at) {
     return { startedAt: null, uptimeMinutes: null };
   }
   const startedAt = streamInfo.started_at;
-  const startTime: any = new Date(startedAt);
-  const now: any = new Date();
-  const uptimeMinutes = Math.floor((now - startTime) / 1000 / 60);
+  const startTime = new Date(startedAt);
+  const now = new Date();
+  const uptimeMinutes = Math.floor(
+    (now.getTime() - startTime.getTime()) / 1000 / 60
+  );
   return { startedAt, uptimeMinutes };
 }
 
-function formatLastLiveAgo(isOnline: any, lastStatusUpdate: any) {
+function formatLastLiveAgo(isOnline: boolean, lastStatusUpdate: string | null) {
   if (isOnline || !lastStatusUpdate) return null;
-  const lastUpdate: any = new Date(lastStatusUpdate);
-  const now: any = new Date();
-  const minutesAgo = Math.floor((now - lastUpdate) / 1000 / 60);
+  const lastUpdate = new Date(lastStatusUpdate);
+  const now = new Date();
+  const minutesAgo = Math.floor(
+    (now.getTime() - lastUpdate.getTime()) / 1000 / 60
+  );
 
   if (minutesAgo < 60) {
     return `${minutesAgo} minute${minutesAgo !== 1 ? "s" : ""} ago`;
@@ -49,7 +62,7 @@ function formatLastLiveAgo(isOnline: any, lastStatusUpdate: any) {
 class BroadcasterInfoService {
   /**
    * Gets all public broadcaster info
-   * @returns {Promise<Object>} Complete broadcaster info
+   * @returns Complete broadcaster info
    */
   async getBroadcasterInfo() {
     try {
@@ -113,11 +126,9 @@ class BroadcasterInfoService {
       );
 
       return broadcasterInfo;
-    } catch (error: any) {
-      logger.error(
-        "[BroadcasterInfo] Error getting broadcaster info:",
-        error.message
-      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BroadcasterInfo] Error getting broadcaster info:", msg);
 
       // Return basic info on error
       return {
@@ -150,7 +161,7 @@ class BroadcasterInfoService {
 
   /**
    * Gets only the basic stream status (faster)
-   * @returns {Promise<Object>} Basic stream status
+   * @returns Basic stream status
    */
   async getStreamStatus() {
     try {
@@ -162,16 +173,14 @@ class BroadcasterInfoService {
         status: isLive === "true" ? "online" : "offline",
         checked_at: new Date().toISOString(),
       };
-    } catch (error: any) {
-      logger.error(
-        "[BroadcasterInfo] Error getting stream status:",
-        error.message
-      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BroadcasterInfo] Error getting stream status:", msg);
       return {
         is_live: false,
         status: "unknown",
         checked_at: new Date().toISOString(),
-        error: error.message,
+        error: msg,
       };
     }
   }

@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import {
   KickPointsConfig,
   KickUserTracking,
@@ -17,11 +14,51 @@ import { getRedisClient } from "../../../config/redis.config";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
+interface KickSender {
+  user_id: string | number;
+  username: string;
+  profile_picture?: string;
+  identity?: { badges?: { type: string }[] };
+}
+
+interface ChatMessagePayload {
+  content: string;
+  message_id?: string;
+  sender: KickSender;
+  broadcaster: { user_id: string; username: string };
+  channel?: { username?: string };
+}
+
+interface WebhookMetadata {
+  [key: string]: unknown;
+}
+
+interface BotrixConfigData {
+  migration_enabled: boolean;
+  watchtime_migration_enabled: boolean;
+}
+
+interface SubscriberStatusResult {
+  isSubscriber: boolean;
+  userTracking: KickUserTracking | null;
+}
+
+interface AwardChatPointsContext {
+  isVipActive: boolean;
+  isSubscriber: boolean;
+  payload: ChatMessagePayload;
+  kickUserId: string;
+  kickUsername: string;
+}
+
 /**
  * Process Botrix migration (points + watchtime) for a chat message.
  * Returns true if the message was fully consumed by migration.
  */
-async function processBotrixMigration(payload: any, botrixConfig: any) {
+async function processBotrixMigration(
+  payload: ChatMessagePayload,
+  botrixConfig: BotrixConfigData
+): Promise<boolean> {
   if (botrixConfig.migration_enabled) {
     const botrixResult =
       await BotrixMigrationService.processChatMessage(payload);
@@ -56,7 +93,9 @@ async function processBotrixMigration(payload: any, botrixConfig: any) {
 /**
  * Process moderator commands from chat. Returns true if message was consumed.
  */
-async function processModeratorCommands(payload: any) {
+async function processModeratorCommands(
+  payload: ChatMessagePayload
+): Promise<boolean> {
   try {
     const content = String(payload.content || "").trim();
     const modCommands = ["!addcmd", "!editcmd", "!delcmd", "!cmdinfo"];
@@ -65,8 +104,9 @@ async function processModeratorCommands(payload: any) {
       return false;
     }
 
-    const modResult =
-      await ModeratorCommandsService.processModeratorCommand(payload);
+    const modResult = await ModeratorCommandsService.processModeratorCommand(
+      payload as never
+    );
 
     if (!modResult.processed) {
       return false;
@@ -81,20 +121,17 @@ async function processModeratorCommands(payload: any) {
         const bot = (await import("../../kickBot.service")).default;
         await bot.sendMessage(modResult.message);
         logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
-      } catch (botError) {
-        logger.error(
-          `[MOD-CMD] Error sending response to chat:`,
-          botError.message
-        );
+      } catch (botError: unknown) {
+        const msg =
+          botError instanceof Error ? botError.message : String(botError);
+        logger.error(`[MOD-CMD] Error sending response to chat:`, msg);
       }
     }
 
     return true;
-  } catch (modErr) {
-    logger.error(
-      "[MOD-CMD] Error handling moderator commands:",
-      modErr.message
-    );
+  } catch (modErr: unknown) {
+    const msg = modErr instanceof Error ? modErr.message : String(modErr);
+    logger.error("[MOD-CMD] Error handling moderator commands:", msg);
     return false;
   }
 }
@@ -103,10 +140,10 @@ async function processModeratorCommands(payload: any) {
  * Process bot commands from chat.
  */
 async function processBotCommands(
-  payload: any,
-  kickUserId: any,
-  kickUsername: any
-) {
+  payload: ChatMessagePayload,
+  kickUserId: string,
+  kickUsername: string
+): Promise<void> {
   try {
     const content = String(payload.content || "").trim();
     if (!content.startsWith("!")) {
@@ -139,22 +176,25 @@ async function processBotCommands(
         `[BOT-COMMAND] Command not registered: ${content.split(/\s+/)[0]}`
       );
     }
-  } catch (cmdErr) {
-    logger.error("[Chat Command] Error handling commands:", cmdErr.message);
+  } catch (cmdErr: unknown) {
+    const msg = cmdErr instanceof Error ? cmdErr.message : String(cmdErr);
+    logger.error("[Chat Command] Error handling commands:", msg);
   }
 }
 
 /**
  * Check if stream is live via Redis. Returns true if live (or on Redis error, assumes live).
  */
-async function isStreamLive() {
+async function isStreamLive(): Promise<boolean> {
   try {
     const redis = getRedisClient();
     const isLive = await redis.get("stream:is_live");
 
     return isLive === "true";
-  } catch (redisError) {
-    logger.error(`[STREAM] Error checking status:`, redisError.message);
+  } catch (redisError: unknown) {
+    const msg =
+      redisError instanceof Error ? redisError.message : String(redisError);
+    logger.error(`[STREAM] Error checking status:`, msg);
     logger.info(`[STREAM] Assuming LIVE due to Redis error`);
     return true;
   }
@@ -163,7 +203,10 @@ async function isStreamLive() {
 /**
  * Process watchtime tracking for a user on every chat message.
  */
-async function processWatchtime(kickUserId: any, usuarioId: any) {
+async function processWatchtime(
+  kickUserId: string,
+  usuarioId: number
+): Promise<void> {
   try {
     const wtNow = new Date();
     const redis = getRedisClient();
@@ -207,16 +250,23 @@ async function processWatchtime(kickUserId: any, usuarioId: any) {
     }
 
     logger.info(`[WATCHTIME] User ${kickUserId} +1 minute`);
-  } catch (watchtimeError) {
-    logger.error(`[WATCHTIME] Error:`, watchtimeError.message);
+  } catch (watchtimeError: unknown) {
+    const msg =
+      watchtimeError instanceof Error
+        ? watchtimeError.message
+        : String(watchtimeError);
+    logger.error(`[WATCHTIME] Error:`, msg);
   }
 }
 
 /**
  * Resolve subscriber status for a Kick user, deactivating expired subscriptions.
  */
-async function resolveSubscriberStatus(kickUserId: any, kickUsername: any) {
-  const userTracking: any = await KickUserTracking.findOne({
+async function resolveSubscriberStatus(
+  kickUserId: string,
+  kickUsername: string
+): Promise<SubscriberStatusResult> {
+  const userTracking = await KickUserTracking.findOne({
     where: { kick_user_id: kickUserId },
   });
 
@@ -242,8 +292,9 @@ async function resolveSubscriberStatus(kickUserId: any, kickUsername: any) {
     logger.info(
       `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`
     );
-  } catch (e) {
-    logger.error("[CHAT] Error deactivating expired subscription:", e.message);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    logger.error("[CHAT] Error deactivating expired subscription:", msg);
   }
 
   return { isSubscriber: false, userTracking };
@@ -253,11 +304,11 @@ async function resolveSubscriberStatus(kickUserId: any, kickUsername: any) {
  * Award chat points to a user within a DB transaction.
  */
 async function awardChatPoints(
-  usuario: any,
-  pointsToAward: any,
-  userType: any,
-  ctx: any
-) {
+  usuario: Usuario,
+  pointsToAward: number,
+  userType: string,
+  ctx: AwardChatPointsContext
+): Promise<void> {
   const { isVipActive, isSubscriber, payload, kickUserId, kickUsername } = ctx;
   const COOLDOWN_MS = 5 * 60 * 1000;
   const cooldownKey = `chat_cooldown:${kickUserId}`;
@@ -277,16 +328,18 @@ async function awardChatPoints(
       logger.info(`[REDIS COOLDOWN] ${kickUsername} BLOCKED - active cooldown`);
       return;
     }
-  } catch (redisError) {
-    logger.error(`[REDIS COOLDOWN] Redis error:`, redisError.message);
+  } catch (redisError: unknown) {
+    const msg =
+      redisError instanceof Error ? redisError.message : String(redisError);
+    logger.error(`[REDIS COOLDOWN] Redis error:`, msg);
   }
 
-  const transaction: any = await sequelize.transaction({
+  const transaction = await sequelize.transaction({
     isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
   });
 
   try {
-    await usuario.increment("puntos", { by: pointsToAward }, { transaction });
+    await usuario.increment("puntos", { by: pointsToAward, transaction });
 
     const usuarioActualizado = await usuario.reload({ transaction });
     if (usuarioActualizado.puntos > usuarioActualizado.max_puntos) {
@@ -323,21 +376,23 @@ async function awardChatPoints(
     logger.info(
       `[Chat Message] ${pointsToAward} points -> ${kickUsername} (${userType})`
     );
-  } catch (transactionError) {
+  } catch (transactionError: unknown) {
     await transaction.rollback();
-    logger.error(
-      `[Chat Message] Transaction error for ${kickUsername}:`,
-      transactionError.message
-    );
+    const msg =
+      transactionError instanceof Error
+        ? transactionError.message
+        : String(transactionError);
+    logger.error(`[Chat Message] Transaction error for ${kickUsername}:`, msg);
 
     try {
       const redis = getRedisClient();
       await redis.del(cooldownKey);
-    } catch (redisCleanupError) {
-      logger.error(
-        `[REDIS COOLDOWN] Error cleaning cooldown:`,
-        redisCleanupError.message
-      );
+    } catch (redisCleanupError: unknown) {
+      const cleanupMsg =
+        redisCleanupError instanceof Error
+          ? redisCleanupError.message
+          : String(redisCleanupError);
+      logger.error(`[REDIS COOLDOWN] Error cleaning cooldown:`, cleanupMsg);
     }
 
     throw transactionError;
@@ -347,14 +402,17 @@ async function awardChatPoints(
 /**
  * Handle chat messages
  */
-async function handleChatMessage(payload: any, _metadata: any) {
+async function handleChatMessage(
+  payload: ChatMessagePayload,
+  _metadata: WebhookMetadata
+): Promise<void> {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
     const kickUsername = sender.username;
 
     // PRIORITY 1: Check if it's a Botrix migration
-    const botrixConfig: any = await (BotrixMigrationConfig as any).getConfig();
+    const botrixConfig = await BotrixMigrationConfig.getConfig();
 
     const botrixConsumed = await processBotrixMigration(payload, botrixConfig);
     if (botrixConsumed) return;
@@ -382,7 +440,7 @@ async function handleChatMessage(payload: any, _metadata: any) {
     logger.info(`[STREAM] LIVE - Processing points for ${kickUsername}`);
 
     // Check if user exists in our DB
-    const usuario: any = await Usuario.findOne({
+    const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -399,18 +457,18 @@ async function handleChatMessage(payload: any, _metadata: any) {
       kickUsername,
       kickUserId,
       false,
-      sender.profile_picture
+      sender.profile_picture ?? null
     );
 
     // WATCHTIME: Processed on EVERY message (live stream + registered user)
     await processWatchtime(kickUserId, usuario.id);
 
     // Get points configuration
-    const configs: any = await KickPointsConfig.findAll({
+    const configs = await KickPointsConfig.findAll({
       where: { enabled: true },
     });
 
-    const configMap = {};
+    const configMap: Record<string, number> = {};
     configs.forEach((c) => {
       configMap[c.config_key] = c.config_value;
     });
@@ -452,8 +510,9 @@ async function handleChatMessage(payload: any, _metadata: any) {
       kickUserId,
       kickUsername,
     });
-  } catch (error) {
-    logger.error("[Chat Message] Error:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Chat Message] Error:", msg);
   }
 }
 

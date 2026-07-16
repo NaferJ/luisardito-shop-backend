@@ -1,7 +1,7 @@
-// Importar sequelize desde el archivo separado
+// Import sequelize from the separate file
 import { sequelize } from "./database";
 
-// Importar todos los modelos
+// Import all models
 import Usuario from "./usuario.model";
 import Rol from "./rol.model";
 import Permiso from "./permiso.model";
@@ -28,16 +28,16 @@ import DiscordUserLink from "./discordUserLink.model";
 import Notificacion from "./notificacion.model";
 import UserWatchtime from "./userWatchtime.model";
 
-// DEFINIR ASOCIACIONES
-// Asociación entre Permiso y RolPermiso (necesaria para el include en el middleware)
+// DEFINE ASSOCIATIONS
+// Association between Permiso and RolPermiso (needed for the include in the middleware)
 Permiso.hasMany(RolPermiso, { foreignKey: "permiso_id" });
 RolPermiso.belongsTo(Permiso, { foreignKey: "permiso_id" });
 
-// Asociación entre Rol y RolPermiso
+// Association between Rol and RolPermiso
 Rol.hasMany(RolPermiso, { foreignKey: "rol_id" });
 RolPermiso.belongsTo(Rol, { foreignKey: "rol_id" });
 
-// Asociaciones many-to-many (opcionales pero útiles)
+// Many-to-many associations (optional but useful)
 Rol.belongsToMany(Permiso, {
   through: RolPermiso,
   foreignKey: "rol_id",
@@ -49,29 +49,29 @@ Permiso.belongsToMany(Rol, {
   otherKey: "rol_id",
 });
 
-// Asociación entre Usuario y Rol (si no la tienes ya)
+// Association between Usuario and Rol
 Usuario.belongsTo(Rol, { foreignKey: "rol_id" });
 Rol.hasMany(Usuario, { foreignKey: "rol_id" });
 
-// Asociaciones de Canje
+// Canje associations
 Usuario.hasMany(Canje, { foreignKey: "usuario_id" });
 Canje.belongsTo(Usuario, { foreignKey: "usuario_id" });
 Producto.hasMany(Canje, { foreignKey: "producto_id" });
 Canje.belongsTo(Producto, { foreignKey: "producto_id" });
 
-// Asociaciones de HistorialPunto
+// HistorialPunto associations
 Usuario.hasMany(HistorialPunto, { foreignKey: "usuario_id" });
 HistorialPunto.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
-// Asociaciones de RefreshToken
+// RefreshToken associations
 Usuario.hasMany(RefreshToken, { foreignKey: "usuario_id" });
 RefreshToken.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
-// Asociaciones de LeaderboardSnapshot
+// LeaderboardSnapshot associations
 Usuario.hasMany(LeaderboardSnapshot, { foreignKey: "usuario_id" });
 LeaderboardSnapshot.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
-// Asociaciones de Promocion
+// Promocion associations
 Promocion.belongsToMany(Producto, {
   through: PromocionProducto,
   foreignKey: "promocion_id",
@@ -85,7 +85,7 @@ Producto.belongsToMany(Promocion, {
   as: "promociones",
 });
 
-// Asociaciones de PromocionProducto
+// PromocionProducto associations
 Promocion.hasMany(PromocionProducto, {
   foreignKey: "promocion_id",
   as: "promocionProductos",
@@ -97,7 +97,7 @@ Producto.hasMany(PromocionProducto, {
 });
 PromocionProducto.belongsTo(Producto, { foreignKey: "producto_id" });
 
-// Asociaciones de UsoPromocion
+// UsoPromocion associations
 Promocion.hasMany(UsoPromocion, { foreignKey: "promocion_id", as: "usos" });
 UsoPromocion.belongsTo(Promocion, { foreignKey: "promocion_id" });
 Usuario.hasMany(UsoPromocion, {
@@ -116,7 +116,7 @@ Producto.hasMany(UsoPromocion, {
 });
 UsoPromocion.belongsTo(Producto, { foreignKey: "producto_id" });
 
-// Asociaciones de DiscordUserLink
+// DiscordUserLink associations
 Usuario.hasMany(DiscordUserLink, {
   foreignKey: "tienda_user_id",
   as: "discordLinks",
@@ -126,11 +126,11 @@ DiscordUserLink.belongsTo(Usuario, {
   as: "usuario",
 });
 
-// Asociaciones de UserWatchtime
+// UserWatchtime associations
 Usuario.hasOne(UserWatchtime, { foreignKey: "usuario_id", as: "watchtime" });
 UserWatchtime.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
-// Exportar sequelize y todos los modelos
+// Export sequelize and all models
 export {
   sequelize,
   Usuario,

@@ -1,7 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import KickBotToken from "../models/kickBotToken.model";
+import type { UpsertOptions } from "sequelize";
+
+interface BotTokenData {
+  kick_user_id: string | number;
+  kick_username: string | number;
+  access_token: string;
+  refresh_token?: string | null;
+  token_expires_at: Date;
+  scopes?: string[];
+}
 
 class KickBotTokenService {
   static async getBotToken() {
@@ -11,7 +18,7 @@ class KickBotTokenService {
     });
   }
 
-  static async saveBotToken(tokenData: any) {
+  static async saveBotToken(tokenData: BotTokenData) {
     const {
       kick_user_id,
       kick_username,
@@ -34,7 +41,7 @@ class KickBotTokenService {
       {
         where: { kick_user_id: String(kick_user_id) },
         returning: true,
-      } as any
+      } as UpsertOptions
     );
   }
 

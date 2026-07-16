@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import config from "../../../config";
@@ -19,27 +17,43 @@ import AppError from "../../utils/AppError";
 // DISCORD OAUTH
 // ==========================================
 
-function computeTokenExpiry(expiresIn: any) {
+function computeTokenExpiry(expiresIn: number): Date | null {
   return expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
 }
 
-function buildDiscordLinkFields(discordUser: any, tokenData: any) {
+function buildDiscordLinkFields(
+  discordUser: { username: string; discriminator: string; avatar: string },
+  tokenData: {
+    access_token: string;
+    refresh_token?: string | null;
+    expires_in?: number;
+  }
+) {
   return {
     discord_username: discordUser.username,
     discord_discriminator: discordUser.discriminator,
     discord_avatar: discordUser.avatar,
     access_token: tokenData.access_token,
     refresh_token: tokenData.refresh_token || null,
-    token_expires_at: computeTokenExpiry(tokenData.expires_in),
+    token_expires_at: computeTokenExpiry(tokenData.expires_in as number),
   };
 }
 
 async function upsertDiscordLink(
-  existingLink: any,
-  userId: any,
-  usuario: any,
-  discordUser: any,
-  tokenData: any
+  existingLink: DiscordUserLink | null,
+  userId: number,
+  usuario: Usuario,
+  discordUser: {
+    id: string;
+    username: string;
+    discriminator: string;
+    avatar: string;
+  },
+  tokenData: {
+    access_token: string;
+    refresh_token?: string | null;
+    expires_in?: number;
+  }
 ) {
   if (existingLink) {
     if (existingLink.tienda_user_id === userId) {
@@ -70,7 +84,7 @@ async function upsertDiscordLink(
 /**
  * Starts the Discord OAuth flow
  */
-const redirectDiscord = (req: any, res: any) => {
+const redirectDiscord = (req: Request, res: Response) => {
   try {
     logger.info("[Discord OAuth][redirectDiscord] Starting Discord OAuth flow");
 
@@ -113,10 +127,10 @@ const redirectDiscord = (req: any, res: any) => {
     logger.info("[Discord OAuth][redirectDiscord] Redirect URL:", url);
 
     return res.redirect(url);
-  } catch (err: any) {
+  } catch (err) {
     logger.error(
       "[Discord OAuth][redirectDiscord] Error:",
-      err?.message || err
+      err instanceof Error ? err.message : String(err)
     );
     return res
       .status(500)
@@ -127,7 +141,7 @@ const redirectDiscord = (req: any, res: any) => {
 /**
  * Discord OAuth callback
  */
-const callbackDiscord = async (req: any, res: any) => {
+const callbackDiscord = async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Discord OAuth][callbackDiscord] Parameters received:", {
@@ -146,10 +160,10 @@ const callbackDiscord = async (req: any, res: any) => {
     try {
       decoded = jwt.verify(String(state), config.jwtSecret);
       logger.info("[Discord OAuth][callbackDiscord] Decoded state:", decoded);
-    } catch (e: any) {
+    } catch (e) {
       logger.error(
         "[Discord OAuth][callbackDiscord] Invalid or expired state:",
-        e?.message || e
+        e instanceof Error ? e.message : String(e)
       );
       return res.status(400).json({ error: "Invalid or expired state" });
     }
@@ -170,7 +184,7 @@ const callbackDiscord = async (req: any, res: any) => {
     }
 
     // Verify the user exists
-    const usuario: any = await Usuario.findByPk(userId);
+    const usuario = await Usuario.findByPk(userId);
     if (!usuario) {
       logger.error("[Discord OAuth][callbackDiscord] User not found:", userId);
       return res.status(404).json({ error: "User not found" });
@@ -192,7 +206,7 @@ const callbackDiscord = async (req: any, res: any) => {
 
     const params = new URLSearchParams({
       grant_type: "authorization_code",
-      code,
+      code: code as string,
       redirect_uri: finalRedirectUri,
       client_id: clientId,
       client_secret: clientSecret,
@@ -262,7 +276,7 @@ const callbackDiscord = async (req: any, res: any) => {
     // Redirect to frontend with success
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[Discord OAuth][callbackDiscord] Error:", error);
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
@@ -272,7 +286,7 @@ const callbackDiscord = async (req: any, res: any) => {
 /**
  * Manual Discord linking (via temporary code)
  */
-const linkDiscordManual = asyncHandler(async (req: any, _res: any) => {
+const linkDiscordManual = asyncHandler(async (req: Request, _res: Response) => {
   const { code } = req.body;
   const userId = req.user?.id;
 
@@ -293,7 +307,7 @@ const linkDiscordManual = asyncHandler(async (req: any, _res: any) => {
 /**
  * Unlink Discord account
  */
-const unlinkDiscord = asyncHandler(async (req: any, res: any) => {
+const unlinkDiscord = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.id;
 
   if (!userId) {
@@ -320,7 +334,7 @@ const unlinkDiscord = asyncHandler(async (req: any, res: any) => {
   await discordLink.destroy();
 
   // Clear discord_username on the user if present
-  const usuario: any = await Usuario.findByPk(userId);
+  const usuario = await Usuario.findByPk(userId);
   if (usuario?.discord_username) {
     await usuario.update({ discord_username: null });
   }

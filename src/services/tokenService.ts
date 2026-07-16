@@ -1,7 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import jwt from "jsonwebtoken";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import crypto from "node:crypto";
 import config from "../../config";
 import { RefreshToken } from "../models";
@@ -21,18 +18,18 @@ const TOKEN_EXPIRATION = {
 
 /**
  * Generates a JWT access token
- * @param {Object} payload - User data
- * @returns {string} Access token
+ * @param payload - User data
+ * @returns Access token
  */
-function generateAccessToken(payload: any) {
-  return jwt.sign(payload, config.jwtSecret, {
+function generateAccessToken(payload: string | object | Buffer) {
+  return jwt.sign(payload, config.jwtSecret as string, {
     expiresIn: TOKEN_EXPIRATION.ACCESS_TOKEN,
   });
 }
 
 /**
  * Generates a unique refresh token
- * @returns {string} Refresh token
+ * @returns Refresh token
  */
 function generateRefreshTokenString() {
   return crypto.randomBytes(64).toString("hex");
@@ -40,15 +37,15 @@ function generateRefreshTokenString() {
 
 /**
  * Creates and saves a refresh token in the DB
- * @param {number} usuarioId - User ID
- * @param {string} ipAddress - Client IP
- * @param {string} userAgent - Browser user agent
- * @returns {Promise<Object>} Created refresh token
+ * @param usuarioId - User ID
+ * @param ipAddress - Client IP
+ * @param userAgent - Browser user agent
+ * @returns Created refresh token
  */
 async function createRefreshToken(
-  usuarioId: any,
-  ipAddress: any = null,
-  userAgent: any = null
+  usuarioId: number,
+  ipAddress: string | null = null,
+  userAgent: string | null = null
 ) {
   const token = generateRefreshTokenString();
   const expiresAt = new Date();
@@ -67,11 +64,11 @@ async function createRefreshToken(
 
 /**
  * Validates a refresh token
- * @param {string} token - Refresh token to validate
- * @returns {Promise<Object|null>} Refresh token if valid, null otherwise
+ * @param token - Refresh token to validate
+ * @returns Refresh token if valid, null otherwise
  */
-async function validateRefreshToken(token: any) {
-  const refreshToken: any = await RefreshToken.findOne({
+async function validateRefreshToken(token: string) {
+  const refreshToken = await RefreshToken.findOne({
     where: {
       token,
       is_revoked: false,
@@ -84,11 +81,11 @@ async function validateRefreshToken(token: any) {
 
 /**
  * Revokes a refresh token
- * @param {string} token - Token to revoke
- * @returns {Promise<boolean>} true if revoked, false if it did not exist
+ * @param token - Token to revoke
+ * @returns true if revoked, false if it did not exist
  */
-async function revokeRefreshToken(token: any) {
-  const refreshToken: any = await RefreshToken.findOne({ where: { token } });
+async function revokeRefreshToken(token: string) {
+  const refreshToken = await RefreshToken.findOne({ where: { token } });
 
   if (!refreshToken) {
     return false;
@@ -104,10 +101,10 @@ async function revokeRefreshToken(token: any) {
 
 /**
  * Revokes all refresh tokens for a user
- * @param {number} usuarioId - User ID
- * @returns {Promise<number>} Number of revoked tokens
+ * @param usuarioId - User ID
+ * @returns Number of revoked tokens
  */
-async function revokeAllUserTokens(usuarioId: any) {
+async function revokeAllUserTokens(usuarioId: number) {
   const result = await RefreshToken.update(
     {
       is_revoked: true,
@@ -126,17 +123,17 @@ async function revokeAllUserTokens(usuarioId: any) {
 
 /**
  * Rotates a refresh token (revokes the old one and creates a new one)
- * @param {string} oldToken - Token to rotate
- * @param {string} ipAddress - Client IP
- * @param {string} userAgent - User agent
- * @returns {Promise<Object>} New refresh token
+ * @param oldToken - Token to rotate
+ * @param ipAddress - Client IP
+ * @param userAgent - User agent
+ * @returns New refresh token
  */
 async function rotateRefreshToken(
-  oldToken: any,
-  ipAddress: any = null,
-  userAgent: any = null
+  oldToken: string,
+  ipAddress: string | null = null,
+  userAgent: string | null = null
 ) {
-  const oldRefreshToken: any = await RefreshToken.findOne({
+  const oldRefreshToken = await RefreshToken.findOne({
     where: { token: oldToken },
   });
 
@@ -145,7 +142,7 @@ async function rotateRefreshToken(
   }
 
   // Create new token
-  const newRefreshToken: any = await createRefreshToken(
+  const newRefreshToken = await createRefreshToken(
     oldRefreshToken.usuario_id,
     ipAddress,
     userAgent
@@ -163,7 +160,7 @@ async function rotateRefreshToken(
 
 /**
  * Cleans up expired tokens (run periodically)
- * @returns {Promise<number>} Number of deleted tokens
+ * @returns Number of deleted tokens
  */
 async function cleanupExpiredTokens() {
   const result = await RefreshToken.destroy({
@@ -177,12 +174,12 @@ async function cleanupExpiredTokens() {
 
 /**
  * Verifies a JWT access token
- * @param {string} token - Access token
- * @returns {Object|null} Payload if valid, null otherwise
+ * @param token - Access token
+ * @returns Payload if valid, null otherwise
  */
-function verifyAccessToken(token: any) {
+function verifyAccessToken(token: string): JwtPayload | string | null {
   try {
-    return jwt.verify(token, config.jwtSecret);
+    return jwt.verify(token, config.jwtSecret as string);
   } catch {
     return null;
   }

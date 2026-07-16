@@ -1,32 +1,31 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import Redis from "ioredis";
+import Redis, { type RedisOptions } from "ioredis";
 import logger from "../utils/logger";
 
-let redisClient: any = null;
+let redisClient: Redis | null = null;
 
-function getRedisClient() {
+function getRedisClient(): Redis {
   if (!redisClient) {
-    redisClient = new Redis({
+    const options: RedisOptions = {
       host: process.env.REDIS_HOST || "localhost",
-      port: process.env.REDIS_PORT || 6379,
+      port: Number(process.env.REDIS_PORT || 6379),
       password: process.env.REDIS_PASSWORD || undefined,
-      db: process.env.REDIS_DB || 0,
-      retryStrategy: (times: any) => {
+      db: Number(process.env.REDIS_DB || 0),
+      retryStrategy: (times: number) => {
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: false,
-    } as any);
+    };
+
+    redisClient = new Redis(options);
 
     redisClient.on("connect", () => {
       logger.info("[Redis] Connected successfully");
     });
 
-    redisClient.on("error", (err: any) => {
+    redisClient.on("error", (err: Error) => {
       logger.error("[Redis] Connection error:", err.message);
     });
 

@@ -1,10 +1,7 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import crypto from "node:crypto";
 import logger from "./logger";
 
-function base64url(input: any) {
+function base64url(input: Buffer): string {
   return Buffer.from(input)
     .toString("base64")
     .replace(/\+/g, "-")
@@ -12,7 +9,7 @@ function base64url(input: any) {
     .replaceAll("=", "");
 }
 
-function generatePkce() {
+function generatePkce(): { code_verifier: string; code_challenge: string } {
   const code_verifier = base64url(crypto.randomBytes(32));
   const challenge = crypto.createHash("sha256").update(code_verifier).digest();
   const code_challenge = base64url(challenge);

@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import {
   Usuario,
   HistorialPunto,
@@ -10,21 +9,47 @@ import {
   Permiso,
   RolPermiso,
 } from "../models";
-import { Op } from "sequelize";
+import { Op, WhereOptions, Transaction } from "sequelize";
 import { extractAvatarUrl, getKickUserData } from "../utils/kickApi";
 import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
 import bcrypt from "bcryptjs";
 
+/** Type for RolPermiso with eagerly-loaded Permiso. */
+type RolPermisoWithPermiso = RolPermiso & {
+  Permiso: Permiso;
+};
+
+/** Type for Rol with eagerly-loaded RolPermisos (with Permisos). */
+type RolWithPermisos = Rol & {
+  RolPermisos: RolPermisoWithPermiso[];
+  Permisos?: Permiso[];
+};
+
+/** Type for Usuario with eagerly-loaded Rol (with nested associations). */
+type UsuarioWithRol = Usuario & {
+  Rol: RolWithPermisos | null;
+};
+
+/** Type for RolPermiso with eagerly-loaded Rol. */
+type RolPermisoWithRol = RolPermiso & {
+  Rol: Rol;
+};
+
+/** Type for Permiso with eagerly-loaded RolPermisos (with Rols). */
+type PermisoWithRoles = Permiso & {
+  RolPermisos: RolPermisoWithRol[];
+};
+
 /**
  * Helper function to enrich user info with Discord data
- * @param {Object} user - Usuario model instance
- * @returns {Promise<Object>} Enriched Discord info
+ * @param user - Usuario model instance
+ * @returns Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user: any) {
+async function enrichUserWithDiscordInfo(user: Usuario) {
   let discordInfo = null;
-  const discordLink: any = await DiscordUserLink.findOne({
+  const discordLink = await DiscordUserLink.findOne({
     where: { tienda_user_id: user.id },
   });
 
@@ -35,7 +60,7 @@ async function enrichUserWithDiscordInfo(user: any) {
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
-      linked_at: discordLink.createdAt,
+      linked_at: discordLink.created_at,
       display_name:
         discordLink.discord_discriminator &&
         discordLink.discord_discriminator !== "0"
@@ -51,7 +76,7 @@ async function enrichUserWithDiscordInfo(user: any) {
 }
 
 // Show authenticated user data
-const me = asyncHandler(async (req: any, res: any) => {
+const me = asyncHandler(async (req: Request, res: Response) => {
   const user = req.user;
   if (!user) {
     throw new AppError("User not authenticated", 401);
@@ -85,7 +110,7 @@ const me = asyncHandler(async (req: any, res: any) => {
   const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
 
   if (user.user_id_ext) {
-    const userTracking: any = await KickUserTracking.findOne({
+    const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: user.user_id_ext },
     });
 
@@ -137,13 +162,13 @@ const me = asyncHandler(async (req: any, res: any) => {
 });
 
 // Optional: edit profile
-const updateMe = asyncHandler(async (req: any, res: any) => {
+const updateMe = asyncHandler(async (req: Request, res: Response) => {
   try {
     const updates = req.body;
     const allowedFields = new Set(["discord_username", "password"]);
 
     // Filter only allowed fields
-    const filteredUpdates: any = {};
+    const filteredUpdates: Record<string, unknown> = {};
     Object.keys(updates).forEach((key) => {
       if (allowedFields.has(key) || key === "password") {
         filteredUpdates[key] = updates[key];
@@ -152,7 +177,7 @@ const updateMe = asyncHandler(async (req: any, res: any) => {
 
     if (filteredUpdates.password) {
       filteredUpdates.password_hash = await bcrypt.hash(
-        filteredUpdates.password,
+        filteredUpdates.password as string,
         10
       );
       delete filteredUpdates.password;
@@ -164,30 +189,34 @@ const updateMe = asyncHandler(async (req: any, res: any) => {
       message: "Profile updated",
       updated_fields: Object.keys(filteredUpdates),
     });
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof AppError) throw err;
-    throw new AppError(err.message, 400);
+    throw new AppError(err instanceof Error ? err.message : String(err), 400);
   }
 });
 
 // List all users with stats (admin by permission)
-const listarUsuarios = asyncHandler(async (req: any, res: any) => {
+const listarUsuarios = asyncHandler(async (req: Request, res: Response) => {
   try {
     const limit = req.query.limit
-      ? Number.parseInt(req.query.limit)
+      ? Number.parseInt(req.query.limit as string)
       : undefined;
     const offset = req.query.offset
-      ? Number.parseInt(req.query.offset)
+      ? Number.parseInt(req.query.offset as string)
       : undefined;
-    const search = req.query.search ? req.query.search.trim() : undefined;
+    const search = req.query.search
+      ? (req.query.search as string).trim()
+      : undefined;
 
     // Build where clause for search
-    const whereClause: any = {};
+    const whereClause: WhereOptions = {};
     if (search) {
-      whereClause[Op.or] = [
-        { nickname: { [Op.iLike]: `%${search}%` } },
-        { email: { [Op.iLike]: `%${search}%` } },
-      ];
+      Object.assign(whereClause, {
+        [Op.or]: [
+          { nickname: { [Op.iLike]: `%${search}%` } },
+          { email: { [Op.iLike]: `%${search}%` } },
+        ],
+      });
     }
 
     const usuarios = await Usuario.findAll({
@@ -229,7 +258,7 @@ const listarUsuarios = asyncHandler(async (req: any, res: any) => {
 
     // Enrich data with additional info
     const enrichedUsers = await Promise.all(
-      usuarios.map(async (user: any) => {
+      usuarios.map(async (user) => {
         const userData = user.toJSON();
         const userInstance = Usuario.build(userData);
 
@@ -244,7 +273,7 @@ const listarUsuarios = asyncHandler(async (req: any, res: any) => {
         };
 
         if (userData.user_id_ext) {
-          const userTracking: any = await KickUserTracking.findOne({
+          const userTracking = await KickUserTracking.findOne({
             where: { kick_user_id: userData.user_id_ext },
           });
 
@@ -286,7 +315,7 @@ const listarUsuarios = asyncHandler(async (req: any, res: any) => {
     );
 
     res.json(enrichedUsers);
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error listing users:", error);
     throw new AppError("Internal server error", 500);
   }
@@ -299,11 +328,11 @@ const listarUsuarios = asyncHandler(async (req: any, res: any) => {
 /**
  * DEBUG: Get complete info for a specific user
  */
-const debugUsuario = asyncHandler(async (req: any, res: any) => {
+const debugUsuario = asyncHandler(async (req: Request, res: Response) => {
   try {
-    const { usuarioId } = req.params;
+    const usuarioId = req.params.usuarioId as string;
 
-    const usuario: any = await Usuario.findByPk(usuarioId, {
+    const usuario = (await Usuario.findByPk(usuarioId, {
       include: [
         {
           model: Rol,
@@ -315,16 +344,16 @@ const debugUsuario = asyncHandler(async (req: any, res: any) => {
           ],
         },
       ],
-    });
+    })) as UsuarioWithRol | null;
 
     if (!usuario) {
       throw new AppError("User not found", 404);
     }
 
     const permisos =
-      usuario.Rol?.RolPermisos?.map((rp: any) => rp.Permiso.nombre) || [];
+      usuario.Rol?.RolPermisos?.map((rp) => rp.Permiso.nombre) || [];
     const permisosDetalle =
-      usuario.Rol?.RolPermisos?.map((rp: any) => ({
+      usuario.Rol?.RolPermisos?.map((rp) => ({
         id: rp.Permiso.id,
         nombre: rp.Permiso.nombre,
         descripcion: rp.Permiso.descripcion,
@@ -340,7 +369,7 @@ const debugUsuario = asyncHandler(async (req: any, res: any) => {
     };
 
     if (usuario.user_id_ext) {
-      const userTracking: any = await KickUserTracking.findOne({
+      const userTracking = await KickUserTracking.findOne({
         where: { kick_user_id: usuario.user_id_ext },
       });
 
@@ -410,51 +439,60 @@ const debugUsuario = asyncHandler(async (req: any, res: any) => {
       },
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("Error in user debug:", error);
-    throw new AppError(error.message, 500);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      500
+    );
   }
 });
 
 /**
  * HOTFIX: Update user role (temporary for fixes)
  */
-const hotfixActualizarRol = asyncHandler(async (req: any, res: any) => {
-  try {
-    const { usuarioId, nuevoRolId } = req.params;
+const hotfixActualizarRol = asyncHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const usuarioId = req.params.usuarioId as string;
+      const nuevoRolId = req.params.nuevoRolId as string;
 
-    const usuario: any = await Usuario.findByPk(usuarioId);
-    if (!usuario) {
-      throw new AppError("User not found", 404);
+      const usuario = await Usuario.findByPk(usuarioId);
+      if (!usuario) {
+        throw new AppError("User not found", 404);
+      }
+
+      const rolAnterior = usuario.rol_id;
+      await usuario.update({ rol_id: Number.parseInt(nuevoRolId) });
+
+      res.json({
+        success: true,
+        mensaje: `Role updated for ${usuario.nickname}`,
+        usuario: {
+          id: usuario.id,
+          nickname: usuario.nickname,
+          rol_anterior: rolAnterior,
+          rol_nuevo: Number.parseInt(nuevoRolId),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error("Error in role hotfix:", error);
+      throw new AppError(
+        error instanceof Error ? error.message : String(error),
+        500
+      );
     }
-
-    const rolAnterior = usuario.rol_id;
-    await usuario.update({ rol_id: Number.parseInt(nuevoRolId) });
-
-    res.json({
-      success: true,
-      mensaje: `Role updated for ${usuario.nickname}`,
-      usuario: {
-        id: usuario.id,
-        nickname: usuario.nickname,
-        rol_anterior: rolAnterior,
-        rol_nuevo: Number.parseInt(nuevoRolId),
-      },
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    logger.error("Error in role hotfix:", error);
-    throw new AppError(error.message, 500);
   }
-});
+);
 
 // Sync Kick info (avatar, username, etc.)
-const syncKickInfo = asyncHandler(async (req: any, res: any) => {
+const syncKickInfo = asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
-    const user: any = await Usuario.findByPk(userId);
+    const user = await Usuario.findByPk(userId);
 
     if (!user?.user_id_ext) {
       throw new AppError(
@@ -469,7 +507,7 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
     );
 
     // Get updated Kick data using the external ID
-    let kickUserData: any;
+    let kickUserData: Awaited<ReturnType<typeof getKickUserData>>;
     try {
       kickUserData = await getKickUserData(user.user_id_ext);
       logger.info(`[Sync Kick Info] Data fetched from Kick:`, {
@@ -477,15 +515,15 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
         user_id: kickUserData?.user_id,
         profile_picture: kickUserData?.profile_picture ? "present" : "absent",
       });
-    } catch (kickError: any) {
+    } catch (kickError) {
       logger.error(
         "[Sync Kick Info] Error fetching Kick data:",
-        kickError.message
+        kickError instanceof Error ? kickError.message : String(kickError)
       );
       throw new AppError(
         "Could not fetch updated Kick data",
         500,
-        kickError.message
+        kickError instanceof Error ? kickError.message : String(kickError)
       );
     }
 
@@ -498,7 +536,9 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
     }
 
     // Get Kick avatar
-    const kickAvatarUrl = extractAvatarUrl(kickUserData);
+    const kickAvatarUrl = extractAvatarUrl(
+      kickUserData as Record<string, unknown>
+    );
 
     if (!kickAvatarUrl) {
       logger.info("[Sync Kick Info] No avatar found in Kick data");
@@ -514,14 +554,18 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
     };
 
     await user.update({
-      nickname: kickUserData.name || kickUserData.username || user.nickname,
-      kick_data: updatedKickData,
+      nickname: (kickUserData.name ||
+        kickUserData.username ||
+        user.nickname) as string,
+      kick_data: updatedKickData as Record<string, unknown> & {
+        is_subscriber?: boolean;
+      },
     });
 
     logger.info(`[Sync Kick Info] User synced successfully`);
 
     // Return updated user
-    const updatedUser: any = await Usuario.findByPk(userId);
+    const updatedUser = await Usuario.findByPk(userId);
 
     res.json({
       message: "Info synced successfully",
@@ -540,22 +584,29 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
           (kickUserData.name || kickUserData.username) !== user.nickname,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    logger.error("[Sync Kick Info] General error:", error.message);
-    throw new AppError("Error syncing info", 500, error.message);
+    logger.error(
+      "[Sync Kick Info] General error:",
+      error instanceof Error ? error.message : String(error)
+    );
+    throw new AppError(
+      "Error syncing info",
+      500,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 });
 
 // Update user points (admin by permission)
-const actualizarPuntos = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const actualizarPuntos = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
   const { puntos, motivo, operation = "set" } = req.body; // operation: 'add' | 'set'
   const adminNickname = req.user.nickname;
 
   const puntosNum = Number(puntos);
 
-  const result = await Usuario.sequelize.transaction(async (t: any) => {
+  const result = await Usuario.sequelize.transaction(async (t: Transaction) => {
     // Validate operation
     if (!["add", "set"].includes(operation)) {
       throw new AppError("Operation must be 'add' or 'set'", 400);
@@ -570,18 +621,18 @@ const actualizarPuntos = asyncHandler(async (req: any, res: any) => {
       throw new AppError("Reason is required", 400);
     }
 
-    const usuario: any = await Usuario.findByPk(id, { transaction: t });
+    const usuario = await Usuario.findByPk(id, { transaction: t });
     if (!usuario) {
       throw new AppError("User not found", 404);
     }
 
     const puntosAnteriores = usuario.puntos;
-    let puntosNuevos: any, cambio: any;
+    let puntosNuevos: number, cambio: number;
 
     if (operation === "add") {
       // Add or subtract points
       cambio = puntosNum;
-      puntosNuevos = Math.max(0, puntosAnteriores + puntosNum); // No permitir puntos negativos
+      puntosNuevos = Math.max(0, puntosAnteriores + puntosNum); // Do not allow negative points
     } else {
       // Set points directly
       puntosNuevos = puntosNum;
@@ -593,15 +644,15 @@ const actualizarPuntos = asyncHandler(async (req: any, res: any) => {
     await HistorialPunto.create(
       {
         usuario_id: usuario.id,
-        puntos: cambio, // La cantidad del cambio (positivo o negativo)
-        cambio, // Campo legacy para compatibilidad
+        puntos: cambio, // The amount of the change (positive or negative)
+        cambio, // Legacy field for compatibility
         tipo: (() => {
           if (cambio > 0) return "ganado";
           if (cambio < 0) return "gastado";
           return "ajuste";
         })(),
         concepto: `Points adjustment: ${motivo}`,
-        motivo: motivo, // Campo legacy para compatibilidad
+        motivo: motivo, // Legacy field for compatibility
       },
       { transaction: t }
     );
@@ -627,29 +678,28 @@ const actualizarPuntos = asyncHandler(async (req: any, res: any) => {
 /**
  * DEBUG: Check current user permissions
  */
-const debugPermisos = asyncHandler(async (req: any, res: any) => {
+const debugPermisos = asyncHandler(async (req: Request, res: Response) => {
   try {
     // Get complete user info
-    const userWithRole: any = await Usuario.findByPk(req.user.id, {
+    const userWithRole = (await Usuario.findByPk(req.user.id, {
       include: [
         {
           model: Rol,
           include: [
             {
               model: Permiso,
-              through: { attributes: [] }, // Excluir tabla intermedia
+              through: { attributes: [] }, // Exclude intermediate table
             },
           ],
         },
       ],
-    });
+    })) as UsuarioWithRol | null;
 
     if (!userWithRole) {
       throw new AppError("User not found", 404);
     }
 
-    const permisos =
-      userWithRole.Rol?.Permisos?.map((p: any) => p.nombre) || [];
+    const permisos = userWithRole.Rol?.Permisos?.map((p) => p.nombre) || [];
 
     res.json({
       usuario: {
@@ -661,7 +711,7 @@ const debugPermisos = asyncHandler(async (req: any, res: any) => {
       },
       permisos: permisos,
       permisos_detalle:
-        userWithRole.Rol?.Permisos?.map((p: any) => ({
+        userWithRole.Rol?.Permisos?.map((p) => ({
           id: p.id,
           nombre: p.nombre,
           descripcion: p.descripcion,
@@ -674,118 +724,129 @@ const debugPermisos = asyncHandler(async (req: any, res: any) => {
       },
       timestamp: new Date().toISOString(),
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error("[Debug Permisos] Error:", error);
-    throw new AppError(error.message, 500);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      500
+    );
   }
 });
 
 /**
  * DEBUG: Check roles and permissions structure in DB (no auth)
  */
-const debugRolesPermisos = asyncHandler(async (req: any, res: any) => {
-  try {
-    // 1. Get all roles
-    const roles = await Rol.findAll({
-      include: [
-        {
-          model: Permiso,
-          through: { attributes: [] },
-        },
-      ],
-      order: [["id", "ASC"]],
-    });
-
-    // 2. Get all permissions
-    const permisos = await Permiso.findAll({
-      order: [["id", "ASC"]],
-    });
-
-    // 3. Get all role-permission relations
-    const rolPermisos = await RolPermiso.findAll({
-      order: [
-        ["rol_id", "ASC"],
-        ["permiso_id", "ASC"],
-      ],
-    });
-
-    // 4. User stats by role
-    const usuariosPorRol = await Usuario.findAll({
-      attributes: [
-        "rol_id",
-        [
-          Usuario.sequelize.fn("COUNT", Usuario.sequelize.col("id")),
-          "total_usuarios",
+const debugRolesPermisos = asyncHandler(
+  async (_req: Request, res: Response) => {
+    try {
+      // 1. Get all roles
+      const roles = (await Rol.findAll({
+        include: [
+          {
+            model: Permiso,
+            through: { attributes: [] },
+          },
         ],
-      ],
-      group: ["rol_id"],
-      order: [["rol_id", "ASC"]],
-    });
+        order: [["id", "ASC"]],
+      })) as RolWithPermisos[];
 
-    // 5. Specifically check the 'ver_historial_puntos' permission
-    const permisoHistorial: any = await Permiso.findOne({
-      where: { nombre: "ver_historial_puntos" },
-    });
+      // 2. Get all permissions
+      const permisos = await Permiso.findAll({
+        order: [["id", "ASC"]],
+      });
 
-    const rolesConPermisoHistorial = permisoHistorial
-      ? await RolPermiso.findAll({
-          where: { permiso_id: permisoHistorial.id },
-          include: [{ model: Rol }],
-        })
-      : [];
+      // 3. Get all role-permission relations
+      const rolPermisos = await RolPermiso.findAll({
+        order: [
+          ["rol_id", "ASC"],
+          ["permiso_id", "ASC"],
+        ],
+      });
 
-    res.json({
-      debug_estructura: {
-        total_roles: roles.length,
-        total_permisos: permisos.length,
-        total_relaciones: rolPermisos.length,
-        total_usuarios_por_rol: usuariosPorRol.length,
-      },
-      roles: roles.map((rol: any) => ({
-        id: rol.id,
-        nombre: rol.nombre,
-        descripcion: rol.descripcion,
-        permisos: rol.Permisos.map((p: any) => p.nombre),
-        total_permisos: rol.Permisos.length,
-      })),
-      permisos: permisos.map((permiso: any) => ({
-        id: permiso.id,
-        nombre: permiso.nombre,
-        descripcion: permiso.descripcion,
-      })),
-      rol_permisos: rolPermisos.map((rp: any) => ({
-        rol_id: rp.rol_id,
-        permiso_id: rp.permiso_id,
-      })),
-      usuarios_por_rol: usuariosPorRol.map((u: any) => ({
-        rol_id: u.rol_id,
-        total_usuarios: Number.parseInt(u.getDataValue("total_usuarios")),
-      })),
-      permiso_historial_puntos: permisoHistorial
-        ? {
-            existe: true,
-            id: permisoHistorial.id,
-            nombre: permisoHistorial.nombre,
-            roles_que_lo_tienen: permisoHistorial.RolPermisos.map(
-              (rp: any) => ({
+      // 4. User stats by role
+      const usuariosPorRol = await Usuario.findAll({
+        attributes: [
+          "rol_id",
+          [
+            Usuario.sequelize.fn("COUNT", Usuario.sequelize.col("id")),
+            "total_usuarios",
+          ],
+        ],
+        group: ["rol_id"],
+        order: [["rol_id", "ASC"]],
+      });
+
+      // 5. Specifically check the 'ver_historial_puntos' permission
+      const permisoHistorial = (await Permiso.findOne({
+        where: { nombre: "ver_historial_puntos" },
+        include: [{ model: RolPermiso, include: [Rol] }],
+      })) as (PermisoWithRoles & { RolPermisos: RolPermisoWithRol[] }) | null;
+
+      const rolesConPermisoHistorial = permisoHistorial
+        ? ((await RolPermiso.findAll({
+            where: { permiso_id: permisoHistorial.id },
+            include: [{ model: Rol }],
+          })) as RolPermisoWithRol[])
+        : [];
+
+      res.json({
+        debug_estructura: {
+          total_roles: roles.length,
+          total_permisos: permisos.length,
+          total_relaciones: rolPermisos.length,
+          total_usuarios_por_rol: usuariosPorRol.length,
+        },
+        roles: roles.map((rol) => ({
+          id: rol.id,
+          nombre: rol.nombre,
+          descripcion: rol.descripcion,
+          permisos: rol.Permisos.map((p) => p.nombre),
+          total_permisos: rol.Permisos.length,
+        })),
+        permisos: permisos.map((permiso) => ({
+          id: permiso.id,
+          nombre: permiso.nombre,
+          descripcion: permiso.descripcion,
+        })),
+        rol_permisos: rolPermisos.map((rp) => ({
+          rol_id: rp.rol_id,
+          permiso_id: rp.permiso_id,
+        })),
+        usuarios_por_rol: usuariosPorRol.map((u) => ({
+          rol_id: u.rol_id,
+          total_usuarios: Number.parseInt(
+            (u.getDataValue as (key: string) => unknown)(
+              "total_usuarios"
+            ) as string
+          ),
+        })),
+        permiso_historial_puntos: permisoHistorial
+          ? {
+              existe: true,
+              id: permisoHistorial.id,
+              nombre: permisoHistorial.nombre,
+              roles_que_lo_tienen: permisoHistorial.RolPermisos.map((rp) => ({
                 rol_id: rp.Rol.id,
                 rol_nombre: rp.Rol.nombre,
-              })
-            ),
-          }
-        : { existe: false },
-      roles_con_permiso_historial: rolesConPermisoHistorial.map((rp: any) => ({
-        rol_id: rp.Rol.id,
-        rol_nombre: rp.Rol.nombre,
-      })),
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error: any) {
-    logger.error("Error in roles and permissions debug (no auth):", error);
-    throw new AppError(error.message, 500);
+              })),
+            }
+          : { existe: false },
+        roles_con_permiso_historial: rolesConPermisoHistorial.map((rp) => ({
+          rol_id: rp.Rol.id,
+          rol_nombre: rp.Rol.nombre,
+        })),
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Error in roles and permissions debug (no auth):", error);
+      throw new AppError(
+        error instanceof Error ? error.message : String(error),
+        500
+      );
+    }
   }
-});
+);
 
 export = {
   me,

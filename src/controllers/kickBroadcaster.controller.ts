@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import { KickBroadcasterToken, KickEventSubscription } from "../models";
 import tokenRefreshService from "../services/tokenRefresh.service";
 import config from "../../config";
@@ -11,140 +9,145 @@ import AppError from "../utils/AppError";
 /**
  * Checks the broadcaster connection status
  */
-const getConnectionStatus = asyncHandler(async (req: any, res: any) => {
-  try {
-    // Get the main broadcaster from configuration
-    const mainBroadcasterId = config.kick.broadcasterId;
+const getConnectionStatus = asyncHandler(
+  async (_req: Request, res: Response) => {
+    try {
+      // Get the main broadcaster from configuration
+      const mainBroadcasterId = config.kick.broadcasterId;
 
-    if (!mainBroadcasterId) {
-      return res.json({
-        connected: false,
-        message: "No main broadcaster configured",
+      if (!mainBroadcasterId) {
+        return res.json({
+          connected: false,
+          message: "No main broadcaster configured",
+        });
+      }
+
+      // Check active subscriptions (can use App Token or User Token)
+      logger.info(
+        `[Broadcaster Status] Looking for subscriptions for broadcaster ${mainBroadcasterId}`
+      );
+
+      const subscriptions = await KickEventSubscription.findAll({
+        where: {
+          broadcaster_user_id: Number.parseInt(mainBroadcasterId),
+          status: "active",
+        },
       });
-    }
 
-    // Check active subscriptions (can use App Token or User Token)
-    logger.info(
-      `[Broadcaster Status] Looking for subscriptions for broadcaster ${mainBroadcasterId}`
-    );
-
-    const subscriptions: any = await KickEventSubscription.findAll({
-      where: {
-        broadcaster_user_id: Number.parseInt(mainBroadcasterId),
-        status: "active",
-      },
-    });
-
-    logger.info(
-      `[Broadcaster Status] Subscriptions found: ${subscriptions.length}`
-    );
-
-    // If there are active subscriptions, the system is connected (App Token or User Token)
-    if (subscriptions.length > 0) {
-      logger.debug(
-        `[Broadcaster Status] Events:`,
-        subscriptions.map((s: any) => s.event_type)
+      logger.info(
+        `[Broadcaster Status] Subscriptions found: ${subscriptions.length}`
       );
 
-      // Check if it's a permanent system (App Token) or temporary (User Token)
-      const appTokenSubscriptions = subscriptions.filter(
-        (s: any) => s.app_id === "APP_TOKEN"
-      );
-      const isPermanent = appTokenSubscriptions.length > 0;
+      // If there are active subscriptions, the system is connected (App Token or User Token)
+      if (subscriptions.length > 0) {
+        logger.debug(
+          `[Broadcaster Status] Events:`,
+          subscriptions.map((s) => s.event_type)
+        );
+
+        // Check if it's a permanent system (App Token) or temporary (User Token)
+        const appTokenSubscriptions = subscriptions.filter(
+          (s) => s.app_id === "APP_TOKEN"
+        );
+        const isPermanent = appTokenSubscriptions.length > 0;
+
+        return res.json({
+          connected: true,
+          system_type: isPermanent ? "PERMANENT" : "TEMPORARY",
+          broadcaster: {
+            kick_user_id: mainBroadcasterId,
+            kick_username: "Luisardito",
+            connected_at: subscriptions[0].created_at,
+            last_updated: new Date(),
+          },
+          token: {
+            type: isPermanent
+              ? "App Token (Permanent)"
+              : "User Token (Temporary)",
+            expires_at: isPermanent ? null : "Varies by user token",
+            is_expired: false,
+            requires_maintenance: !isPermanent,
+          },
+          subscriptions: {
+            auto_subscribed: true,
+            total_active: subscriptions.length,
+            permanent_webhooks: isPermanent,
+            events: subscriptions.map((s) => ({
+              event_type: s.event_type,
+              event_version: s.event_version,
+              subscription_id: s.subscription_id,
+              token_type: s.app_id === "APP_TOKEN" ? "App Token" : "User Token",
+              created_at: s.created_at,
+            })),
+          },
+        });
+      }
+
+      // If no subscriptions, check user tokens as fallback
+      const broadcasterToken = await KickBroadcasterToken.findOne({
+        where: { is_active: true },
+        order: [["created_at", "DESC"]],
+      });
+
+      if (!broadcasterToken) {
+        return res.json({
+          connected: false,
+          system_type: "DISCONNECTED",
+          message: "No active tokens or subscriptions available",
+        });
+      }
+
+      // Check if the token expired
+      const now = new Date();
+      const isTokenExpired =
+        broadcasterToken.token_expires_at &&
+        broadcasterToken.token_expires_at < now;
 
       return res.json({
         connected: true,
-        system_type: isPermanent ? "PERMANENT" : "TEMPORARY",
+        system_type: "TEMPORARY",
         broadcaster: {
           kick_user_id: mainBroadcasterId,
           kick_username: "Luisardito",
-          connected_at: subscriptions[0].created_at,
-          last_updated: new Date(),
+          connected_at: broadcasterToken.created_at,
+          last_updated: broadcasterToken.updated_at,
         },
         token: {
-          type: isPermanent
-            ? "App Token (Permanent)"
-            : "User Token (Temporary)",
-          expires_at: isPermanent ? null : "Varies by user token",
-          is_expired: false,
-          requires_maintenance: !isPermanent,
+          type: "User Token (Temporary)",
+          expires_at: broadcasterToken.token_expires_at,
+          is_expired: isTokenExpired,
+          has_refresh_token: !!broadcasterToken.refresh_token,
+          provided_by: broadcasterToken.kick_username,
+          requires_maintenance: true,
         },
         subscriptions: {
-          auto_subscribed: true,
-          total_active: subscriptions.length,
-          permanent_webhooks: isPermanent,
-          events: subscriptions.map((s: any) => ({
-            event_type: s.event_type,
-            event_version: s.event_version,
-            subscription_id: s.subscription_id,
-            token_type: s.app_id === "APP_TOKEN" ? "App Token" : "User Token",
-            created_at: s.created_at,
-          })),
+          auto_subscribed: broadcasterToken.auto_subscribed,
+          total_active: 0,
+          permanent_webhooks: false,
+          last_attempt: broadcasterToken.last_subscription_attempt,
+          error: broadcasterToken.subscription_error,
+          events: [],
         },
       });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(
+        "[Kick Broadcaster] Error fetching status:",
+        error instanceof Error ? error.message : String(error)
+      );
+      throw new AppError("Internal server error", 500);
     }
-
-    // If no subscriptions, check user tokens as fallback
-    const broadcasterToken: any = await KickBroadcasterToken.findOne({
-      where: { is_active: true },
-      order: [["created_at", "DESC"]],
-    });
-
-    if (!broadcasterToken) {
-      return res.json({
-        connected: false,
-        system_type: "DISCONNECTED",
-        message: "No active tokens or subscriptions available",
-      });
-    }
-
-    // Check if the token expired
-    const now = new Date();
-    const isTokenExpired =
-      broadcasterToken.token_expires_at &&
-      broadcasterToken.token_expires_at < now;
-
-    return res.json({
-      connected: true,
-      system_type: "TEMPORARY",
-      broadcaster: {
-        kick_user_id: mainBroadcasterId,
-        kick_username: "Luisardito",
-        connected_at: broadcasterToken.created_at,
-        last_updated: broadcasterToken.updated_at,
-      },
-      token: {
-        type: "User Token (Temporary)",
-        expires_at: broadcasterToken.token_expires_at,
-        is_expired: isTokenExpired,
-        has_refresh_token: !!broadcasterToken.refresh_token,
-        provided_by: broadcasterToken.kick_username,
-        requires_maintenance: true,
-      },
-      subscriptions: {
-        auto_subscribed: broadcasterToken.auto_subscribed,
-        total_active: 0,
-        permanent_webhooks: false,
-        last_attempt: broadcasterToken.last_subscription_attempt,
-        error: broadcasterToken.subscription_error,
-        events: [],
-      },
-    });
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    logger.error("[Kick Broadcaster] Error fetching status:", error.message);
-    throw new AppError("Internal server error", 500);
   }
-});
+);
 
 /**
  * Disconnects the broadcaster (deactivates the token)
  */
-const disconnect = asyncHandler(async (req: any, res: any) => {
+const disconnect = asyncHandler(async (_req: Request, res: Response) => {
   try {
     const mainBroadcasterId = config.kick.broadcasterId;
 
-    const broadcasterToken: any = await KickBroadcasterToken.findOne({
+    const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { is_active: true },
       order: [["created_at", "DESC"]],
     });
@@ -175,9 +178,12 @@ const disconnect = asyncHandler(async (req: any, res: any) => {
       broadcaster: "Luisardito",
       token_provider: broadcasterToken.kick_username,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    logger.error("[Kick Broadcaster] Error disconnecting:", error.message);
+    logger.error(
+      "[Kick Broadcaster] Error disconnecting:",
+      error instanceof Error ? error.message : String(error)
+    );
     throw new AppError("Internal server error", 500);
   }
 });
@@ -185,9 +191,9 @@ const disconnect = asyncHandler(async (req: any, res: any) => {
 /**
  * Gets the active broadcaster token (internal/admin use only)
  */
-const getActiveToken = asyncHandler(async (req: any, res: any) => {
+const getActiveToken = asyncHandler(async (_req: Request, res: Response) => {
   try {
-    const broadcasterToken: any = await KickBroadcasterToken.findOne({
+    const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { is_active: true },
       order: [["created_at", "DESC"]],
     });
@@ -207,9 +213,12 @@ const getActiveToken = asyncHandler(async (req: any, res: any) => {
       has_refresh_token: !!broadcasterToken.refresh_token,
       auto_subscribed: broadcasterToken.auto_subscribed,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    logger.error("[Kick Broadcaster] Error fetching token:", error.message);
+    logger.error(
+      "[Kick Broadcaster] Error fetching token:",
+      error instanceof Error ? error.message : String(error)
+    );
     throw new AppError("Internal server error", 500);
   }
 });
@@ -217,9 +226,9 @@ const getActiveToken = asyncHandler(async (req: any, res: any) => {
 /**
  * Manually refreshes the active broadcaster token
  */
-const refreshToken = asyncHandler(async (req: any, res: any) => {
+const refreshToken = asyncHandler(async (_req: Request, res: Response) => {
   try {
-    const broadcasterToken: any = await KickBroadcasterToken.findOne({
+    const broadcasterToken = await KickBroadcasterToken.findOne({
       where: { is_active: true },
       order: [["created_at", "DESC"]],
     });
@@ -244,9 +253,12 @@ const refreshToken = asyncHandler(async (req: any, res: any) => {
     } else {
       throw new AppError("Could not refresh the token", 400, result.error);
     }
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    logger.error("[Kick Broadcaster] Error refreshing token:", error.message);
+    logger.error(
+      "[Kick Broadcaster] Error refreshing token:",
+      error instanceof Error ? error.message : String(error)
+    );
     throw new AppError("Internal server error", 500);
   }
 });
@@ -254,24 +266,26 @@ const refreshToken = asyncHandler(async (req: any, res: any) => {
 /**
  * Gets the status of the automatic refresh service
  */
-const getRefreshServiceStatus = asyncHandler(async (req: any, res: any) => {
-  try {
-    const status = tokenRefreshService.getStatus();
-    return res.json(status);
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    logger.error(
-      "[Kick Broadcaster] Error fetching service status:",
-      error.message
-    );
-    throw new AppError("Internal server error", 500);
+const getRefreshServiceStatus = asyncHandler(
+  async (_req: Request, res: Response) => {
+    try {
+      const status = tokenRefreshService.getStatus();
+      return res.json(status);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(
+        "[Kick Broadcaster] Error fetching service status:",
+        error instanceof Error ? error.message : String(error)
+      );
+      throw new AppError("Internal server error", 500);
+    }
   }
-});
+);
 
 /**
  * Debug endpoint to verify configuration
  */
-const debugConfig = asyncHandler(async (req: any, res: any) => {
+const debugConfig = asyncHandler(async (_req: Request, res: Response) => {
   try {
     return res.json({
       config: {
@@ -295,9 +309,12 @@ const debugConfig = asyncHandler(async (req: any, res: any) => {
         },
       }),
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 500);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      500
+    );
   }
 });
 

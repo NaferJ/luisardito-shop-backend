@@ -5,7 +5,7 @@
     "outDir": "dist",
     "rootDir": "."
   },
-  "include": ["app.js", "config.js", "src/**/*"],
+  "include": ["app.ts", "config.ts", "src/**/*"],
   "exclude": [
     "node_modules",
     "dist",

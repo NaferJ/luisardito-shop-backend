@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Response, CookieOptions } from "express";
 
 /**
  * Utilities for cross-domain cookie handling
@@ -7,10 +6,12 @@
 
 /**
  * Gets cookie options configured for cross-domain
- * @param {string} env - Environment
- * @returns {Object} Cookie options
+ * @param env - Environment
+ * @returns Cookie options
  */
-function getCookieOptions(env: any = process.env.NODE_ENV) {
+function getCookieOptions(
+  env: string | undefined = process.env.NODE_ENV
+): CookieOptions {
   const isProduction = env === "production";
 
   return {
@@ -25,10 +26,12 @@ function getCookieOptions(env: any = process.env.NODE_ENV) {
 
 /**
  * Gets specific options for the refresh token (longer lasting)
- * @param {string} env - Environment
- * @returns {Object} Cookie options
+ * @param env - Environment
+ * @returns Cookie options
  */
-function getRefreshCookieOptions(env: any = process.env.NODE_ENV) {
+function getRefreshCookieOptions(
+  env: string | undefined = process.env.NODE_ENV
+): CookieOptions {
   return {
     ...getCookieOptions(env),
     maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days for refresh token
@@ -37,10 +40,12 @@ function getRefreshCookieOptions(env: any = process.env.NODE_ENV) {
 
 /**
  * Gets options for clearing cookies
- * @param {string} env - Environment
- * @returns {Object} Options for clearCookie
+ * @param env - Environment
+ * @returns Options for clearCookie
  */
-function getClearCookieOptions(env: any = process.env.NODE_ENV) {
+function getClearCookieOptions(
+  env: string | undefined = process.env.NODE_ENV
+): Pick<CookieOptions, "domain" | "path" | "sameSite"> {
   const isProduction = env === "production";
 
   return {
@@ -52,17 +57,17 @@ function getClearCookieOptions(env: any = process.env.NODE_ENV) {
 
 /**
  * Sets authentication cookies on the response
- * @param {Object} res - Express response object
- * @param {string} accessToken - Access token
- * @param {string} refreshToken - Refresh token
- * @param {string} env - Environment
+ * @param res - Express response object
+ * @param accessToken - Access token
+ * @param refreshToken - Refresh token
+ * @param env - Environment
  */
 function setAuthCookies(
-  res: any,
-  accessToken: any,
-  refreshToken: any,
-  env: any = process.env.NODE_ENV
-) {
+  res: Response,
+  accessToken: string,
+  refreshToken: string,
+  env: string | undefined = process.env.NODE_ENV
+): void {
   const cookieOptions = getCookieOptions(env);
   const refreshOptions = getRefreshCookieOptions(env);
 
@@ -72,10 +77,13 @@ function setAuthCookies(
 
 /**
  * Clears authentication cookies
- * @param {Object} res - Express response object
- * @param {string} env - Environment
+ * @param res - Express response object
+ * @param env - Environment
  */
-function clearAuthCookies(res: any, env: any = process.env.NODE_ENV) {
+function clearAuthCookies(
+  res: Response,
+  env: string | undefined = process.env.NODE_ENV
+): void {
   const clearOptions = getClearCookieOptions(env);
 
   res.clearCookie("auth_token", clearOptions);

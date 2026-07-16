@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import kickBotService from "./kickBot.service";
 import { KickBotToken } from "../models";
 import { Op } from "sequelize";
@@ -10,7 +8,7 @@ import logger from "../utils/logger";
  * Runs every hour to keep tokens active
  */
 class BotMaintenanceService {
-  intervalId: any = null;
+  intervalId: NodeJS.Timeout | null = null;
   isRunning: boolean = false;
   intervalMinutes: number = Number.parseInt(
     process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60"
@@ -74,8 +72,9 @@ class BotMaintenanceService {
       await this.simulateChatActivity();
 
       logger.info("[BOT-MAINTENANCE] Maintenance completed successfully");
-    } catch (error: any) {
-      logger.error("[BOT-MAINTENANCE] Error in maintenance:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOT-MAINTENANCE] Error in maintenance:", msg);
     }
   }
 
@@ -87,7 +86,7 @@ class BotMaintenanceService {
   async cleanupExpiredTokens() {
     try {
       const now = new Date();
-      const expiredTokens: any = await KickBotToken.findAll({
+      const expiredTokens = await KickBotToken.findAll({
         where: {
           is_active: true,
           token_expires_at: { [Op.lt]: now },
@@ -101,8 +100,9 @@ class BotMaintenanceService {
       } else {
         logger.info("[BOT-MAINTENANCE] No expired access tokens to report");
       }
-    } catch (error: any) {
-      logger.error("[BOT-MAINTENANCE] Error reporting tokens:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOT-MAINTENANCE] Error reporting tokens:", msg);
     }
   }
 
@@ -113,7 +113,7 @@ class BotMaintenanceService {
     try {
       logger.info("[BOT-MAINTENANCE] Checking tokens expiring soon...");
       const thresholdDate = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
-      const tokens: any = await KickBotToken.findAll({
+      const tokens = await KickBotToken.findAll({
         where: {
           is_active: true,
           token_expires_at: { [Op.lt]: thresholdDate },
@@ -131,8 +131,9 @@ class BotMaintenanceService {
       } else {
         logger.info("[BOT-MAINTENANCE] No tokens close to expiry");
       }
-    } catch (error: any) {
-      logger.error("[BOT-MAINTENANCE] Error renewing tokens:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOT-MAINTENANCE] Error renewing tokens:", msg);
     }
   }
 
@@ -157,11 +158,9 @@ class BotMaintenanceService {
       logger.info(
         "[BOT-MAINTENANCE] Activity simulation disabled - commands are now dynamic"
       );
-    } catch (error: any) {
-      logger.error(
-        "[BOT-MAINTENANCE] Error in activity simulation:",
-        error.message
-      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOT-MAINTENANCE] Error in activity simulation:", msg);
     }
   }
 

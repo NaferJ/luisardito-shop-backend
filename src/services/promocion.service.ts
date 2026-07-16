@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import {
   Promocion,
   UsoPromocion,
@@ -8,18 +6,73 @@ import {
   sequelize,
 } from "../models";
 import { Op } from "sequelize";
+import type { Transaction, Includeable, WhereOptions } from "sequelize";
+
+interface DescuentoResult {
+  tieneDescuento: boolean;
+  precioOriginal: number;
+  precioFinal: number;
+  descuento: number;
+  porcentajeDescuento?: string;
+  promocion: {
+    id: number;
+    codigo: string | null;
+    titulo: string;
+    descripcion: string | null;
+    tipo_descuento: string;
+    valor_descuento: number;
+    fecha_fin: Date;
+    metadata_visual: Record<string, unknown> | null;
+  } | null;
+}
+
+interface AplicarPromocionResult {
+  uso: UsoPromocion;
+  precioOriginal: number;
+  descuento: number;
+  precioFinal: number;
+}
+
+interface ValidarCodigoResult {
+  valido: boolean;
+  mensaje?: string;
+  promocion?: Promocion;
+}
+
+interface EstadisticasPromocionResult {
+  promocion: {
+    id: number;
+    nombre: string;
+    titulo: string;
+    estado: string;
+    fecha_inicio: Date;
+    fecha_fin: Date;
+    tipo_descuento: string;
+    valor_descuento: number;
+  };
+  estadisticas: {
+    total_usos: number;
+    usos_maximos: number | null;
+    puntos_descontados_total: number;
+    descuento_promedio: number;
+    usuarios_unicos: number;
+    productos_aplicables: number;
+  };
+  topUsuarios: UsoPromocion[];
+  topProductos: UsoPromocion[];
+}
 
 class PromocionService {
   /**
    * Get active promotions for a specific product
    */
   async obtenerPromocionesActivasProducto(
-    productoId: any,
-    usuarioId: any = null
-  ) {
-    const ahora = new Date();
+    productoId: number,
+    usuarioId: number | null = null
+  ): Promise<Promocion[]> {
+    const agora = new Date();
 
-    const promociones: any = await Promocion.findAll({
+    const promociones = await Promocion.findAll({
       include: [
         {
           model: Producto,
@@ -30,8 +83,8 @@ class PromocionService {
       ],
       where: {
         estado: "activo",
-        fecha_inicio: { [Op.lte]: ahora },
-        fecha_fin: { [Op.gte]: ahora },
+        fecha_inicio: { [Op.lte]: agora },
+        fecha_fin: { [Op.gte]: agora },
         [Op.or]: [
           { cantidad_usos_maximos: null },
           sequelize.where(
@@ -49,7 +102,7 @@ class PromocionService {
 
     // Filter promotions by user if provided
     if (usuarioId) {
-      const promocionesValidas = [];
+      const promocionesValidas: Promocion[] = [];
       for (const promo of promociones) {
         const puedeUsar = await promo.puedeUsarUsuario(usuarioId);
         if (puedeUsar) {
@@ -65,14 +118,14 @@ class PromocionService {
   /**
    * Get all active promotions
    */
-  async obtenerPromocionesActivas() {
-    const ahora = new Date();
+  async obtenerPromocionesActivas(): Promise<Promocion[]> {
+    const agora = new Date();
 
     return await Promocion.findAll({
       where: {
         estado: "activo",
-        fecha_inicio: { [Op.lte]: ahora },
-        fecha_fin: { [Op.gte]: ahora },
+        fecha_inicio: { [Op.lte]: agora },
+        fecha_fin: { [Op.gte]: agora },
       },
       include: [
         {
@@ -92,10 +145,10 @@ class PromocionService {
    * Calculate the best discount for a product
    */
   async calcularMejorDescuento(
-    productoId: any,
-    precioOriginal: any,
-    usuarioId: any = null
-  ) {
+    productoId: number,
+    precioOriginal: number,
+    usuarioId: number | null = null
+  ): Promise<DescuentoResult> {
     const promociones = await this.obtenerPromocionesActivasProducto(
       productoId,
       usuarioId
@@ -112,7 +165,7 @@ class PromocionService {
     }
 
     // Calculate discounts for all applicable promotions
-    let mejorPromocion = null;
+    let mejorPromocion: Promocion | null = null;
     let mayorDescuento = 0;
 
     for (const promo of promociones) {
@@ -150,18 +203,18 @@ class PromocionService {
    * Apply promotion to a product (register usage)
    */
   async aplicarPromocion(
-    promocionId: any,
-    usuarioId: any,
-    productoId: any,
-    canjeId: any = null,
-    externalTransaction: any = null
-  ) {
-    const transaction: any =
+    promocionId: number,
+    usuarioId: number,
+    productoId: number,
+    canjeId: number | null = null,
+    externalTransaction: Transaction | null = null
+  ): Promise<AplicarPromocionResult> {
+    const transaction: Transaction =
       externalTransaction || (await sequelize.transaction());
     const shouldCommit = !externalTransaction; // Only commit if we created the transaction
 
     try {
-      const promocion: any = await Promocion.findByPk(promocionId, {
+      const promocion = await Promocion.findByPk(promocionId, {
         transaction,
       });
 
@@ -178,7 +231,7 @@ class PromocionService {
         throw new Error("You have reached the usage limit for this promotion");
       }
 
-      const producto: any = await Producto.findByPk(productoId, {
+      const producto = await Producto.findByPk(productoId, {
         transaction,
       });
       if (!producto) {
@@ -221,7 +274,7 @@ class PromocionService {
         descuento,
         precioFinal,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (shouldCommit) {
         await transaction.rollback();
       }
@@ -233,33 +286,35 @@ class PromocionService {
    * Validate promotion code
    */
   async validarCodigoPromocion(
-    codigo: any,
-    productoId: any = null,
-    usuarioId: any = null
-  ) {
-    const ahora = new Date();
+    codigo: string,
+    productoId: number | null = null,
+    usuarioId: number | null = null
+  ): Promise<ValidarCodigoResult> {
+    const agora = new Date();
 
-    const where = {
+    const where: WhereOptions = {
       codigo: codigo.toUpperCase(),
       requiere_codigo: true,
       estado: "activo",
-      fecha_inicio: { [Op.lte]: ahora },
-      fecha_fin: { [Op.gte]: ahora },
+      fecha_inicio: { [Op.lte]: agora },
+      fecha_fin: { [Op.gte]: agora },
     };
 
-    const promocion: any = await Promocion.findOne({
+    const includes: Includeable[] = productoId
+      ? [
+          {
+            model: Producto,
+            as: "productos",
+            where: { id: productoId },
+            required: true,
+            through: { attributes: [] },
+          },
+        ]
+      : [];
+
+    const promocion = await Promocion.findOne({
       where,
-      include: productoId
-        ? [
-            {
-              model: Producto,
-              as: "productos",
-              where: { id: productoId },
-              required: true,
-              through: { attributes: [] },
-            },
-          ]
-        : [],
+      include: includes,
     });
 
     if (!promocion) {
@@ -295,8 +350,8 @@ class PromocionService {
   /**
    * Update promotion statuses (run periodically)
    */
-  async actualizarEstadosPromociones() {
-    const ahora = new Date();
+  async actualizarEstadosPromociones(): Promise<void> {
+    const agora = new Date();
 
     // Activate scheduled promotions that have already started
     await Promocion.update(
@@ -304,8 +359,8 @@ class PromocionService {
       {
         where: {
           estado: "programado",
-          fecha_inicio: { [Op.lte]: ahora },
-          fecha_fin: { [Op.gte]: ahora },
+          fecha_inicio: { [Op.lte]: agora },
+          fecha_fin: { [Op.gte]: agora },
         },
       }
     );
@@ -316,7 +371,7 @@ class PromocionService {
       {
         where: {
           estado: "activo",
-          fecha_fin: { [Op.lt]: ahora },
+          fecha_fin: { [Op.lt]: agora },
         },
       }
     );
@@ -341,8 +396,10 @@ class PromocionService {
   /**
    * Get promotion statistics
    */
-  async obtenerEstadisticasPromocion(promocionId: any) {
-    const promocion: any = await Promocion.findByPk(promocionId, {
+  async obtenerEstadisticasPromocion(
+    promocionId: number
+  ): Promise<EstadisticasPromocionResult> {
+    const promocion = await Promocion.findByPk(promocionId, {
       include: [
         {
           model: UsoPromocion,
@@ -364,7 +421,7 @@ class PromocionService {
       throw new Error("Promotion not found");
     }
 
-    const estadisticas: any = await UsoPromocion.findOne({
+    const estadisticas = await UsoPromocion.findOne({
       where: { promocion_id: promocionId },
       attributes: [
         [sequelize.fn("COUNT", sequelize.col("id")), "total_usos"],
@@ -419,6 +476,11 @@ class PromocionService {
       limit: 5,
     });
 
+    const stats = estadisticas as unknown as Record<
+      string,
+      string | number | null
+    > | null;
+
     return {
       promocion: {
         id: promocion.id,
@@ -431,14 +493,15 @@ class PromocionService {
         valor_descuento: promocion.valor_descuento,
       },
       estadisticas: {
-        total_usos: Number.parseInt(estadisticas.total_usos) || 0,
+        total_usos: Number.parseInt(String(stats?.total_usos)) || 0,
         usos_maximos: promocion.cantidad_usos_maximos,
         puntos_descontados_total:
-          Number.parseInt(estadisticas.puntos_descontados_total) || 0,
+          Number.parseInt(String(stats?.puntos_descontados_total)) || 0,
         descuento_promedio:
-          Number.parseFloat(estadisticas.descuento_promedio) || 0,
-        usuarios_unicos: Number.parseInt(estadisticas.usuarios_unicos) || 0,
-        productos_aplicables: promocion.productos.length,
+          Number.parseFloat(String(stats?.descuento_promedio)) || 0,
+        usuarios_unicos: Number.parseInt(String(stats?.usuarios_unicos)) || 0,
+        productos_aplicables: (promocion as unknown as { productos: unknown[] })
+          .productos.length,
       },
       topUsuarios,
       topProductos,

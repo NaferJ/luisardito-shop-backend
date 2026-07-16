@@ -1,8 +1,26 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const KickPointsConfig = sequelize.define(
-  "KickPointsConfig",
+class KickPointsConfig extends Model<
+  InferAttributes<KickPointsConfig>,
+  InferCreationAttributes<KickPointsConfig>
+> {
+  declare id: CreationOptional<number>;
+  declare config_key: string;
+  declare config_value: CreationOptional<number>;
+  declare description: string | null;
+  declare enabled: CreationOptional<boolean>;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+KickPointsConfig.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -13,27 +31,34 @@ const KickPointsConfig = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      comment: "Clave de configuración única",
+      comment: "Unique configuration key",
     },
     config_value: {
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0,
-      comment: "Valor de puntos",
+      comment: "Points value",
     },
     description: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: "Descripción de la configuración",
+      comment: "Configuration description",
     },
     enabled: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: true,
-      comment: "Si está habilitada esta configuración",
+      comment: "Whether this configuration is enabled",
+    },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "kick_points_config",
     timestamps: true,
     createdAt: "created_at",

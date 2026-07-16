@@ -1,8 +1,19 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const Rol = sequelize.define(
-  "Rol",
+class Rol extends Model<InferAttributes<Rol>, InferCreationAttributes<Rol>> {
+  declare id: CreationOptional<number>;
+  declare nombre: string;
+  declare descripcion: string | null;
+}
+
+Rol.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -20,6 +31,7 @@ const Rol = sequelize.define(
     },
   },
   {
+    sequelize,
     tableName: "roles",
     timestamps: false,
   }

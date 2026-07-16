@@ -1,11 +1,26 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const KickChatCooldown = sequelize.define(
-  "KickChatCooldown",
+class KickChatCooldown extends Model<
+  InferAttributes<KickChatCooldown>,
+  InferCreationAttributes<KickChatCooldown>
+> {
+  declare id: CreationOptional<number>;
+  declare kick_user_id: string;
+  declare kick_username: string;
+  declare last_message_at: Date;
+  declare cooldown_expires_at: Date;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+KickChatCooldown.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -15,25 +30,32 @@ const KickChatCooldown = sequelize.define(
     kick_user_id: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "ID del usuario de Kick",
+      comment: "Kick user ID",
     },
     kick_username: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Username del usuario de Kick",
+      comment: "Kick username",
     },
     last_message_at: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: "Última vez que escribió y recibió puntos",
+      comment: "Last time they wrote and received points",
     },
     cooldown_expires_at: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: "Cuándo expira el cooldown (5 min después)",
+      comment: "When the cooldown expires (5 min later)",
+    },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "kick_chat_cooldowns",
     timestamps: true,
     createdAt: "created_at",
@@ -47,9 +69,9 @@ const KickChatCooldown = sequelize.define(
       {
         fields: ["cooldown_expires_at"],
         name: "idx_cooldown_expires_at",
-        comment: "Índice para consultas de limpieza de cooldowns expirados",
-      },
-    ] as any,
+        comment: "Index for queries cleaning up expired cooldowns",
+      } as unknown as { fields: string[]; name: string },
+    ],
   }
 );
 

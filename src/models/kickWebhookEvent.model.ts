@@ -1,8 +1,30 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const KickWebhookEvent = sequelize.define(
-  "KickWebhookEvent",
+class KickWebhookEvent extends Model<
+  InferAttributes<KickWebhookEvent>,
+  InferCreationAttributes<KickWebhookEvent>
+> {
+  declare id: CreationOptional<number>;
+  declare message_id: string;
+  declare subscription_id: string | null;
+  declare event_type: string;
+  declare event_version: string;
+  declare message_timestamp: Date;
+  declare payload: Record<string, unknown>;
+  declare processed: CreationOptional<boolean>;
+  declare processed_at: Date | null;
+  declare received_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+KickWebhookEvent.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -13,46 +35,53 @@ const KickWebhookEvent = sequelize.define(
       type: DataTypes.STRING,
       allowNull: false,
       unique: true,
-      comment: "ID único del mensaje (ULID) - clave de idempotencia",
+      comment: "Unique message ID (ULID) - idempotency key",
     },
     subscription_id: {
       type: DataTypes.STRING,
       allowNull: true,
-      comment: "ID de la suscripción asociada al evento",
+      comment: "Subscription ID associated with the event",
     },
     event_type: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Tipo de evento (ej: chat.message.sent)",
+      comment: "Event type (e.g. chat.message.sent)",
     },
     event_version: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Versión del evento",
+      comment: "Event version",
     },
     message_timestamp: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: "Timestamp de cuándo se envió el mensaje",
+      comment: "Timestamp of when the message was sent",
     },
     payload: {
       type: DataTypes.JSON,
       allowNull: false,
-      comment: "Contenido del evento",
+      comment: "Event content",
     },
     processed: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      comment: "Indica si el evento ha sido procesado",
+      comment: "Indicates whether the event has been processed",
     },
     processed_at: {
       type: DataTypes.DATE,
       allowNull: true,
-      comment: "Timestamp de cuándo se procesó el evento",
+      comment: "Timestamp of when the event was processed",
+    },
+    received_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "kick_webhook_events",
     timestamps: true,
     createdAt: "received_at",

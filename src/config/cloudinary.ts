@@ -1,22 +1,20 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import { v2 as cloudinaryV2 } from "cloudinary";
 import logger from "../utils/logger";
-let cloudinary: any;
+
+let cloudinary: typeof cloudinaryV2 | null;
 
 try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  cloudinary = require("cloudinary").v2;
-
-  cloudinary.config({
+  cloudinaryV2.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 
   logger.info("[Cloudinary] Configured successfully");
-} catch (error: any) {
-  logger.warn("[Cloudinary] Not available:", error.message);
+  cloudinary = cloudinaryV2;
+} catch (error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  logger.warn("[Cloudinary] Not available:", msg);
   cloudinary = null;
 }
 

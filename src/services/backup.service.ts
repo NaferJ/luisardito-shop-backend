@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import crypto from "node:crypto";
@@ -11,8 +9,37 @@ import logger from "../utils/logger";
 
 const execAsync = promisify(exec);
 
+interface BackupConfig {
+  enabled: boolean;
+  githubRepoUrl: string | undefined;
+  githubToken: string | undefined;
+  githubUserEmail: string | undefined;
+  retentionDays: number;
+  localPath: string;
+  githubPath: string;
+  dbContainer: string;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+}
+
+interface BackupResult {
+  success: boolean;
+  filename?: string;
+  size?: string;
+  timestamp?: string;
+  reason?: string;
+  error?: string;
+}
+
+interface BackupInfo {
+  filename: string;
+  size: string;
+  date: Date;
+}
+
 class BackupService {
-  config: any;
+  config: BackupConfig;
 
   constructor() {
     this.config = {
@@ -38,7 +65,7 @@ class BackupService {
   /**
    * Creates a full database backup
    */
-  async createBackup() {
+  async createBackup(): Promise<BackupResult> {
     if (!this.config.enabled) {
       logger.info("Backups disabled (BACKUP_ENABLED=false)");
       return { success: false, reason: "disabled" };
@@ -92,11 +119,12 @@ class BackupService {
         size: sizeMB,
         timestamp: new Date().toISOString(),
       };
-    } catch (error: any) {
-      logger.error("Error in backup process:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("Error in backup process:", msg);
       return {
         success: false,
-        error: error.message,
+        error: msg,
         timestamp: new Date().toISOString(),
       };
     }
@@ -105,7 +133,7 @@ class BackupService {
   /**
    * Creates the database dump
    */
-  async dumpDatabase(outputPath: any) {
+  async dumpDatabase(outputPath: string) {
     logger.info("Creating MySQL dump...");
 
     // Create the dump directly in a temp file inside the MySQL container
@@ -162,10 +190,13 @@ class BackupService {
       logger.info(
         `MySQL dump completed (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
       );
-    } catch (error: any) {
-      logger.error("[Backup] Detailed error:", error.message);
-      if (error.stderr) logger.error("[Backup] stderr:", error.stderr);
-      throw new Error(`Error creating MySQL dump: ${error.message}`, {
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[Backup] Detailed error:", msg);
+      if (error instanceof Error && "stderr" in error) {
+        logger.error("[Backup] stderr:", (error as { stderr: string }).stderr);
+      }
+      throw new Error(`Error creating MySQL dump: ${msg}`, {
         cause: error,
       });
     }
@@ -174,7 +205,7 @@ class BackupService {
   /**
    * Compresses the backup using gzip
    */
-  async compressBackup(inputPath: any, outputPath: any) {
+  async compressBackup(inputPath: string, outputPath: string) {
     logger.info("Compressing backup...");
 
     try {
@@ -184,9 +215,10 @@ class BackupService {
         createWriteStream(outputPath)
       );
       logger.info("Backup compressed");
-    } catch (error: any) {
-      logger.error("[Backup] Error compressing:", error);
-      throw new Error(`Error compressing backup: ${error.message}`, {
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[Backup] Error compressing:", msg);
+      throw new Error(`Error compressing backup: ${msg}`, {
         cause: error,
       });
     }
@@ -195,7 +227,7 @@ class BackupService {
   /**
    * Uploads the backup to GitHub
    */
-  async pushToGitHub(backupPath: any, filename: any) {
+  async pushToGitHub(backupPath: string, filename: string) {
     logger.info("Uploading backup to GitHub...");
 
     try {
@@ -254,8 +286,9 @@ class BackupService {
       }
 
       logger.info("Backup uploaded to GitHub successfully");
-    } catch (error: any) {
-      logger.error("Error uploading to GitHub:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("Error uploading to GitHub:", msg);
       // Don't fail the whole process if GitHub fails
     }
   }
@@ -263,7 +296,7 @@ class BackupService {
   /**
    * Checks if Git LFS is available and configured
    */
-  async checkGitLFS() {
+  async checkGitLFS(): Promise<boolean> {
     try {
       await execAsync("git lfs version");
 
@@ -290,7 +323,7 @@ class BackupService {
       await fs.access(path.join(repoPath, ".git"));
 
       // Update remote with token
-      const authUrl = this.config.githubRepoUrl.replace(
+      const authUrl = this.config.githubRepoUrl!.replace(
         "https://",
         `https://x-access-token:${this.config.githubToken}@`
       );
@@ -304,7 +337,7 @@ class BackupService {
       // Does not exist, initialize from scratch
       logger.info("Initializing backup repository...");
 
-      const authUrl = this.config.githubRepoUrl.replace(
+      const authUrl = this.config.githubRepoUrl!.replace(
         "https://",
         `https://x-access-token:${this.config.githubToken}@`
       );
@@ -370,7 +403,7 @@ class BackupService {
   /**
    * Ensures Git LFS is configured in the repository
    */
-  async ensureGitLFS(repoPath: any) {
+  async ensureGitLFS(repoPath: string) {
     try {
       // Check if git-lfs is installed
       await execAsync("git lfs version");
@@ -404,8 +437,9 @@ class BackupService {
           logger.info("Git LFS configured locally");
         }
       }
-    } catch (error: any) {
-      logger.warn("Git LFS is not available:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn("Git LFS is not available:", msg);
       logger.warn(
         "Install Git LFS with: apk add git-lfs (on Alpine) or apt-get install git-lfs (on Debian/Ubuntu)"
       );
@@ -445,8 +479,9 @@ class BackupService {
       } else {
         logger.info("No old backups to clean");
       }
-    } catch (error: any) {
-      logger.warn("Error cleaning old backups:", error.message);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn("Error cleaning old backups:", msg);
     }
   }
 
@@ -461,10 +496,10 @@ class BackupService {
   /**
    * Lists available backups
    */
-  async listBackups() {
+  async listBackups(): Promise<BackupInfo[]> {
     try {
       const files = await fs.readdir(this.config.localPath);
-      const backups = [];
+      const backups: BackupInfo[] = [];
 
       for (const file of files) {
         if (file.startsWith("backup-") && file.endsWith(".sql.gz")) {
@@ -479,9 +514,10 @@ class BackupService {
         }
       }
 
-      return backups.sort((a: any, b: any) => b.date - a.date);
-    } catch (error: any) {
-      logger.error("Error listing backups:", error);
+      return backups.sort((a, b) => b.date.getTime() - a.date.getTime());
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("Error listing backups:", msg);
       return [];
     }
   }
@@ -489,7 +525,9 @@ class BackupService {
   /**
    * Restores a backup
    */
-  async restoreBackup(filename: any) {
+  async restoreBackup(
+    filename: string
+  ): Promise<{ success: boolean; error?: string }> {
     logger.info(`Starting backup restore: ${filename}`);
 
     const backupPath = path.join(this.config.localPath, filename);
@@ -521,9 +559,10 @@ class BackupService {
 
       logger.info("Backup restored successfully");
       return { success: true };
-    } catch (error: any) {
-      logger.error("Error restoring backup:", error);
-      return { success: false, error: error.message };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("Error restoring backup:", msg);
+      return { success: false, error: msg };
     }
   }
 }

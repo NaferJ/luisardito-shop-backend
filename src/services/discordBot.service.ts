@@ -1,23 +1,38 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-import { Client, GatewayIntentBits } from "discord.js";
+import {
+  Client,
+  GatewayIntentBits,
+  type Message,
+  type TextChannel,
+} from "discord.js";
 import config from "../../config";
 import logger from "../utils/logger";
 import KickBotCommandHandlerService from "./kickBotCommandHandler.service";
+
+interface EmbedContent {
+  embeds?: unknown[];
+  data?: unknown;
+  [key: string]: unknown;
+}
+
+interface SendMessageResult {
+  ok: boolean;
+  error?: string;
+}
 
 /**
  * Discord bot service
  * Uses the same command logic as the Kick bot
  */
 class DiscordBotService {
-  client: any = null;
-  commandHandler: any = KickBotCommandHandlerService;
+  client: Client | null = null;
+  commandHandler: typeof KickBotCommandHandlerService =
+    KickBotCommandHandlerService;
   isReady: boolean = false;
 
   /**
    * Initialize and connect the Discord bot
    */
-  async initialize() {
+  async initialize(): Promise<boolean> {
     try {
       logger.info("[Discord Bot] Initializing Discord bot...");
 
@@ -40,17 +55,19 @@ class DiscordBotService {
 
       // Event: Bot ready
       this.client.once("ready", () => {
-        logger.info(`[Discord Bot] Bot connected as ${this.client.user.tag}`);
+        if (this.client?.user) {
+          logger.info(`[Discord Bot] Bot connected as ${this.client.user.tag}`);
+        }
         this.isReady = true;
       });
 
       // Event: Message received
-      this.client.on("messageCreate", async (message: any) => {
+      this.client.on("messageCreate", async (message: Message) => {
         await this.handleMessage(message);
       });
 
       // Event: Error
-      this.client.on("error", (error: any) => {
+      this.client.on("error", (error: Error) => {
         logger.error("[Discord Bot] Error:", error);
       });
 
@@ -59,7 +76,7 @@ class DiscordBotService {
       logger.info("[Discord Bot] Bot initialized successfully");
 
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("[Discord Bot] Error initializing bot:", error);
       return false;
     }
@@ -68,7 +85,7 @@ class DiscordBotService {
   /**
    * Handle Discord chat messages
    */
-  async handleMessage(message: any) {
+  async handleMessage(message: Message): Promise<void> {
     try {
       // Ignore messages from the bot itself
       if (message.author.bot) return;
@@ -105,17 +122,20 @@ class DiscordBotService {
           logger.info(`[Discord Bot] Command processed for ${username}`);
         }
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("[Discord Bot] Error handling message:", error);
     }
   }
 
   /**
    * Send message to the current channel
-   * @param {string|object} content - Message content (string or embed object)
-   * @param {object} message - Discord message object (optional)
+   * @param content - Message content (string or embed object)
+   * @param message - Discord message object (optional)
    */
-  async sendMessage(content: any, message: any = null) {
+  async sendMessage(
+    content: string | EmbedContent,
+    message: Message | null = null
+  ): Promise<SendMessageResult> {
     try {
       if (!this.isReady) {
         logger.warn("[Discord Bot] Bot is not ready to send messages");
@@ -129,11 +149,11 @@ class DiscordBotService {
         } else if (content && typeof content === "object") {
           // Check if it is an object with embeds (multiple embeds)
           if (content.embeds) {
-            await message.reply({ embeds: content.embeds });
+            await message.reply({ embeds: content.embeds as never[] });
           }
           // Check if it is an individual embed (backwards compatibility)
           else if (content.data) {
-            await message.reply({ embeds: [content] });
+            await message.reply({ embeds: [content as never] });
           } else {
             await message.reply(String(content));
           }
@@ -148,56 +168,64 @@ class DiscordBotService {
       // This requires more configuration, for now just reply
       logger.warn("[Discord Bot] No message context to send reply");
       return { ok: false, error: "No message context" };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[Discord Bot] Error sending message:", error);
-      return { ok: false, error: error.message };
+      return { ok: false, error: msg };
     }
   }
 
   /**
    * Send message to a specific channel
-   * @param {string} channelId - Channel ID
-   * @param {string|object} content - Message content (string or embed object)
+   * @param channelId - Channel ID
+   * @param content - Message content (string or embed object)
    */
-  async sendMessageToChannel(channelId: any, content: any) {
+  async sendMessageToChannel(
+    channelId: string,
+    content: string | EmbedContent
+  ): Promise<SendMessageResult> {
     try {
-      if (!this.isReady) {
+      if (!this.isReady || !this.client) {
         return { ok: false, error: "Bot not ready" };
       }
 
       const channel = await this.client.channels.fetch(channelId);
       if (channel?.isTextBased()) {
+        const textChannel = channel as TextChannel;
         if (typeof content === "string") {
-          await channel.send(content);
+          await textChannel.send(content);
         } else if (content && typeof content === "object") {
           // Check if it is an object with embeds (multiple embeds)
-          if (content.embeds) {
-            await channel.send({ embeds: content.embeds });
+          if ((content as EmbedContent).embeds) {
+            await textChannel.send({
+              embeds: (content as EmbedContent).embeds as never[],
+            });
           }
           // Check if it is an individual embed (backwards compatibility)
-          else if (content.data) {
-            await channel.send({ embeds: [content] });
+          else if ((content as EmbedContent).data) {
+            await textChannel.send({ embeds: [content as never] });
           } else {
-            await channel.send(String(content));
+            await textChannel.send(String(content));
           }
         } else {
-          await channel.send(String(content));
+          await textChannel.send(String(content));
         }
         logger.info(`[Discord Bot] Message sent to channel ${channelId}`);
         return { ok: true };
       } else {
         return { ok: false, error: "Invalid channel" };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[Discord Bot] Error sending message to channel:", error);
-      return { ok: false, error: error.message };
+      return { ok: false, error: msg };
     }
   }
 
   /**
    * Disconnect the bot
    */
-  async disconnect() {
+  async disconnect(): Promise<void> {
     if (this.client) {
       await this.client.destroy();
       this.isReady = false;
@@ -208,7 +236,7 @@ class DiscordBotService {
   /**
    * Check if the bot is ready
    */
-  isBotReady() {
+  isBotReady(): boolean {
     return this.isReady;
   }
 }

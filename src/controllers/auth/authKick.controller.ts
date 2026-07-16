@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import axios from "axios";
 import config from "../../../config";
@@ -19,7 +17,7 @@ import asyncHandler from "../../utils/asyncHandler";
 import AppError from "../../utils/AppError";
 
 // Redirect to Kick OAuth
-const redirectKick = (req: any, res: any) => {
+const redirectKick = (req: Request, res: Response) => {
   try {
     const { code_verifier, code_challenge } = generatePkce();
     logger.info("[Kick OAuth][redirectKick] code_verifier:", code_verifier);
@@ -50,8 +48,11 @@ const redirectKick = (req: any, res: any) => {
     const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
     logger.info("[Kick OAuth][redirectKick] Final redirect URL:", url);
     return res.redirect(url);
-  } catch (err: any) {
-    logger.error("[Kick OAuth][redirectKick] Error:", err?.message || err);
+  } catch (err) {
+    logger.error(
+      "[Kick OAuth][redirectKick] Error:",
+      err instanceof Error ? err.message : String(err)
+    );
     return res
       .status(500)
       .json({ error: "Could not start the Kick OAuth flow" });
@@ -59,15 +60,20 @@ const redirectKick = (req: any, res: any) => {
 };
 
 // Helper: resolve local user from Kick profile (find-by-user_id_ext / collision-link / create-new)
-async function resolveKickUserFromProfile(kickUser: any): Promise<any> {
-  let usuario: any = await Usuario.findOne({
+async function resolveKickUserFromProfile(kickUser: {
+  user_id: string;
+  name: string;
+  email?: string;
+  profile_picture?: string;
+}): Promise<{ usuario?: Usuario; isNewUser?: boolean; conflict?: boolean }> {
+  let usuario = await Usuario.findOne({
     where: { user_id_ext: String(kickUser.user_id) },
   });
   let isNewUser = false;
 
   if (!usuario) {
     // If not found, search by nickname (case-insensitive) or email
-    const colision: any = await Usuario.findOne({
+    const colision = await Usuario.findOne({
       where: {
         [Op.or]: [
           { email: kickUser.email },
@@ -147,7 +153,7 @@ async function resolveKickUserFromProfile(kickUser: any): Promise<any> {
       logger.info("[Kick OAuth][callbackKick] User created:", usuario.id);
     }
   } else {
-    const colision: any = await Usuario.findOne({
+    const colision = await Usuario.findOne({
       where: {
         [Op.or]: [{ email: kickUser.email }, { nickname: kickUser.name }],
         id: { [Op.ne]: usuario.id },
@@ -186,15 +192,19 @@ async function resolveKickUserFromProfile(kickUser: any): Promise<any> {
 
 // Helper: persist broadcaster token (findOrCreate + update)
 async function persistBroadcasterToken(
-  kickUserId: any,
-  kickUser: any,
-  tokenData: any
+  kickUserId: string,
+  kickUser: { name: string },
+  tokenData: {
+    access_token: string;
+    refresh_token?: string | null;
+    expires_in?: number | null;
+  }
 ) {
   const accessToken = tokenData.access_token;
   const refreshToken = tokenData.refresh_token || null;
   const expiresIn = tokenData.expires_in || null;
 
-  let tokenExpiresAt = null;
+  let tokenExpiresAt: Date | null = null;
   if (expiresIn) {
     tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
   }
@@ -209,19 +219,18 @@ async function persistBroadcasterToken(
   }
 
   // Save or update token
-  const [broadcasterToken, created]: any =
-    await KickBroadcasterToken.findOrCreate({
-      where: { kick_user_id: kickUserId },
-      defaults: {
-        kick_user_id: kickUserId,
-        kick_username: kickUser.name,
-        access_token: accessToken,
-        refresh_token: refreshToken,
-        token_expires_at: tokenExpiresAt,
-        is_active: true,
-        auto_subscribed: false,
-      },
-    });
+  const [broadcasterToken, created] = await KickBroadcasterToken.findOrCreate({
+    where: { kick_user_id: kickUserId },
+    defaults: {
+      kick_user_id: kickUserId,
+      kick_username: kickUser.name,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_expires_at: tokenExpiresAt,
+      is_active: true,
+      auto_subscribed: false,
+    },
+  });
 
   if (!created) {
     await broadcasterToken.update({
@@ -243,10 +252,10 @@ async function persistBroadcasterToken(
 
 // Helper: auto-subscribe main broadcaster to events
 async function maybeAutoSubscribe(
-  broadcasterToken: any,
-  accessToken: any,
-  kickUserId: any,
-  isBroadcasterPrincipal: any
+  broadcasterToken: KickBroadcasterToken,
+  accessToken: string,
+  kickUserId: string,
+  isBroadcasterPrincipal: boolean
 ) {
   if (!isBroadcasterPrincipal) {
     logger.info(
@@ -259,11 +268,16 @@ async function maybeAutoSubscribe(
 
   try {
     // Use ITS OWN token to subscribe to ITS OWN channel events
-    const autoSubscribeResult: any = await autoSubscribeToEvents(
+    const autoSubscribeResult = (await autoSubscribeToEvents(
       accessToken,
       kickUserId,
       kickUserId
-    );
+    )) as {
+      success: boolean;
+      totalSubscribed?: number;
+      totalErrors?: number;
+      error?: unknown;
+    };
 
     await broadcasterToken.update({
       auto_subscribed: autoSubscribeResult.success,
@@ -285,34 +299,49 @@ async function maybeAutoSubscribe(
     }
 
     return autoSubscribeResult;
-  } catch (subscribeError: any) {
-    logger.error("[MAIN BROADCASTER] Critical error:", subscribeError.message);
+  } catch (subscribeError) {
+    logger.error(
+      "[MAIN BROADCASTER] Critical error:",
+      subscribeError instanceof Error
+        ? subscribeError.message
+        : String(subscribeError)
+    );
     await broadcasterToken.update({
       auto_subscribed: false,
       last_subscription_attempt: new Date(),
-      subscription_error: subscribeError.message,
+      subscription_error:
+        subscribeError instanceof Error
+          ? subscribeError.message
+          : String(subscribeError),
     });
     return null;
   }
 }
 
 // Helper: handle callbackKick errors
-function handleCallbackKickError(res: any, error: any) {
+function handleCallbackKickError(res: Response, error: unknown) {
   logger.error(
     "[Kick OAuth][callbackKick] General error:",
-    error?.message || error
+    error instanceof Error ? error.message : String(error)
   );
 
   // Show Sequelize validation error details if present
-  if (error.errors) {
+  if ((error as { errors?: unknown[] })?.errors) {
     logger.error(
       "[Kick OAuth][callbackKick] Validation error details:",
-      error.errors
+      (error as { errors: unknown[] }).errors
     );
     // Respond with the validation message if it is a uniqueness collision
-    const uniqueError = error.errors.find(
-      (e: any) => e.type === "unique violation"
-    );
+    const uniqueError = (
+      error as {
+        errors: Array<{
+          type: string;
+          message: string;
+          path: string;
+          value: unknown;
+        }>;
+      }
+    ).errors.find((e) => e.type === "unique violation");
     if (uniqueError) {
       return res.status(409).json({
         error: uniqueError.message,
@@ -322,26 +351,29 @@ function handleCallbackKickError(res: any, error: any) {
     }
   }
 
-  if (error.response) {
+  if (error && typeof error === "object" && "response" in error) {
+    const axiosError = error as { response: { status: number; data: unknown } };
     logger.info(
       "[Kick OAuth][callbackKick] error.response.data:",
-      error.response.data
+      axiosError.response.data
     );
-    return res.status(error.response.status).json({
+    return res.status(axiosError.response.status).json({
       error: "Error communicating with Kick",
-      provider_status: error.response.status,
-      details: error.response.data,
+      provider_status: axiosError.response.status,
+      details: axiosError.response.data,
     });
   }
 
   return res.status(502).json({
     error: "Provider network failure",
-    detalle: error.errors || error.message || error,
+    detalle:
+      (error as { errors?: unknown[] })?.errors ||
+      (error instanceof Error ? error.message : String(error)),
   });
 }
 
 // Kick OAuth callback
-const callbackKick = async (req: any, res: any) => {
+const callbackKick = async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Kick OAuth][callbackKick] Parameters received:", {
@@ -361,10 +393,10 @@ const callbackKick = async (req: any, res: any) => {
     try {
       decoded = jwt.verify(String(state), config.jwtSecret);
       logger.info("[Kick OAuth][callbackKick] Decoded state:", decoded);
-    } catch (e: any) {
+    } catch (e) {
       logger.info(
         "[Kick OAuth][callbackKick] Invalid or expired state:",
-        e?.message || e
+        e instanceof Error ? e.message : String(e)
       );
       return res.status(400).json({ error: "Invalid or expired state" });
     }
@@ -407,7 +439,7 @@ const callbackKick = async (req: any, res: any) => {
 
     const params = new URLSearchParams({
       grant_type: "authorization_code",
-      code,
+      code: code as string,
       redirect_uri: finalRedirectUri,
       client_id: clientId,
       client_secret: clientSecret,
@@ -452,7 +484,7 @@ const callbackKick = async (req: any, res: any) => {
       ? userRes.data.data[0]
       : userRes.data;
 
-    const userResult: any = await resolveKickUserFromProfile(kickUser);
+    const userResult = await resolveKickUserFromProfile(kickUser);
     if (userResult.conflict) {
       return res
         .status(409)
@@ -465,7 +497,7 @@ const callbackKick = async (req: any, res: any) => {
     const { broadcasterToken, accessToken, isBroadcasterPrincipal } =
       await persistBroadcasterToken(kickUserId, kickUser, tokenData);
 
-    const autoSubscribeResult: any = await maybeAutoSubscribe(
+    const autoSubscribeResult = await maybeAutoSubscribe(
       broadcasterToken,
       accessToken,
       kickUserId,
@@ -477,17 +509,17 @@ const callbackKick = async (req: any, res: any) => {
       userId: usuario.id,
       rolId: usuario.rol_id,
       nickname: usuario.nickname,
-      kick_id: usuario.user_id,
+      kick_id: usuario.user_id_ext,
     });
 
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers["user-agent"];
 
-    const refreshTokenObj: any = await createRefreshToken(
+    const refreshTokenObj = (await createRefreshToken(
       usuario.id,
       ipAddress,
       userAgent
-    );
+    )) as { token: string };
 
     logger.info("[Kick OAuth][callbackKick] JWT issued (access + refresh)");
 
@@ -513,8 +545,8 @@ const callbackKick = async (req: any, res: any) => {
         user_id_ext: usuario.user_id_ext,
         kick_data: usuario.kick_data,
         discord_info,
-        createdAt: usuario.createdAt,
-        updatedAt: usuario.updatedAt,
+        createdAt: usuario.creado,
+        updatedAt: usuario.actualizado,
       },
       isNewUser,
       kickProfile: {
@@ -543,13 +575,13 @@ const callbackKick = async (req: any, res: any) => {
     );
 
     return res.redirect(redirectUrl);
-  } catch (error: any) {
+  } catch (error) {
     return handleCallbackKickError(res, error);
   }
 };
 
 // Receive tokens from the frontend (token exchange done in the browser)
-const storeTokens = asyncHandler(async (req: any, res: any) => {
+const storeTokens = asyncHandler(async (req: Request, res: Response) => {
   const { accessToken } = req.body || {};
   if (!accessToken) {
     throw new AppError("accessToken required", 400);
@@ -567,12 +599,13 @@ const storeTokens = asyncHandler(async (req: any, res: any) => {
       },
       timeout: 10000,
     });
-  } catch (error: any) {
-    if (error.response) {
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "response" in error) {
+      const axiosError = error as { response: { data: unknown } };
       throw new AppError(
         "Error fetching Kick profile",
         400,
-        error.response.data
+        axiosError.response.data
       );
     }
     throw new AppError("Internal server error", 500);
@@ -583,7 +616,7 @@ const storeTokens = asyncHandler(async (req: any, res: any) => {
     : userRes.data;
 
   // Upsert local user
-  let usuario: any = await Usuario.findOne({
+  let usuario = await Usuario.findOne({
     where: { user_id_ext: String(kickUser.user_id) },
   });
   let isNewUser = false;
@@ -661,8 +694,8 @@ const storeTokens = asyncHandler(async (req: any, res: any) => {
       user_id_ext: usuario.user_id_ext,
       kick_data: usuario.kick_data,
       discord_info,
-      createdAt: usuario.createdAt,
-      updatedAt: usuario.updatedAt,
+      createdAt: usuario.creado,
+      updatedAt: usuario.actualizado,
     },
     isNewUser,
     kickProfile: {

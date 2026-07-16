@@ -1,12 +1,43 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-import axios from "axios";
+import axios, { type AxiosResponse } from "axios";
 import config from "../../config";
 import { KickEventSubscription, KickBroadcasterToken } from "../models";
 import logger from "../utils/logger";
 
 // In-flight refresh promises keyed by broadcaster identity (single-flight guard)
-const refreshInFlight = new Map();
+const refreshInFlight = new Map<string, Promise<boolean>>();
+
+interface KickSubscriptionData {
+  subscription_id: string;
+  name: string;
+  version: number;
+  error?: string;
+}
+
+interface KickSubscriptionResponse {
+  data: KickSubscriptionData[];
+}
+
+interface SubscriptionResult {
+  success: boolean;
+  totalSubscribed: number;
+  totalErrors: number;
+  subscriptions: KickEventSubscription[];
+  errors: { event: string; error: string }[];
+  kickResponse: KickSubscriptionResponse;
+}
+
+interface SubscriptionErrorResult {
+  success: false;
+  error: unknown;
+  status?: number;
+  message: string;
+}
+
+interface TokenRefreshResponse {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+}
 
 /**
  * List of events to auto-subscribe to
@@ -25,17 +56,17 @@ const DEFAULT_EVENTS = [
 
 /**
  * Auto-subscribes to all broadcaster events
- * @param {string} accessToken - Access token to make the request
- * @param {string} broadcasterUserId - Broadcaster ID to listen events from
- * @param {string} tokenProviderId - ID of the user providing the token (optional, defaults to broadcaster)
- * @returns {Promise<Object>} Subscription result
+ * @param accessToken - Access token to make the request
+ * @param broadcasterUserId - Broadcaster ID to listen events from
+ * @param tokenProviderId - ID of the user providing the token (optional, defaults to broadcaster)
+ * @returns Subscription result
  */
 async function processSubscriptionResults(
-  subscriptionsData: any,
-  broadcasterUserId: any
+  subscriptionsData: KickSubscriptionData[],
+  broadcasterUserId: string
 ) {
-  const createdSubscriptions = [];
-  const errors = [];
+  const createdSubscriptions: KickEventSubscription[] = [];
+  const errors: { event: string; error: string }[] = [];
 
   logger.info(
     `[Auto Subscribe] Processing ${subscriptionsData.length} subscriptions received from Kick`
@@ -44,7 +75,7 @@ async function processSubscriptionResults(
   for (const sub of subscriptionsData) {
     if (sub.subscription_id && !sub.error) {
       try {
-        let localSub: any = await KickEventSubscription.findOne({
+        let localSub = await KickEventSubscription.findOne({
           where: { subscription_id: sub.subscription_id },
         });
 
@@ -74,9 +105,11 @@ async function processSubscriptionResults(
         }
 
         createdSubscriptions.push(localSub);
-      } catch (dbError: any) {
-        logger.error(`[Auto Subscribe] DB error ${sub.name}:`, dbError.message);
-        errors.push({ event: sub.name, error: dbError.message });
+      } catch (dbError: unknown) {
+        const msg =
+          dbError instanceof Error ? dbError.message : String(dbError);
+        logger.error(`[Auto Subscribe] DB error ${sub.name}:`, msg);
+        errors.push({ event: sub.name, error: msg });
       }
     } else if (sub.error) {
       errors.push({ event: sub.name, error: sub.error });
@@ -88,10 +121,10 @@ async function processSubscriptionResults(
 }
 
 async function autoSubscribeToEvents(
-  accessToken: any,
-  broadcasterUserId: any,
-  tokenProviderId: any = null
-) {
+  accessToken: string,
+  broadcasterUserId: string,
+  tokenProviderId: string | null = null
+): Promise<SubscriptionResult | SubscriptionErrorResult> {
   try {
     const actualTokenProvider = tokenProviderId || broadcasterUserId;
 
@@ -116,13 +149,17 @@ async function autoSubscribeToEvents(
       webhook_url: "https://api.luisardito.com/api/kick-webhook/events",
     };
 
-    const response = await axios.post(apiUrl, payload, {
-      headers: {
-        Authorization: `Bearer ${validToken}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    });
+    const response: AxiosResponse<KickSubscriptionResponse> = await axios.post(
+      apiUrl,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
 
     const subscriptionsData = response.data.data || [];
     const { createdSubscriptions, errors } = await processSubscriptionResults(
@@ -145,7 +182,7 @@ async function autoSubscribeToEvents(
       }
     );
 
-    const result = {
+    const result: SubscriptionResult = {
       success: createdSubscriptions.length > 0,
       totalSubscribed: createdSubscriptions.length,
       totalErrors: errors.length,
@@ -159,15 +196,16 @@ async function autoSubscribeToEvents(
     );
 
     return result;
-  } catch (error: any) {
-    logger.error("[Auto Subscribe] Error:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Auto Subscribe] Error:", msg);
 
     // Update the error in the database
     await KickBroadcasterToken.update(
       {
         auto_subscribed: false,
         last_subscription_attempt: new Date(),
-        subscription_error: error.message,
+        subscription_error: msg,
       },
       {
         where: {
@@ -177,24 +215,27 @@ async function autoSubscribeToEvents(
       }
     );
 
-    if (error.response) {
+    if (error && typeof error === "object" && "response" in error) {
+      const axiosError = error as {
+        response: { status: number; data: unknown };
+      };
       logger.error(
         "[Auto Subscribe] API Error:",
-        error.response.status,
-        error.response.data
+        axiosError.response.status,
+        axiosError.response.data
       );
 
       return {
         success: false,
-        error: error.response.data,
-        status: error.response.status,
+        error: axiosError.response.data,
+        status: axiosError.response.status,
         message: "Error communicating with the Kick API",
       };
     }
 
     return {
       success: false,
-      error: error.message,
+      error: msg,
       message: "Network error or timeout",
     };
   }
@@ -202,10 +243,12 @@ async function autoSubscribeToEvents(
 
 /**
  * Checks if there is already an active subscription for a broadcaster
- * @param {string} broadcasterUserId - Broadcaster ID
- * @returns {Promise<boolean>}
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns true if there are active subscriptions
  */
-async function hasActiveSubscriptions(broadcasterUserId: any) {
+async function hasActiveSubscriptions(
+  broadcasterUserId: string
+): Promise<boolean> {
   const count = await KickEventSubscription.count({
     where: {
       broadcaster_user_id: Number.parseInt(broadcasterUserId),
@@ -219,10 +262,12 @@ async function hasActiveSubscriptions(broadcasterUserId: any) {
 /**
  * Internal refresh implementation. Callers should use refreshAccessToken()
  * which adds the single-flight guard.
- * @param {Object} broadcasterToken - Broadcaster token instance
- * @returns {Promise<boolean>} True if refreshed successfully
+ * @param broadcasterToken - Broadcaster token instance
+ * @returns True if refreshed successfully
  */
-async function performBroadcasterRefresh(broadcasterToken: any) {
+async function performBroadcasterRefresh(
+  broadcasterToken: KickBroadcasterToken
+): Promise<boolean> {
   try {
     if (!broadcasterToken.refresh_token) {
       logger.error("[Token Refresh] No refresh token available");
@@ -242,12 +287,16 @@ async function performBroadcasterRefresh(broadcasterToken: any) {
       refresh_token: broadcasterToken.refresh_token,
     };
 
-    const response = await axios.post(refreshUrl, payload, {
-      headers: {
-        "Content-Type": "application/json",
-      },
-      timeout: 10000,
-    });
+    const response: AxiosResponse<TokenRefreshResponse> = await axios.post(
+      refreshUrl,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+        timeout: 10000,
+      }
+    );
 
     if (response.data.access_token) {
       const newExpiresAt = new Date(
@@ -266,26 +315,32 @@ async function performBroadcasterRefresh(broadcasterToken: any) {
     }
 
     return false;
-  } catch (error: any) {
-    logger.error("[Token Refresh] Error renewing token:", error.message);
-    if (error.response) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Token Refresh] Error renewing token:", msg);
+    if (error && typeof error === "object" && "response" in error) {
+      const axiosError = error as {
+        response: { status: number; data: unknown };
+      };
       logger.error(
         "[Token Refresh] API Error:",
-        error.response.status,
-        error.response.data
+        axiosError.response.status,
+        axiosError.response.data
       );
 
-      if (error.response.status === 400 || error.response.status === 401) {
+      if (
+        axiosError.response.status === 400 ||
+        axiosError.response.status === 401
+      ) {
         try {
           await broadcasterToken.update({
             is_active: false,
             subscription_error: "Token expired and could not be refreshed",
           });
-        } catch (dbError: any) {
-          logger.error(
-            "[Token Refresh] Error deactivating token:",
-            dbError.message
-          );
+        } catch (dbError: unknown) {
+          const dbMsg =
+            dbError instanceof Error ? dbError.message : String(dbError);
+          logger.error("[Token Refresh] Error deactivating token:", dbMsg);
         }
       }
     }
@@ -298,17 +353,20 @@ async function performBroadcasterRefresh(broadcasterToken: any) {
  * Concurrent calls for the same broadcaster share a single in-flight
  * network request (single-flight) to avoid race conditions caused by
  * Kick's rotating refresh tokens.
- * @param {Object} broadcasterToken - Broadcaster token instance
- * @returns {Promise<boolean>} True if refreshed successfully
+ * @param broadcasterToken - Broadcaster token instance
+ * @returns True if refreshed successfully
  */
-function refreshAccessToken(broadcasterToken: any) {
-  const key =
+function refreshAccessToken(
+  broadcasterToken: KickBroadcasterToken
+): Promise<boolean> {
+  const key = String(
     broadcasterToken.id ??
-    broadcasterToken.kick_user_id ??
-    broadcasterToken.kick_username;
+      broadcasterToken.kick_user_id ??
+      broadcasterToken.kick_username
+  );
 
   if (refreshInFlight.has(key)) {
-    return refreshInFlight.get(key);
+    return refreshInFlight.get(key)!;
   }
 
   const promise = performBroadcasterRefresh(broadcasterToken).finally(() => {
@@ -321,12 +379,14 @@ function refreshAccessToken(broadcasterToken: any) {
 
 /**
  * Verifies and refreshes the token if necessary
- * @param {string} broadcasterUserId - Broadcaster ID
- * @returns {Promise<string|null>} Valid access token or null
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Valid access token or null
  */
-async function ensureValidToken(broadcasterUserId: any) {
+async function ensureValidToken(
+  broadcasterUserId: string
+): Promise<string | null> {
   try {
-    const broadcasterToken: any = await KickBroadcasterToken.findOne({
+    const broadcasterToken = await KickBroadcasterToken.findOne({
       where: {
         kick_user_id: broadcasterUserId,
         is_active: true,
@@ -343,7 +403,7 @@ async function ensureValidToken(broadcasterUserId: any) {
 
     const now = new Date();
     const bufferTime = 5 * 60 * 1000; // 5 minutes buffer
-    const expiresAt = new Date(broadcasterToken.token_expires_at);
+    const expiresAt = new Date(broadcasterToken.token_expires_at as Date);
 
     // If the token expires in less than 5 minutes, refresh it
     if (expiresAt.getTime() - now.getTime() < bufferTime) {
@@ -360,8 +420,9 @@ async function ensureValidToken(broadcasterUserId: any) {
     }
 
     return broadcasterToken.access_token;
-  } catch (error: any) {
-    logger.error("[Token Ensure] Error:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Token Ensure] Error:", msg);
     return null;
   }
 }

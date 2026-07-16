@@ -1,35 +1,37 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import NotificacionService from "../services/notificacion.service";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
 
-const listar = asyncHandler(async (req: any, res: any) => {
+const listar = asyncHandler(async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 20, tipo = null, estado = null } = req.query;
     const usuarioId = req.user.id;
 
     const resultado = await NotificacionService.listar(
       usuarioId,
-      Number.parseInt(page),
-      Number.parseInt(limit),
-      tipo,
-      estado
+      Number.parseInt(page as string),
+      Number.parseInt(limit as string),
+      tipo as string | null,
+      estado as string | null
     );
 
     res.json(resultado);
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 500);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      500
+    );
   }
 });
 
-const obtenerDetalle = asyncHandler(async (req: any, res: any) => {
+const obtenerDetalle = asyncHandler(async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const usuarioId = req.user.id;
 
-    const notificacion: any = await NotificacionService.obtenerDetalle(
+    const notificacion = await NotificacionService.obtenerDetalle(
       id,
       usuarioId
     );
@@ -42,15 +44,18 @@ const obtenerDetalle = asyncHandler(async (req: any, res: any) => {
     }
 
     res.json(notificacion);
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 404);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      404
+    );
   }
 });
 
-const marcarComoLeida = asyncHandler(async (req: any, res: any) => {
+const marcarComoLeida = asyncHandler(async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const usuarioId = req.user.id;
 
     const notificacion = await NotificacionService.marcarComoLeida(
@@ -62,53 +67,67 @@ const marcarComoLeida = asyncHandler(async (req: any, res: any) => {
       mensaje: "Notification marked as read",
       notificacion,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 404);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      404
+    );
   }
 });
 
-const marcarTodasComoLeidas = asyncHandler(async (req: any, res: any) => {
-  try {
-    const usuarioId = req.user.id;
+const marcarTodasComoLeidas = asyncHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const usuarioId = req.user.id;
 
-    const resultado =
-      await NotificacionService.marcarTodasComoLeidas(usuarioId);
+      const resultado =
+        await NotificacionService.marcarTodasComoLeidas(usuarioId);
 
-    res.json({
-      mensaje: "All notifications marked as read",
-      ...resultado,
-    });
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 500);
+      res.json({
+        mensaje: "All notifications marked as read",
+        ...resultado,
+      });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError(
+        error instanceof Error ? error.message : String(error),
+        500
+      );
+    }
   }
-});
+);
 
-const eliminar = asyncHandler(async (req: any, res: any) => {
+const eliminar = asyncHandler(async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const usuarioId = req.user.id;
 
     const resultado = await NotificacionService.eliminar(id, usuarioId);
 
     res.json(resultado);
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 404);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      404
+    );
   }
 });
 
-const contarNoLeidas = asyncHandler(async (req: any, res: any) => {
+const contarNoLeidas = asyncHandler(async (req: Request, res: Response) => {
   try {
     const usuarioId = req.user.id;
 
     const resultado = await NotificacionService.contarNoLeidas(usuarioId);
 
     res.json(resultado);
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
-    throw new AppError(error.message, 500);
+    throw new AppError(
+      error instanceof Error ? error.message : String(error),
+      500
+    );
   }
 });
 

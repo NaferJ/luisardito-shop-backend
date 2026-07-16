@@ -1,19 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import leaderboardService from "./leaderboard.service";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
 import LeaderboardSnapshot from "../models/leaderboardSnapshot.model";
 
 class LeaderboardSnapshotTask {
-  intervalId: any = null;
+  intervalId: NodeJS.Timeout | null = null;
   isRunning: boolean = false;
   intervalHours: number =
-    Number.parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS as any) ||
+    Number.parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || "6") ||
     6;
   cleanupDays: number =
-    Number.parseInt(process.env.LEADERBOARD_CLEANUP_DAYS as any) || 30;
-  _lastCleanupDate: any = null;
+    Number.parseInt(process.env.LEADERBOARD_CLEANUP_DAYS || "30") || 30;
+  _lastCleanupDate: Date | null = null;
 
   /**
    * Starts the scheduled snapshot task
@@ -97,8 +95,9 @@ class LeaderboardSnapshotTask {
       } else {
         logger.info("[LEADERBOARD-SNAPSHOT] No old snapshots to clean");
       }
-    } catch (error: any) {
-      logger.error("[LEADERBOARD-SNAPSHOT] Error executing snapshot:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[LEADERBOARD-SNAPSHOT] Error executing snapshot:", msg);
       // Do not throw the error so the task continues running
     }
   }
@@ -126,11 +125,9 @@ class LeaderboardSnapshotTask {
 
       // Only run cleanup if there are old snapshots
       return oldSnapshotsCount > 0;
-    } catch (error: any) {
-      logger.error(
-        "[LEADERBOARD-SNAPSHOT] Error checking cleanup need:",
-        error
-      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[LEADERBOARD-SNAPSHOT] Error checking cleanup need:", msg);
       return false; // On error, do not run cleanup for safety
     }
   }

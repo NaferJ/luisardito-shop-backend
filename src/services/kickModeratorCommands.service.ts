@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import { KickBotCommand } from "../models";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
@@ -19,6 +17,52 @@ import { Op } from "sequelize";
  * - !cmdinfo <name>
  */
 
+interface KickBadge {
+  type: string;
+}
+
+interface KickIdentity {
+  badges?: KickBadge[];
+}
+
+interface KickSender {
+  user_id: string;
+  username: string;
+  identity?: KickIdentity;
+}
+
+interface KickBroadcaster {
+  user_id: string;
+  username: string;
+}
+
+interface ModeratorPayload {
+  content: string;
+  sender: KickSender;
+  broadcaster: KickBroadcaster;
+}
+
+interface ParsedFlags {
+  aliases?: string[];
+  cooldown?: number;
+  desc?: string;
+  response?: string;
+}
+
+interface ParsedCommand {
+  command: string;
+  name: string | null;
+  flags: ParsedFlags;
+  error?: string;
+}
+
+interface CommandResult {
+  success: boolean;
+  processed: boolean;
+  message: string | null;
+  data?: KickBotCommand;
+}
+
 // List of protected commands that CANNOT be deleted
 const PROTECTED_COMMANDS = new Set([
   "comandos",
@@ -33,11 +77,14 @@ const PROTECTED_COMMANDS = new Set([
 
 /**
  * Checks if the user has moderator or broadcaster permissions
- * @param {object} sender - Sender object from Kick webhook
- * @param {object} broadcaster - Broadcaster object from Kick webhook
- * @returns {boolean}
+ * @param sender - Sender object from Kick webhook
+ * @param broadcaster - Broadcaster object from Kick webhook
+ * @returns true if the user is a moderator or broadcaster
  */
-function isModerator(sender: any, broadcaster: any) {
+function isModerator(
+  sender: KickSender,
+  broadcaster: KickBroadcaster
+): boolean {
   // The broadcaster always has permissions
   if (sender.user_id === broadcaster.user_id) {
     return true;
@@ -46,7 +93,7 @@ function isModerator(sender: any, broadcaster: any) {
   // Check if user has moderator badge
   const badges = sender.identity?.badges || [];
   return badges.some(
-    (badge: any) => badge.type === "moderator" || badge.type === "broadcaster"
+    (badge) => badge.type === "moderator" || badge.type === "broadcaster"
   );
 }
 
@@ -54,11 +101,14 @@ function isModerator(sender: any, broadcaster: any) {
  * Reads a flag's value from the token list starting at index `i`.
  * Handles quoted multi-word values and returns the consumed value plus
  * the index of the next unprocessed token.
- * @param {string[]} parts - Tokenized message parts
- * @param {number} i - Index of the first value token
- * @returns {{ value: string, nextIndex: number }}
+ * @param parts - Tokenized message parts
+ * @param i - Index of the first value token
+ * @returns The consumed value and the next unprocessed index
  */
-function readFlagValue(parts: any, i: any) {
+function readFlagValue(
+  parts: string[],
+  i: number
+): { value: string; nextIndex: number } {
   if (i >= parts.length) {
     return { value: "", nextIndex: i };
   }
@@ -68,7 +118,7 @@ function readFlagValue(parts: any, i: any) {
   }
 
   // Quoted value spanning multiple words
-  const quotedParts = [];
+  const quotedParts: string[] = [];
   while (i < parts.length) {
     quotedParts.push(parts[i]);
     if (parts[i].endsWith('"')) {
@@ -90,15 +140,19 @@ function readFlagValue(parts: any, i: any) {
 /**
  * Assigns a parsed flag name and value into the flags object.
  * Unknown flag names are silently ignored.
- * @param {object} flags - Flags object to mutate
- * @param {string} flagName - Flag name without the leading "--"
- * @param {string} flagValue - Raw flag value string
+ * @param flags - Flags object to mutate
+ * @param flagName - Flag name without the leading "--"
+ * @param flagValue - Raw flag value string
  */
-function assignFlag(flags: any, flagName: any, flagValue: any) {
+function assignFlag(
+  flags: ParsedFlags,
+  flagName: string,
+  flagValue: string
+): void {
   if (flagName === "aliases") {
     flags.aliases = flagValue
       .split(",")
-      .map((a: any) => a.trim().toLowerCase().replace(/^!/, ""))
+      .map((a) => a.trim().toLowerCase().replace(/^!/, ""))
       .filter(Boolean);
   } else if (flagName === "cooldown") {
     flags.cooldown = Number.parseInt(flagValue) || 3;
@@ -111,10 +165,10 @@ function assignFlag(flags: any, flagName: any, flagValue: any) {
 
 /**
  * Parses a moderator command message and extracts parameters
- * @param {string} content - Full message content
- * @returns {object|null} - { command, name, flags } or null if not a valid command
+ * @param content - Full message content
+ * @returns Parsed command object or null if not a valid command
  */
-function parseModeratorCommand(content: any) {
+function parseModeratorCommand(content: string): ParsedCommand | null {
   const trimmed = content.trim();
   const parts = trimmed.split(/\s+/);
 
@@ -126,7 +180,7 @@ function parseModeratorCommand(content: any) {
     return null;
   }
 
-  const name = parts[1]?.toLowerCase().replace(/^!/, "");
+  const name = parts[1]?.toLowerCase().replace(/^!/, "") ?? null;
 
   if (!name) {
     return {
@@ -137,8 +191,8 @@ function parseModeratorCommand(content: any) {
     };
   }
 
-  const flags: any = {};
-  const responseWords = [];
+  const flags: ParsedFlags = {};
+  const responseWords: string[] = [];
 
   let i = 2;
   while (i < parts.length) {
@@ -166,10 +220,12 @@ function parseModeratorCommand(content: any) {
 
 /**
  * Processes a moderator command and executes the corresponding action
- * @param {object} payload - Full Kick webhook payload (chat.message.sent)
- * @returns {Promise<object>} - { success, message, processed }
+ * @param payload - Full Kick webhook payload (chat.message.sent)
+ * @returns Result with success, message, and processed status
  */
-async function processModeratorCommand(payload: any) {
+async function processModeratorCommand(
+  payload: ModeratorPayload
+): Promise<CommandResult> {
   try {
     const { content, sender, broadcaster } = payload;
 
@@ -204,21 +260,21 @@ async function processModeratorCommand(payload: any) {
     // Execute command based on type
     switch (command) {
       case "!addcmd":
-        return await handleAddCommand(name, flags, sender);
+        return await handleAddCommand(name!, flags, sender);
 
       case "!editcmd":
-        return await handleEditCommand(name, flags, sender);
+        return await handleEditCommand(name!, flags, sender);
 
       case "!delcmd":
-        return await handleDeleteCommand(name, sender, broadcaster);
+        return await handleDeleteCommand(name!, sender, broadcaster);
 
       case "!cmdinfo":
-        return await handleCommandInfo(name);
+        return await handleCommandInfo(name!);
 
       default:
         return { success: false, processed: false, message: null };
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("[MOD-CMD] Error processing moderator command:", error);
     return {
       success: false,
@@ -231,7 +287,11 @@ async function processModeratorCommand(payload: any) {
 /**
  * Handles the !addcmd command
  */
-async function handleAddCommand(name: any, flags: any, sender: any) {
+async function handleAddCommand(
+  name: string,
+  flags: ParsedFlags,
+  sender: KickSender
+): Promise<CommandResult> {
   try {
     // Validate that it has a response
     if (!flags.response) {
@@ -243,7 +303,7 @@ async function handleAddCommand(name: any, flags: any, sender: any) {
     }
 
     // Check that the command does not already exist
-    const existing: any = await KickBotCommand.findOne({
+    const existing = await KickBotCommand.findOne({
       where: { command: name },
     });
 
@@ -259,13 +319,13 @@ async function handleAddCommand(name: any, flags: any, sender: any) {
     if (flags.aliases && flags.aliases.length > 0) {
       const existingAliases = await KickBotCommand.findAll({
         where: {
-          [Op.or]: flags.aliases.map((alias: any) => ({ command: alias })),
+          [Op.or]: flags.aliases.map((alias) => ({ command: alias })),
         },
       });
 
       if (existingAliases.length > 0) {
         const conflictingNames = existingAliases
-          .map((c: any) => c.command)
+          .map((c) => c.command)
           .join(", ");
         return {
           success: false,
@@ -304,7 +364,7 @@ async function handleAddCommand(name: any, flags: any, sender: any) {
       message: confirmMsg,
       data: newCommand,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("[MOD-CMD] Error in handleAddCommand:", error);
     return {
       success: false,
@@ -317,10 +377,14 @@ async function handleAddCommand(name: any, flags: any, sender: any) {
 /**
  * Handles the !editcmd command
  */
-async function handleEditCommand(name: any, flags: any, sender: any) {
+async function handleEditCommand(
+  name: string,
+  flags: ParsedFlags,
+  sender: KickSender
+): Promise<CommandResult> {
   try {
     // Find the command
-    const command: any = await KickBotCommand.findOne({
+    const command = await KickBotCommand.findOne({
       where: { command: name },
     });
 
@@ -342,8 +406,13 @@ async function handleEditCommand(name: any, flags: any, sender: any) {
     }
 
     // Update only the specified fields
-    const updates: any = {};
-    const changes = [];
+    const updates: {
+      response_message?: string;
+      aliases?: string[];
+      cooldown_seconds?: number;
+      description?: string;
+    } = {};
+    const changes: string[] = [];
 
     if (flags.response) {
       updates.response_message = flags.response;
@@ -378,7 +447,7 @@ async function handleEditCommand(name: any, flags: any, sender: any) {
       message: `Command "!${name}" updated: ${changes.join(", ")}`,
       data: command,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("[MOD-CMD] Error in handleEditCommand:", error);
     return {
       success: false,
@@ -391,7 +460,11 @@ async function handleEditCommand(name: any, flags: any, sender: any) {
 /**
  * Handles the !delcmd command
  */
-async function handleDeleteCommand(name: any, sender: any, broadcaster: any) {
+async function handleDeleteCommand(
+  name: string,
+  sender: KickSender,
+  broadcaster: KickBroadcaster
+): Promise<CommandResult> {
   try {
     // Check if the command is protected
     if (PROTECTED_COMMANDS.has(name)) {
@@ -412,7 +485,7 @@ async function handleDeleteCommand(name: any, sender: any, broadcaster: any) {
     }
 
     // Find the command
-    const command: any = await KickBotCommand.findOne({
+    const command = await KickBotCommand.findOne({
       where: { command: name },
     });
 
@@ -434,7 +507,7 @@ async function handleDeleteCommand(name: any, sender: any, broadcaster: any) {
       processed: true,
       message: `Command "!${name}" deleted successfully`,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("[MOD-CMD] Error in handleDeleteCommand:", error);
     return {
       success: false,
@@ -447,10 +520,10 @@ async function handleDeleteCommand(name: any, sender: any, broadcaster: any) {
 /**
  * Handles the !cmdinfo command
  */
-async function handleCommandInfo(name: any) {
+async function handleCommandInfo(name: string): Promise<CommandResult> {
   try {
     // Find the command
-    const command: any = await KickBotCommand.findOne({
+    const command = await KickBotCommand.findOne({
       where: { command: name },
     });
 
@@ -485,7 +558,7 @@ async function handleCommandInfo(name: any) {
       message,
       data: command,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error("[MOD-CMD] Error in handleCommandInfo:", error);
     return {
       success: false,

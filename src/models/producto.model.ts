@@ -1,11 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-// Función para generar slug
-function generateSlug(text: string) {
+// Slug generation helper
+function generateSlug(text: string): string {
   return text
     .toLowerCase()
     .normalize("NFD")
@@ -17,8 +20,25 @@ function generateSlug(text: string) {
     .replace(/^-|-$/g, ""); // Remove leading/trailing hyphens
 }
 
-const Producto = sequelize.define(
-  "Producto",
+type ProductoEstado = "publicado" | "borrador" | "eliminado";
+
+class Producto extends Model<
+  InferAttributes<Producto>,
+  InferCreationAttributes<Producto>
+> {
+  declare id: CreationOptional<number>;
+  declare nombre: string;
+  declare descripcion: string | null;
+  declare precio: number;
+  declare stock: number | null;
+  declare estado: CreationOptional<ProductoEstado>;
+  declare imagen_url: string | null;
+  declare slug: string | null;
+  declare creado: CreationOptional<Date>;
+  declare actualizado: CreationOptional<Date>;
+}
+
+Producto.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -54,19 +74,26 @@ const Producto = sequelize.define(
       allowNull: true,
       unique: true,
     },
+    creado: {
+      type: DataTypes.DATE,
+    },
+    actualizado: {
+      type: DataTypes.DATE,
+    },
   },
   {
+    sequelize,
     tableName: "productos",
     timestamps: true,
     createdAt: "creado",
     updatedAt: "actualizado",
     hooks: {
-      beforeCreate: (producto: any) => {
+      beforeCreate: (producto: Producto) => {
         if (producto.nombre && !producto.slug) {
           producto.slug = generateSlug(producto.nombre);
         }
       },
-      beforeUpdate: (producto: any) => {
+      beforeUpdate: (producto: Producto) => {
         if (producto.nombre && producto.changed("nombre")) {
           producto.slug = generateSlug(producto.nombre);
         }

@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import {
   Usuario,
   HistorialPunto,
@@ -10,12 +8,32 @@ import { sequelize } from "../models/database";
 import { Op } from "sequelize";
 import logger from "../utils/logger";
 
+interface ChatMessagePayload {
+  sender: { username: string };
+  content: string;
+}
+
+interface WatchtimeBreakdown {
+  days: number;
+  hours: number;
+  minutes: number;
+}
+
+interface MigrationResult {
+  processed: boolean;
+  reason: string;
+  details?: unknown;
+  error?: string;
+}
+
 class BotrixMigrationService {
   /**
    * Process chat message to detect BotRix response
-   * @param {Object} chatMessage - Chat message received from the webhook
+   * @param chatMessage - Chat message received from the webhook
    */
-  static async processChatMessage(chatMessage: any) {
+  static async processChatMessage(
+    chatMessage: ChatMessagePayload
+  ): Promise<MigrationResult> {
     try {
       const { sender, content } = chatMessage;
 
@@ -25,7 +43,7 @@ class BotrixMigrationService {
       }
 
       // Check active configuration
-      const config: any = await BotrixMigrationConfig.getConfig();
+      const config = await BotrixMigrationConfig.getConfig();
       if (!config.migration_enabled) {
         return { processed: false, reason: "Migration disabled" };
       }
@@ -46,7 +64,7 @@ class BotrixMigrationService {
       );
 
       // Find the user by Kick nickname
-      const usuario: any = await Usuario.findOne({
+      const usuario = await Usuario.findOne({
         where: {
           // Search by kick_data.username or nickname
           [Op.or]: [
@@ -101,26 +119,27 @@ class BotrixMigrationService {
         reason: "Migration successful",
         details: result,
       };
-    } catch (error: any) {
-      logger.error("[BOTRIX MIGRATION] Error:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOTRIX MIGRATION] Error:", msg);
       return {
         processed: false,
         reason: "Error",
-        error: error.message,
+        error: msg,
       };
     }
   }
 
   /**
    * Perform Botrix points migration
-   * @param {Object} usuario - Database user
-   * @param {number} pointsAmount - Amount of points to migrate
-   * @param {string} kickUsername - Kick username for logs
+   * @param usuario - Database user
+   * @param pointsAmount - Amount of points to migrate
+   * @param kickUsername - Kick username for logs
    */
   static async migrateBotrixPoints(
-    usuario: any,
-    pointsAmount: any,
-    kickUsername: any
+    usuario: Usuario,
+    pointsAmount: number,
+    kickUsername: string
   ) {
     const transaction = await sequelize.transaction();
 
@@ -168,7 +187,7 @@ class BotrixMigrationService {
         nuevo_total: nuevosTotal,
         migrated_at: new Date(),
       };
-    } catch (error: any) {
+    } catch (error) {
       await transaction.rollback();
       throw error;
     }
@@ -189,7 +208,7 @@ class BotrixMigrationService {
         where: { botrix_migrated: true },
       })) || 0;
 
-    const config: any = await BotrixMigrationConfig.getConfig();
+    const config = await BotrixMigrationConfig.getConfig();
 
     return {
       total_users: totalUsers,
@@ -206,9 +225,11 @@ class BotrixMigrationService {
   /**
    * Process chat message to detect BotRix watchtime
    * Pattern: "@user has spent X days Y hours Z min watching this channel"
-   * @param {Object} chatMessage - Chat message received from the webhook
+   * @param chatMessage - Chat message received from the webhook
    */
-  static async processWatchtimeMessage(chatMessage: any) {
+  static async processWatchtimeMessage(
+    chatMessage: ChatMessagePayload
+  ): Promise<MigrationResult> {
     try {
       const { sender, content } = chatMessage;
 
@@ -218,7 +239,7 @@ class BotrixMigrationService {
       }
 
       // Check active watchtime migration configuration
-      const config: any = await BotrixMigrationConfig.getConfig();
+      const config = await BotrixMigrationConfig.getConfig();
       if (!config.watchtime_migration_enabled) {
         return { processed: false, reason: "Watchtime migration disabled" };
       }
@@ -260,7 +281,7 @@ class BotrixMigrationService {
       );
 
       // Find the user by Kick nickname
-      const usuario: any = await Usuario.findOne({
+      const usuario = await Usuario.findOne({
         where: {
           [Op.or]: [
             sequelize.literal(
@@ -315,34 +336,35 @@ class BotrixMigrationService {
         reason: "Migration successful",
         details: result,
       };
-    } catch (error: any) {
-      logger.error("[BOTRIX WATCHTIME MIGRATION] Error:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[BOTRIX WATCHTIME MIGRATION] Error:", msg);
       return {
         processed: false,
         reason: "Error",
-        error: error.message,
+        error: msg,
       };
     }
   }
 
   /**
    * Perform Botrix watchtime migration
-   * @param {Object} usuario - Database user
-   * @param {number} totalWatchtimeMinutes - Total minutes to migrate
-   * @param {string} kickUsername - Kick username for logs
-   * @param {Object} breakdown - Breakdown of days, hours, minutes
+   * @param usuario - Database user
+   * @param totalWatchtimeMinutes - Total minutes to migrate
+   * @param kickUsername - Kick username for logs
+   * @param breakdown - Breakdown of days, hours, minutes
    */
   static async migrateWatchtime(
-    usuario: any,
-    totalWatchtimeMinutes: any,
-    kickUsername: any,
-    breakdown: any = {}
+    usuario: Usuario,
+    totalWatchtimeMinutes: number,
+    kickUsername: string,
+    breakdown: WatchtimeBreakdown = { days: 0, hours: 0, minutes: 0 }
   ) {
     const transaction = await sequelize.transaction();
 
     try {
       // Get or create user watchtime record
-      let userWatchtime: any = await UserWatchtime.findOne({
+      let userWatchtime = await UserWatchtime.findOne({
         where: { usuario_id: usuario.id },
         transaction,
       });
@@ -386,7 +408,7 @@ class BotrixMigrationService {
         total_watchtime_after_migration: userWatchtime.total_watchtime_minutes,
         migrated_at: new Date(),
       };
-    } catch (error: any) {
+    } catch (error) {
       await transaction.rollback();
       throw error;
     }
@@ -407,7 +429,7 @@ class BotrixMigrationService {
         where: { botrix_watchtime_migrated: true },
       })) || 0;
 
-    const config: any = await BotrixMigrationConfig.getConfig();
+    const config = await BotrixMigrationConfig.getConfig();
 
     return {
       total_users: totalUsers,
@@ -424,8 +446,11 @@ class BotrixMigrationService {
   /**
    * Enable/disable migration
    */
-  static async toggleMigration(enabled: any) {
-    const config: any = await BotrixMigrationConfig.getConfig();
+  static async toggleMigration(enabled: boolean) {
+    const config = await BotrixMigrationConfig.findByPk(1);
+    if (!config) {
+      throw new Error("Botrix migration config not found");
+    }
     await config.update({ migration_enabled: enabled });
     return config;
   }

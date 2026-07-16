@@ -1,11 +1,127 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
+import type Producto from "./producto.model";
 
-const Promocion: any = sequelize.define(
-  "Promocion",
+type PromocionTipo = "producto" | "categoria" | "global" | "por_cantidad";
+type PromocionTipoDescuento = "porcentaje" | "fijo" | "2x1" | "3x2";
+type PromocionEstado =
+  "activo" | "programado" | "expirado" | "inactivo" | "pausado";
+
+interface MetadataVisual {
+  badge?: {
+    texto?: string;
+    posicion?: string;
+    animacion?: string;
+  };
+  gradiente?: string[];
+  badge_color?: string;
+  mostrar_countdown?: boolean;
+  mostrar_ahorro?: boolean;
+  [key: string]: unknown;
+}
+
+interface ReglasAplicacion {
+  productos_ids?: number[];
+  categorias_ids?: number[];
+  excluir_productos_ids?: number[];
+  minimo_cantidad?: number;
+  [key: string]: unknown;
+}
+
+class Promocion extends Model<
+  InferAttributes<Promocion>,
+  InferCreationAttributes<Promocion>
+> {
+  declare id: CreationOptional<number>;
+  declare codigo: string | null;
+  declare nombre: string;
+  declare titulo: string;
+  declare descripcion: string | null;
+  declare tipo: CreationOptional<PromocionTipo>;
+  declare tipo_descuento: CreationOptional<PromocionTipoDescuento>;
+  declare valor_descuento: number;
+  declare descuento_maximo: number | null;
+  declare fecha_inicio: Date;
+  declare fecha_fin: Date;
+  declare cantidad_usos_maximos: number | null;
+  declare cantidad_usos_actuales: CreationOptional<number>;
+  declare usos_por_usuario: CreationOptional<number>;
+  declare minimo_puntos: CreationOptional<number>;
+  declare requiere_codigo: CreationOptional<boolean>;
+  declare prioridad: CreationOptional<number>;
+  declare estado: CreationOptional<PromocionEstado>;
+  declare aplica_acumulacion: CreationOptional<boolean>;
+  declare metadata_visual: CreationOptional<MetadataVisual | null>;
+  declare reglas_aplicacion: CreationOptional<ReglasAplicacion | null>;
+  declare creado_por: number | null;
+  declare creado: CreationOptional<Date>;
+  declare actualizado: CreationOptional<Date>;
+
+  // Instance methods
+  estaActiva(): boolean {
+    const ahora = new Date();
+    return (
+      this.estado === "activo" &&
+      ahora >= this.fecha_inicio &&
+      ahora <= this.fecha_fin &&
+      (this.cantidad_usos_maximos === null ||
+        this.cantidad_usos_actuales < this.cantidad_usos_maximos)
+    );
+  }
+
+  calcularDescuento(precioOriginal: number): number {
+    let descuento = 0;
+
+    switch (this.tipo_descuento) {
+      case "porcentaje":
+        descuento = Math.floor((precioOriginal * this.valor_descuento) / 100);
+        if (this.descuento_maximo && descuento > this.descuento_maximo) {
+          descuento = this.descuento_maximo;
+        }
+        break;
+      case "fijo":
+        descuento = this.valor_descuento;
+        break;
+      case "2x1":
+      case "3x2":
+        // For these types, the discount is calculated in the cart
+        break;
+    }
+
+    return Math.min(descuento, precioOriginal);
+  }
+
+  async puedeUsarUsuario(usuarioId: number): Promise<boolean> {
+    if (!usuarioId) return !this.requiere_codigo;
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const UsoPromocion = require("./usoPromocion.model");
+    const usosUsuario = await UsoPromocion.count({
+      where: {
+        promocion_id: this.id,
+        usuario_id: usuarioId,
+      },
+    });
+
+    return usosUsuario < this.usos_por_usuario;
+  }
+
+  // Association mixin methods (declared by belongsToMany in models/index.ts)
+  declare addProductos: (
+    productos: Producto[] | number[],
+    options?: { transaction?: unknown }
+  ) => Promise<void>;
+  declare getProductos: () => Promise<Producto[]>;
+  declare hasProductos: (productos: Producto[] | number[]) => Promise<boolean>;
+}
+
+Promocion.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -16,82 +132,82 @@ const Promocion: any = sequelize.define(
       type: DataTypes.STRING(50),
       allowNull: true,
       unique: true,
-      comment: "Código opcional para cupones de descuento (ej: VERANO2024)",
+      comment: "Optional code for discount coupons (e.g.: VERANO2024)",
     },
     nombre: {
       type: DataTypes.STRING(200),
       allowNull: false,
-      comment: "Nombre interno de la promoción",
+      comment: "Internal name of the promotion",
     },
     titulo: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      comment: "Título público mostrado al usuario",
+      comment: "Public title shown to the user",
     },
     descripcion: {
       type: DataTypes.TEXT,
       allowNull: true,
-      comment: "Descripción detallada de la promoción",
+      comment: "Detailed description of the promotion",
     },
     tipo: {
       type: DataTypes.ENUM("producto", "categoria", "global", "por_cantidad"),
       defaultValue: "producto",
-      comment: "Tipo de aplicación de la promoción",
+      comment: "Promotion application type",
     },
     tipo_descuento: {
       type: DataTypes.ENUM("porcentaje", "fijo", "2x1", "3x2"),
       defaultValue: "porcentaje",
-      comment: "Tipo de descuento aplicado",
+      comment: "Type of discount applied",
     },
     valor_descuento: {
       type: DataTypes.DECIMAL(10, 2),
       allowNull: false,
-      comment: "Valor del descuento (porcentaje o puntos fijos)",
+      comment: "Discount value (percentage or fixed points)",
     },
     descuento_maximo: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "Descuento máximo en puntos (para porcentajes)",
+      comment: "Maximum discount in points (for percentages)",
     },
     fecha_inicio: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: "Fecha y hora de inicio de la promoción",
+      comment: "Promotion start date and time",
     },
     fecha_fin: {
       type: DataTypes.DATE,
       allowNull: false,
-      comment: "Fecha y hora de fin de la promoción",
+      comment: "Promotion end date and time",
     },
     cantidad_usos_maximos: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "Límite de usos totales (null = ilimitado)",
+      comment: "Total usage limit (null = unlimited)",
     },
     cantidad_usos_actuales: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
-      comment: "Contador de usos actuales",
+      comment: "Current usage counter",
     },
     usos_por_usuario: {
       type: DataTypes.INTEGER,
       defaultValue: 1,
-      comment: "Límite de usos por usuario",
+      comment: "Usage limit per user",
     },
     minimo_puntos: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
-      comment: "Puntos mínimos requeridos para aplicar la promoción",
+      comment: "Minimum points required to apply the promotion",
     },
     requiere_codigo: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
-      comment: "Si requiere código de cupón o es automático",
+      comment: "Whether a coupon code is required or it is automatic",
     },
     prioridad: {
       type: DataTypes.INTEGER,
       defaultValue: 0,
-      comment: "Prioridad para resolver conflictos (mayor = más prioridad)",
+      comment: "Priority to resolve conflicts (higher = more priority)",
     },
     estado: {
       type: DataTypes.ENUM(
@@ -102,18 +218,18 @@ const Promocion: any = sequelize.define(
         "pausado"
       ),
       defaultValue: "programado",
-      comment: "Estado actual de la promoción",
+      comment: "Current state of the promotion",
     },
     aplica_acumulacion: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,
-      comment: "Si puede acumularse con otras promociones",
+      comment: "Whether it can be combined with other promotions",
     },
     metadata_visual: {
       type: DataTypes.JSON,
       allowNull: true,
       comment:
-        "Configuración visual para el frontend (gradientes, badges, etc.)",
+        "Visual configuration for the frontend (gradients, badges, etc.)",
       defaultValue: {
         badge: {
           texto: "OFERTA",
@@ -129,7 +245,7 @@ const Promocion: any = sequelize.define(
     reglas_aplicacion: {
       type: DataTypes.JSON,
       allowNull: true,
-      comment: "Reglas de aplicación (productos, categorías, exclusiones)",
+      comment: "Application rules (products, categories, exclusions)",
       defaultValue: {
         productos_ids: [],
         categorias_ids: [],
@@ -140,10 +256,17 @@ const Promocion: any = sequelize.define(
     creado_por: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      comment: "ID del usuario admin que creó la promoción",
+      comment: "ID of the admin user who created the promotion",
+    },
+    creado: {
+      type: DataTypes.DATE,
+    },
+    actualizado: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "promociones",
     timestamps: true,
     createdAt: "creado",
@@ -163,29 +286,25 @@ const Promocion: any = sequelize.define(
       },
     ],
     hooks: {
-      beforeSave: (promocion: any) => {
-        // Validar que fecha_fin sea mayor que fecha_inicio
+      beforeSave: (promocion: Promocion) => {
+        // Validate that fecha_fin is greater than fecha_inicio
         if (promocion.fecha_fin <= promocion.fecha_inicio) {
-          throw new Error(
-            "La fecha de fin debe ser posterior a la fecha de inicio"
-          );
+          throw new Error("End date must be after start date");
         }
 
-        // Validar descuento
+        // Validate discount
         if (
           promocion.tipo_descuento === "porcentaje" &&
           promocion.valor_descuento > 100
         ) {
-          throw new Error(
-            "El descuento por porcentaje no puede ser mayor a 100%"
-          );
+          throw new Error("Percentage discount cannot be greater than 100%");
         }
 
         if (promocion.valor_descuento < 0) {
-          throw new Error("El valor del descuento no puede ser negativo");
+          throw new Error("Discount value cannot be negative");
         }
 
-        // Auto-actualizar estado basado en fechas
+        // Auto-update state based on dates
         const ahora = new Date();
         if (promocion.estado !== "inactivo" && promocion.estado !== "pausado") {
           if (ahora < promocion.fecha_inicio) {
@@ -203,54 +322,5 @@ const Promocion: any = sequelize.define(
     },
   }
 );
-
-// Métodos de instancia
-Promocion.prototype.estaActiva = function () {
-  const ahora = new Date();
-  return (
-    this.estado === "activo" &&
-    ahora >= this.fecha_inicio &&
-    ahora <= this.fecha_fin &&
-    (this.cantidad_usos_maximos === null ||
-      this.cantidad_usos_actuales < this.cantidad_usos_maximos)
-  );
-};
-
-Promocion.prototype.calcularDescuento = function (precioOriginal: number) {
-  let descuento = 0;
-
-  switch (this.tipo_descuento) {
-    case "porcentaje":
-      descuento = Math.floor((precioOriginal * this.valor_descuento) / 100);
-      if (this.descuento_maximo && descuento > this.descuento_maximo) {
-        descuento = this.descuento_maximo;
-      }
-      break;
-    case "fijo":
-      descuento = this.valor_descuento;
-      break;
-    case "2x1":
-    case "3x2":
-      // Para estos tipos, el descuento se calcula en el carrito
-      break;
-  }
-
-  return Math.min(descuento, precioOriginal);
-};
-
-Promocion.prototype.puedeUsarUsuario = async function (usuarioId: number) {
-  if (!usuarioId) return !this.requiere_codigo;
-
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const UsoPromocion = require("./usoPromocion.model");
-  const usosUsuario = await UsoPromocion.count({
-    where: {
-      promocion_id: this.id,
-      usuario_id: usuarioId,
-    },
-  });
-
-  return usosUsuario < this.usos_por_usuario;
-};
 
 export = Promocion;

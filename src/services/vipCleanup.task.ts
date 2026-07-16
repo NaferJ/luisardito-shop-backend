@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import cron from "node-cron";
 import VipService from "../services/vip.service";
 import logger from "../utils/logger";
@@ -15,8 +12,9 @@ class VipCleanupTask {
         logger.info(
           `[VIP CLEANUP] Completed: ${result.cleaned_count} expired VIPs removed`
         );
-      } catch (error: any) {
-        logger.error("[VIP CLEANUP] Error in automatic cleanup:", error);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error("[VIP CLEANUP] Error in automatic cleanup:", msg);
       }
     });
 
@@ -33,8 +31,9 @@ class VipCleanupTask {
         `[VIP CLEANUP] Manual completed: ${result.cleaned_count} expired VIPs removed`
       );
       return result;
-    } catch (error: any) {
-      logger.error("[VIP CLEANUP] Error in manual cleanup:", error);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[VIP CLEANUP] Error in manual cleanup:", msg);
       throw error;
     }
   }

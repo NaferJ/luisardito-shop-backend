@@ -1,18 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { RequestHandler } from "express";
 
 /**
  * Webhook middleware - Optimized for production
  */
 
-const logWebhookRequest = (req: any, _res: any, next: any) => {
+const logWebhookRequest: RequestHandler = (req, _res, next) => {
   // Only log for real Kick webhooks
   const hasKickHeaders = Object.keys(req.headers).some((key: string) =>
     key.toLowerCase().startsWith("kick-event")
   );
 
   if (hasKickHeaders || req.body?.test) {
-    const kickHeaders: any = {};
+    const kickHeaders: Record<string, string | string[]> = {};
     Object.keys(req.headers).forEach((key: string) => {
       if (key.toLowerCase().startsWith("kick-event")) {
         kickHeaders[key] = req.headers[key];
@@ -31,13 +30,14 @@ const logWebhookRequest = (req: any, _res: any, next: any) => {
   next();
 };
 
-const webhookCors = (req: any, res: any, next: any) => {
+const webhookCors: RequestHandler = (req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "*");
   res.header("Access-Control-Allow-Headers", "*");
 
   if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+    res.sendStatus(200);
+    return;
   }
 
   next();

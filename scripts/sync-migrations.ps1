@@ -1,13 +1,12 @@
-# Script para sincronizar migraciones en entornos donde las tablas ya existen
+# Sync migrations in environments where tables already exist but migrations are not registered.
 param(
-    [Parameter(Position=0)]
+    [Parameter(Position = 0)]
     [string]$Command = "help"
 )
 
 function Register-ExistingMigrations {
-    Write-Host "📝 Registrando migraciones iniciales como ejecutadas..." -ForegroundColor Yellow
+    Write-Host "Registering initial migrations as executed..." -ForegroundColor Yellow
 
-    # Lista de migraciones a registrar
     $migrations = @(
         "20250101000001-create-auth-tables.js",
         "20250101000002-create-core-tables.js",
@@ -16,47 +15,37 @@ function Register-ExistingMigrations {
         "20250101000005-create-kick-tables-2.js"
     )
 
-    # Conectar directamente a MySQL para insertar registros
     foreach ($migration in $migrations) {
-        Write-Host "  ✅ Registrando: $migration" -ForegroundColor Green
+        Write-Host "  Registering: $migration" -ForegroundColor Green
         $query = "INSERT IGNORE INTO SequelizeMeta (name) VALUES ('$migration');"
         docker exec -i luisardito-mysql mysql -u app -papp luisardito_shop -e $query 2>$null
     }
 
-    Write-Host "✅ Migraciones registradas correctamente" -ForegroundColor Green
+    Write-Host "Migrations registered successfully" -ForegroundColor Green
 }
 
 function Check-Status {
-    Write-Host "📊 Estado actual de las migraciones:" -ForegroundColor Cyan
-
-    # Verificar directamente en la base de datos
+    Write-Host "Current migration status:" -ForegroundColor Cyan
     $query = "SELECT name FROM SequelizeMeta ORDER BY name;"
     docker exec -i luisardito-mysql mysql -u app -papp luisardito_shop -e $query
 }
 
 function Show-Help {
-    Write-Host "🛠️  Script de sincronización de migraciones" -ForegroundColor Magenta
+    Write-Host "Migration sync script" -ForegroundColor Magenta
     Write-Host ""
-    Write-Host "Uso: .\sync-migrations.ps1 [comando]" -ForegroundColor White
+    Write-Host "Usage: .\sync-migrations.ps1 [command]" -ForegroundColor White
     Write-Host ""
-    Write-Host "Comandos disponibles:" -ForegroundColor Yellow
-    Write-Host "  register  - Registra las migraciones iniciales como ejecutadas" -ForegroundColor Green
-    Write-Host "  status    - Muestra el estado actual de las migraciones" -ForegroundColor Green
-    Write-Host "  help      - Muestra esta ayuda" -ForegroundColor Green
+    Write-Host "Available commands:" -ForegroundColor Yellow
+    Write-Host "  register  - Register initial migrations as executed" -ForegroundColor Green
+    Write-Host "  status    - Show current migration status" -ForegroundColor Green
+    Write-Host "  help      - Show this help" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Nota: Este script es para entornos donde las tablas ya existen" -ForegroundColor Cyan
-    Write-Host "      pero las migraciones no están registradas." -ForegroundColor Cyan
+    Write-Host "Note: This script is for environments where tables already exist" -ForegroundColor Cyan
+    Write-Host "      but migrations are not registered." -ForegroundColor Cyan
 }
 
-# Función principal
 switch ($Command.ToLower()) {
-    "register" {
-        Register-ExistingMigrations
-    }
-    "status" {
-        Check-Status
-    }
-    default {
-        Show-Help
-    }
+    "register" { Register-ExistingMigrations }
+    "status" { Check-Status }
+    default { Show-Help }
 }

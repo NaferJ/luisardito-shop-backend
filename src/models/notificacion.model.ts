@@ -1,8 +1,43 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const Notificacion = sequelize.define(
-  "Notificacion",
+type NotificacionTipo =
+  | "sub_regalada"
+  | "puntos_ganados"
+  | "canje_creado"
+  | "canje_entregado"
+  | "canje_cancelado"
+  | "canje_devuelto"
+  | "historial_evento"
+  | "sistema";
+
+type NotificacionEstado = "no_leida" | "leida";
+
+class Notificacion extends Model<
+  InferAttributes<Notificacion>,
+  InferCreationAttributes<Notificacion>
+> {
+  declare id: CreationOptional<number>;
+  declare usuario_id: number;
+  declare titulo: string;
+  declare descripcion: string;
+  declare tipo: CreationOptional<NotificacionTipo>;
+  declare estado: CreationOptional<NotificacionEstado>;
+  declare datos_relacionados: Record<string, unknown> | null;
+  declare enlace_detalle: string | null;
+  declare fecha_lectura: Date | null;
+  declare deleted_at: Date | null;
+  declare fecha_creacion: CreationOptional<Date>;
+  declare fecha_actualizacion: CreationOptional<Date>;
+}
+
+Notificacion.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -67,13 +102,20 @@ const Notificacion = sequelize.define(
       allowNull: true,
       comment: "Fecha de eliminación para soft deletes",
     },
+    fecha_creacion: {
+      type: DataTypes.DATE,
+    },
+    fecha_actualizacion: {
+      type: DataTypes.DATE,
+    },
   },
   {
+    sequelize,
     tableName: "notificaciones",
     timestamps: true,
     createdAt: "fecha_creacion",
     updatedAt: "fecha_actualizacion",
-    paranoid: false, // Manejaremos soft deletes manualmente con deleted_at
+    paranoid: false, // Soft deletes handled manually via deleted_at
   }
 );
 

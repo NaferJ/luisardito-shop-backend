@@ -1,12 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import asyncHandler from "../../utils/asyncHandler";
 
 /**
  * Endpoint to check cookie status (debugging)
  */
-const cookieStatus = asyncHandler(async (req: any, res: any) => {
+const cookieStatus = asyncHandler(async (req: Request, res: Response) => {
   const cookies = req.headers.cookie;
   const authToken = req.cookies?.auth_token;
   const refreshToken = req.cookies?.refresh_token;

@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import { verifyWebhookSignature } from "../utils/kickWebhook.util";
 import { KickWebhookEvent } from "../models";
 import logger from "../utils/logger";
@@ -8,10 +7,10 @@ import { processWebhookEvent } from "../services/kickWebhook/processor.service";
 /**
  * Main controller to receive Kick webhooks
  */
-const handleWebhook = async (req: any, res: any) => {
+const handleWebhook = async (req: Request, res: Response) => {
   // Production-optimized logging
-  const eventType = req.headers["kick-event-type"];
-  const messageId = req.headers["kick-event-message-id"];
+  const eventType = req.headers["kick-event-type"] as string | undefined;
+  const messageId = req.headers["kick-event-message-id"] as string | undefined;
 
   // LOG ALL EVENTS - UNFILTERED
 
@@ -26,10 +25,10 @@ const handleWebhook = async (req: any, res: any) => {
     }
 
     // Extract webhook headers
-    const subscriptionId = req.headers["kick-event-subscription-id"];
-    const signature = req.headers["kick-event-signature"];
-    const timestamp = req.headers["kick-event-message-timestamp"];
-    const eventVersion = req.headers["kick-event-version"];
+    const subscriptionId = req.headers["kick-event-subscription-id"] as string;
+    const signature = req.headers["kick-event-signature"] as string;
+    const timestamp = req.headers["kick-event-message-timestamp"] as string;
+    const eventVersion = req.headers["kick-event-version"] as string;
 
     // If Kick webhook headers are missing but there's content, it may be a verification
     if (!messageId && !eventType) {
@@ -59,7 +58,7 @@ const handleWebhook = async (req: any, res: any) => {
     }
 
     // Check if event was already processed (idempotency)
-    const existingEvent: any = await KickWebhookEvent.findOne({
+    const existingEvent = await KickWebhookEvent.findOne({
       where: { message_id: messageId },
     });
 
@@ -79,7 +78,7 @@ const handleWebhook = async (req: any, res: any) => {
     });
 
     // Process event by type
-    await processWebhookEvent(eventType, eventVersion, req.body, {
+    await processWebhookEvent(eventType, Number(eventVersion), req.body, {
       messageId,
       subscriptionId,
       timestamp,
@@ -93,8 +92,11 @@ const handleWebhook = async (req: any, res: any) => {
 
     // Respond with 200 to confirm receipt
     return res.status(200).json({ message: "Webhook processed successfully" });
-  } catch (error: any) {
-    logger.error("[Kick Webhook] Error processing webhook:", error.message);
+  } catch (error) {
+    logger.error(
+      "[Kick Webhook] Error processing webhook:",
+      error instanceof Error ? error.message : String(error)
+    );
     return res.status(500).json({ error: "Internal error processing webhook" });
   }
 };

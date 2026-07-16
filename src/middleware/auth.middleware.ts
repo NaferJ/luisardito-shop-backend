@@ -1,15 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import jwt from "jsonwebtoken";
+import type { RequestHandler } from "express";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import config from "../../config";
 import { Usuario, Rol } from "../models";
 import logger from "../utils/logger";
 
-export = async (req: any, res: any, next: any) => {
+interface AuthJwtPayload extends JwtPayload {
+  userId: number;
+}
+
+const authMiddleware: RequestHandler = async (req, res, next) => {
   try {
     // 1. Check COOKIES first
-    let token = req.cookies?.auth_token;
+    let token: string | undefined = req.cookies?.auth_token;
 
     // 2. Fallback to Authorization header
     if (!token && req.headers?.authorization?.startsWith("Bearer ")) {
@@ -19,16 +21,18 @@ export = async (req: any, res: any, next: any) => {
     // 3. If no token, allow passthrough (not an error)
     if (!token) {
       req.user = null;
-      return next();
+      next();
+      return;
     }
 
     // Verify token and get user
-    const payload: any = jwt.verify(token, config.jwtSecret);
-    const user: any = await Usuario.findByPk(payload.userId, { include: Rol });
+    const payload = jwt.verify(token, config.jwtSecret!) as AuthJwtPayload;
+    const user = await Usuario.findByPk(payload.userId, { include: Rol });
 
     if (!user) {
       req.user = null;
-      return next();
+      next();
+      return;
     }
 
     // User authenticated successfully
@@ -40,8 +44,11 @@ export = async (req: any, res: any, next: any) => {
     next();
   } catch (error) {
     // 4. If verification fails, allow passthrough (not an error)
-    logger.error("[Auth Middleware] Error:", error.message);
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Auth Middleware] Error:", msg);
     req.user = null;
     next();
   }
 };
+
+export = authMiddleware;

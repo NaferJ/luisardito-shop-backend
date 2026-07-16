@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import { KickReward } from "../models";
 import logger from "../utils/logger";
 
@@ -13,27 +10,25 @@ import logger from "../utils/logger";
 /**
  * Gets a reward by its kick_reward_id
  * Used by the webhook to process redemptions
- * @param {string} kickRewardId - Reward ID on Kick
- * @returns {Promise<Object|null>}
+ * @param kickRewardId - Reward ID on Kick
+ * @returns Reward model instance or null
  */
-async function getRewardByKickId(kickRewardId: any) {
+async function getRewardByKickId(kickRewardId: string) {
   try {
-    const reward: any = await KickReward.findOne({
+    const reward = await KickReward.findOne({
       where: { kick_reward_id: kickRewardId },
     });
     return reward;
-  } catch (error: any) {
-    logger.error(
-      "[Kick Rewards] Error getting reward by kick_id:",
-      error.message
-    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Kick Rewards] Error getting reward by kick_id:", msg);
     throw error;
   }
 }
 
 /**
  * Gets reward statistics
- * @returns {Promise<Object>}
+ * @returns Object with reward statistics
  */
 async function getRewardStats() {
   try {
@@ -49,8 +44,9 @@ async function getRewardStats() {
       disabled_rewards: totalRewards - enabledRewards,
       total_redemptions: totalRedemptions,
     };
-  } catch (error: any) {
-    logger.error("[Kick Rewards] Error getting statistics:", error.message);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Kick Rewards] Error getting statistics:", msg);
     throw error;
   }
 }

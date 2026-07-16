@@ -1,7 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import DbCleanupService from "./dbCleanup.service";
 import logger from "../utils/logger";
 /**
@@ -15,7 +12,7 @@ import logger from "../utils/logger";
  *  - refresh_tokens revoked and expired > 7 days
  */
 class DbCleanupTask {
-  scheduledTask: any = null;
+  scheduledTask: ScheduledTask | null = null;
   /**
    * Starts the scheduled cleanup task
    */
@@ -30,8 +27,9 @@ class DbCleanupTask {
           "[DB-CLEANUP] Scheduled cleanup completed:",
           JSON.stringify(results)
         );
-      } catch (error: any) {
-        logger.error("[DB-CLEANUP] Error in scheduled cleanup:", error);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error("[DB-CLEANUP] Error in scheduled cleanup:", msg);
       }
     });
     logger.info("[DB-CLEANUP] Scheduled cleanup task started");

@@ -1,8 +1,22 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const Permiso = sequelize.define(
-  "Permiso",
+class Permiso extends Model<
+  InferAttributes<Permiso>,
+  InferCreationAttributes<Permiso>
+> {
+  declare id: CreationOptional<number>;
+  declare nombre: string;
+  declare descripcion: string | null;
+}
+
+Permiso.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -20,6 +34,7 @@ const Permiso = sequelize.define(
     },
   },
   {
+    sequelize,
     tableName: "permisos",
     timestamps: false,
   }

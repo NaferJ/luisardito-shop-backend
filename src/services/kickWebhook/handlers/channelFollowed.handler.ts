@@ -1,16 +1,36 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import _models from "../../../models";
-const { KickPointsConfig, KickUserTracking, Usuario, HistorialPunto } = _models;
+import {
+  KickPointsConfig,
+  KickUserTracking,
+  Usuario,
+  HistorialPunto,
+} from "../../../models";
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
 
+interface KickUser {
+  user_id: string | number;
+  username: string;
+  profile_picture?: string;
+}
+
+interface ChannelFollowedPayload {
+  follower: KickUser;
+  broadcaster: { username: string };
+}
+
+interface WebhookMetadata {
+  timestamp?: string;
+  [key: string]: unknown;
+}
+
 /**
  * Handle new followers
  */
-async function handleChannelFollowed(payload: any, _metadata: any) {
+async function handleChannelFollowed(
+  payload: ChannelFollowedPayload,
+  _metadata: WebhookMetadata
+): Promise<void> {
   try {
     const follower = payload.follower;
     const kickUserId = String(follower.user_id);
@@ -22,7 +42,7 @@ async function handleChannelFollowed(payload: any, _metadata: any) {
     });
 
     // Check if user exists in our DB
-    const usuario: any = await Usuario.findOne({
+    const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -39,11 +59,11 @@ async function handleChannelFollowed(payload: any, _metadata: any) {
       kickUsername,
       kickUserId,
       true,
-      follower.profile_picture
+      follower.profile_picture ?? null
     );
 
     // Check if already followed before (first time only)
-    const userTracking: any = await KickUserTracking.findOne({
+    const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: kickUserId },
     });
 
@@ -55,7 +75,7 @@ async function handleChannelFollowed(payload: any, _metadata: any) {
     }
 
     // Get follow points configuration
-    const config: any = await KickPointsConfig.findOne({
+    const config = await KickPointsConfig.findOne({
       where: {
         config_key: "follow_points",
         enabled: true,
@@ -120,8 +140,9 @@ async function handleChannelFollowed(payload: any, _metadata: any) {
     logger.info(
       `[Kick Webhook][Channel Followed] ${pointsToAward} points awarded to ${kickUsername} (first follow - ${userType})`
     );
-  } catch (error) {
-    logger.error("[Kick Webhook][Channel Followed] Error:", error.message);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Kick Webhook][Channel Followed] Error:", msg);
   }
 }
 

@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import {
   Usuario,
   Canje,
@@ -12,17 +11,23 @@ import {
 } from "../models";
 import BotrixMigrationService from "../services/botrixMigration.service";
 import KickBotService from "../services/kickBot.service";
-import { Op } from "sequelize";
+import { Op, WhereOptions } from "sequelize";
 import logger from "../utils/logger";
+
+/** Type for Canje with eagerly-loaded associations. */
+type CanjeWithAssociations = Canje & {
+  Usuario?: Usuario | null;
+  Producto?: Producto | null;
+};
 
 /**
  * Helper to enrich user info with Discord data
- * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @param user - Usuario model instance
+ * @returns Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user: any) {
+async function enrichUserWithDiscordInfo(user: Usuario) {
   let discordInfo = null;
-  const discordLink: any = await DiscordUserLink.findOne({
+  const discordLink = await DiscordUserLink.findOne({
     where: { tienda_user_id: user.id },
   });
 
@@ -33,7 +38,7 @@ async function enrichUserWithDiscordInfo(user: any) {
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
-      linked_at: discordLink.createdAt,
+      linked_at: discordLink.created_at,
       display_name:
         discordLink.discord_discriminator &&
         discordLink.discord_discriminator !== "0"
@@ -51,12 +56,12 @@ async function enrichUserWithDiscordInfo(user: any) {
 /**
  * Get migration and VIP configuration
  */
-const getConfig = async (req: any, res: any) => {
+const getConfig = async (req: Request, res: Response) => {
   try {
-    const config: any = await BotrixMigrationConfig.getConfig();
+    const config = await BotrixMigrationConfig.getConfig();
 
     // Get real point migration stats
-    const migrationStats = await Usuario.findAll({
+    const migrationStats = (await Usuario.findAll({
       attributes: [
         [sequelize.fn("COUNT", sequelize.col("id")), "migrated_users"],
         [
@@ -69,10 +74,13 @@ const getConfig = async (req: any, res: any) => {
         botrix_points_migrated: { [Op.gt]: 0 },
       },
       raw: true,
-    });
+    })) as unknown as Array<{
+      migrated_users: string;
+      total_points_migrated: string;
+    }>;
 
     // Get real watchtime migration stats
-    const watchtimeMigrationStats = await Usuario.findAll({
+    const watchtimeMigrationStats = (await Usuario.findAll({
       attributes: [
         [sequelize.fn("COUNT", sequelize.col("id")), "migrated_users"],
         [
@@ -88,7 +96,10 @@ const getConfig = async (req: any, res: any) => {
         botrix_watchtime_minutes_migrated: { [Op.gt]: 0 },
       },
       raw: true,
-    });
+    })) as unknown as Array<{
+      migrated_users: string;
+      total_minutes_migrated: string;
+    }>;
 
     // Get real VIP stats
     const now = new Date();
@@ -122,10 +133,12 @@ const getConfig = async (req: any, res: any) => {
         enabled: config.migration_enabled,
         stats: {
           migrated_users: Number.parseInt(
-            migrationStats[0]?.migrated_users || 0
+            String(migrationStats[0]?.migrated_users ?? 0),
+            10
           ),
           total_points_migrated: Number.parseInt(
-            migrationStats[0]?.total_points_migrated || 0
+            String(migrationStats[0]?.total_points_migrated ?? 0),
+            10
           ),
         },
       },
@@ -133,10 +146,12 @@ const getConfig = async (req: any, res: any) => {
         enabled: config.watchtime_migration_enabled,
         stats: {
           migrated_users: Number.parseInt(
-            watchtimeMigrationStats[0]?.migrated_users || 0
+            String(watchtimeMigrationStats[0]?.migrated_users ?? 0),
+            10
           ),
           total_minutes_migrated: Number.parseInt(
-            watchtimeMigrationStats[0]?.total_minutes_migrated || 0
+            String(watchtimeMigrationStats[0]?.total_minutes_migrated ?? 0),
+            10
           ),
         },
       },
@@ -151,11 +166,11 @@ const getConfig = async (req: any, res: any) => {
         },
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error fetching configuration:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -163,7 +178,7 @@ const getConfig = async (req: any, res: any) => {
 /**
  * Update migration configuration
  */
-const updateMigrationConfig = async (req: any, res: any) => {
+const updateMigrationConfig = async (req: Request, res: Response) => {
   try {
     logger.debug("[KICK ADMIN DEBUG] Data received in migration config:", {
       body: req.body,
@@ -179,7 +194,7 @@ const updateMigrationConfig = async (req: any, res: any) => {
     const { migration_enabled } = req.body;
 
     // More flexible validation to handle "true"/"false" strings
-    let booleanValue: any;
+    let booleanValue: boolean;
 
     if (typeof migration_enabled === "boolean") {
       booleanValue = migration_enabled;
@@ -222,14 +237,14 @@ const updateMigrationConfig = async (req: any, res: any) => {
         migration_enabled: booleanValue,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error(
       "[KICK ADMIN DEBUG] Error updating migration configuration:",
       error
     );
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -239,7 +254,7 @@ const updateMigrationConfig = async (req: any, res: any) => {
  * Returns { value } on success or { error } on failure
  */
 function parseBooleanField(
-  value: any,
+  value: unknown,
   fieldName: string
 ): { value?: boolean; error?: string } {
   if (typeof value === "boolean") return { value };
@@ -256,7 +271,7 @@ function parseBooleanField(
  * Returns { value } on success or { error } on failure
  */
 function parseNonNegativeNumber(
-  value: any,
+  value: unknown,
   fieldName: string
 ): { value?: number; error?: string } {
   const num = Number(value);
@@ -269,7 +284,7 @@ function parseNonNegativeNumber(
 /**
  * Update VIP points configuration
  */
-const updateVipConfig = async (req: any, res: any) => {
+const updateVipConfig = async (req: Request, res: Response) => {
   try {
     logger.debug("[KICK ADMIN DEBUG] Data received in VIP config:", {
       body: req.body,
@@ -289,7 +304,7 @@ const updateVipConfig = async (req: any, res: any) => {
       vip_sub_points,
     } = req.body;
 
-    const updateData: any = {};
+    const updateData: Record<string, boolean | number> = {};
 
     // Validate and convert vip_points_enabled
     if (vip_points_enabled !== undefined) {
@@ -300,11 +315,11 @@ const updateVipConfig = async (req: any, res: any) => {
       if (result.error) {
         return res.status(400).json({ success: false, error: result.error });
       }
-      updateData.vip_points_enabled = result.value;
+      updateData.vip_points_enabled = result.value as boolean;
     }
 
     // Validate and convert numbers
-    const numberFields: Array<[string, any]> = [
+    const numberFields: Array<[string, unknown]> = [
       ["vip_chat_points", vip_chat_points],
       ["vip_follow_points", vip_follow_points],
       ["vip_sub_points", vip_sub_points],
@@ -315,7 +330,7 @@ const updateVipConfig = async (req: any, res: any) => {
       if (result.error) {
         return res.status(400).json({ success: false, error: result.error });
       }
-      updateData[fieldName] = result.value;
+      updateData[fieldName] = result.value as number;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -337,11 +352,11 @@ const updateVipConfig = async (req: any, res: any) => {
       message: "VIP configuration updated",
       config: updateData,
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error updating VIP configuration:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -349,7 +364,7 @@ const updateVipConfig = async (req: any, res: any) => {
 /**
  * Update watchtime migration configuration
  */
-const updateWatchtimeMigrationConfig = async (req: any, res: any) => {
+const updateWatchtimeMigrationConfig = async (req: Request, res: Response) => {
   try {
     logger.debug(
       "[KICK ADMIN DEBUG] Data received in watchtime migration config:",
@@ -365,7 +380,7 @@ const updateWatchtimeMigrationConfig = async (req: any, res: any) => {
     const { watchtime_migration_enabled } = req.body;
 
     // More flexible validation to handle "true"/"false" strings
-    let booleanValue: any;
+    let booleanValue: boolean;
 
     if (typeof watchtime_migration_enabled === "boolean") {
       booleanValue = watchtime_migration_enabled;
@@ -412,14 +427,14 @@ const updateWatchtimeMigrationConfig = async (req: any, res: any) => {
         watchtime_migration_enabled: booleanValue,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error(
       "[KICK ADMIN DEBUG] Error updating watchtime migration configuration:",
       error
     );
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -427,15 +442,15 @@ const updateWatchtimeMigrationConfig = async (req: any, res: any) => {
 /**
  * Grant VIP from a delivered canje
  */
-const grantVipFromCanje = async (req: any, res: any) => {
+const grantVipFromCanje = async (req: Request, res: Response) => {
   try {
-    const { canjeId } = req.params;
+    const canjeId = req.params.canjeId as string;
     const { duration_days } = req.body;
 
     // Find the canje
-    const canje: any = await Canje.findByPk(canjeId, {
+    const canje = (await Canje.findByPk(canjeId, {
       include: [{ model: Usuario }, { model: Producto }],
-    });
+    })) as CanjeWithAssociations | null;
 
     if (!canje) {
       return res.status(404).json({
@@ -460,7 +475,7 @@ const grantVipFromCanje = async (req: any, res: any) => {
     }
 
     // Calculate expiration date
-    let vip_expires_at: any = null;
+    let vip_expires_at: Date | null = null;
     if (duration_days && duration_days > 0) {
       vip_expires_at = new Date(
         Date.now() + duration_days * 24 * 60 * 60 * 1000
@@ -472,7 +487,7 @@ const grantVipFromCanje = async (req: any, res: any) => {
       is_vip: true,
       vip_granted_at: new Date(),
       vip_expires_at,
-      vip_granted_by_canje_id: canjeId,
+      vip_granted_by_canje_id: canjeId as unknown as number,
     });
 
     res.json({
@@ -481,11 +496,11 @@ const grantVipFromCanje = async (req: any, res: any) => {
       user_id: canje.Usuario.id,
       duration: duration_days ? `${duration_days} days` : "Permanent",
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error granting VIP from canje:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -493,13 +508,13 @@ const grantVipFromCanje = async (req: any, res: any) => {
 /**
  * Grant VIP manually to a user
  */
-const grantVipManually = async (req: any, res: any) => {
+const grantVipManually = async (req: Request, res: Response) => {
   try {
-    const { usuarioId } = req.params;
+    const usuarioId = req.params.usuarioId as string;
     const { duration_days } = req.body;
 
     // Find the user
-    const usuario: any = await Usuario.findByPk(usuarioId);
+    const usuario = await Usuario.findByPk(usuarioId);
 
     if (!usuario) {
       return res.status(404).json({
@@ -520,7 +535,7 @@ const grantVipManually = async (req: any, res: any) => {
     }
 
     // Calculate expiration date
-    let vip_expires_at: any = null;
+    let vip_expires_at: Date | null = null;
     if (duration_days && duration_days > 0) {
       vip_expires_at = new Date(
         Date.now() + duration_days * 24 * 60 * 60 * 1000
@@ -546,11 +561,11 @@ const grantVipManually = async (req: any, res: any) => {
         duration: duration_days ? `${duration_days} days` : "Permanent",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error granting VIP manually:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -558,13 +573,13 @@ const grantVipManually = async (req: any, res: any) => {
 /**
  * Remove VIP from a user
  */
-const removeVip = async (req: any, res: any) => {
+const removeVip = async (req: Request, res: Response) => {
   try {
-    const { usuarioId } = req.params;
+    const usuarioId = req.params.usuarioId as string;
     const { reason } = req.body;
 
     // Find the user
-    const usuario: any = await Usuario.findByPk(usuarioId);
+    const usuario = await Usuario.findByPk(usuarioId);
 
     if (!usuario) {
       return res.status(404).json({
@@ -598,11 +613,11 @@ const removeVip = async (req: any, res: any) => {
         reason: reason || "Removed manually",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error removing VIP:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -610,7 +625,7 @@ const removeVip = async (req: any, res: any) => {
 /**
  * Clean up expired VIPs
  */
-const cleanupExpiredVips = async (req: any, res: any) => {
+const cleanupExpiredVips = async (_req: Request, res: Response) => {
   try {
     const now = new Date();
 
@@ -654,26 +669,26 @@ const cleanupExpiredVips = async (req: any, res: any) => {
       success: true,
       message: `${expiredVips.length} expired VIPs cleaned up successfully`,
       cleaned: expiredVips.length,
-      users: expiredVips.map((u: any) => ({
+      users: expiredVips.map((u) => ({
         id: u.id,
         nickname: u.nickname,
         expired_at: u.vip_expires_at,
       })),
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error cleaning up expired VIPs:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
 
-const getUsersWithDetails = async (req: any, res: any) => {
+const getUsersWithDetails = async (req: Request, res: Response) => {
   try {
     const { filter = "all" } = req.query;
 
-    const whereClause: any = {};
+    const whereClause: WhereOptions = {};
     switch (filter) {
       case "vip":
         whereClause.is_vip = true;
@@ -730,7 +745,7 @@ const getUsersWithDetails = async (req: any, res: any) => {
     });
 
     const enrichedUsers = await Promise.all(
-      usuarios.map(async (user: any) => {
+      usuarios.map(async (user) => {
         const userJson = user.toJSON();
 
         // Discord info
@@ -744,7 +759,7 @@ const getUsersWithDetails = async (req: any, res: any) => {
         };
 
         if (userJson.user_id_ext) {
-          const userTracking: any = await KickUserTracking.findOne({
+          const userTracking = await KickUserTracking.findOne({
             where: { kick_user_id: userJson.user_id_ext },
           });
 
@@ -792,16 +807,16 @@ const getUsersWithDetails = async (req: any, res: any) => {
       users: enrichedUsers,
       total,
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("Error fetching users:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
 
-const manualBotrixMigration = async (req: any, res: any) => {
+const manualBotrixMigration = async (req: Request, res: Response) => {
   try {
     const rawUsuarioId =
       req.params?.usuarioId ?? req.body?.usuario_id ?? req.body?.usuarioId;
@@ -826,7 +841,7 @@ const manualBotrixMigration = async (req: any, res: any) => {
     }
 
     // Find the user
-    const usuario: any = await Usuario.findByPk(usuarioId);
+    const usuario = await Usuario.findByPk(usuarioId);
 
     if (!usuario) {
       return res.status(404).json({
@@ -859,11 +874,11 @@ const manualBotrixMigration = async (req: any, res: any) => {
       message: "Manual migration completed successfully",
       migration: result,
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error in manual migration:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -871,7 +886,7 @@ const manualBotrixMigration = async (req: any, res: any) => {
 /**
  * Get Kick bot token status
  */
-const getBotTokensStatus = async (req: any, res: any) => {
+const getBotTokensStatus = async (_req: Request, res: Response) => {
   try {
     const now = new Date();
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000);
@@ -883,23 +898,23 @@ const getBotTokensStatus = async (req: any, res: any) => {
 
     // Classify tokens
     const activeTokens = allTokens.filter(
-      (token: any) => token.is_active && new Date(token.token_expires_at) > now
+      (token) => token.is_active && new Date(token.token_expires_at) > now
     );
 
     const expiredTokens = allTokens.filter(
-      (token: any) => token.is_active && new Date(token.token_expires_at) <= now
+      (token) => token.is_active && new Date(token.token_expires_at) <= now
     );
 
     const expiringSoon = allTokens.filter(
-      (token: any) =>
+      (token) =>
         token.is_active &&
         new Date(token.token_expires_at) > now &&
         new Date(token.token_expires_at) <= fiveMinutesFromNow
     );
 
-    const inactiveTokens = allTokens.filter((token: any) => !token.is_active);
+    const inactiveTokens = allTokens.filter((token) => !token.is_active);
 
-    const tokens = allTokens.map((token: any) => ({
+    const tokens = allTokens.map((token) => ({
       id: token.id,
       kick_username: token.kick_username,
       kick_user_id: token.kick_user_id,
@@ -914,7 +929,7 @@ const getBotTokensStatus = async (req: any, res: any) => {
         return "active";
       })(),
       expires_in_minutes: Math.round(
-        ((new Date(token.token_expires_at) as any) - (now as any)) / 1000 / 60
+        (new Date(token.token_expires_at).getTime() - now.getTime()) / 1000 / 60
       ),
       created_at: token.created_at,
       updated_at: token.updated_at,
@@ -931,11 +946,11 @@ const getBotTokensStatus = async (req: any, res: any) => {
       },
       tokens,
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error fetching token status:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -943,7 +958,7 @@ const getBotTokensStatus = async (req: any, res: any) => {
 /**
  * Clean up expired bot tokens
  */
-const cleanupExpiredBotTokens = async (req: any, res: any) => {
+const cleanupExpiredBotTokens = async (_req: Request, res: Response) => {
   try {
     const now = new Date();
 
@@ -982,17 +997,17 @@ const cleanupExpiredBotTokens = async (req: any, res: any) => {
       success: true,
       message: `${expiredTokens.length} expired tokens marked as inactive`,
       cleaned: expiredTokens.length,
-      tokens: expiredTokens.map((token: any) => ({
+      tokens: expiredTokens.map((token) => ({
         id: token.id,
         kick_username: token.kick_username,
         expired_at: token.token_expires_at,
       })),
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error cleaning up expired tokens:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -1000,11 +1015,11 @@ const cleanupExpiredBotTokens = async (req: any, res: any) => {
 /**
  * Refresh bot token manually
  */
-const refreshBotToken = async (req: any, res: any) => {
+const refreshBotToken = async (req: Request, res: Response) => {
   try {
-    const { tokenId } = req.params;
+    const tokenId = req.params.tokenId as string;
 
-    const token: any = await KickBotToken.findByPk(tokenId);
+    const token = await KickBotToken.findByPk(tokenId);
     if (!token) {
       return res.status(404).json({
         success: false,
@@ -1012,10 +1027,16 @@ const refreshBotToken = async (req: any, res: any) => {
       });
     }
 
-    const kickBotService = new (KickBotService as any)();
+    const kickBotService = new (
+      KickBotService as unknown as new () => {
+        refreshToken: (
+          token: typeof KickBotToken.prototype
+        ) => Promise<typeof KickBotToken.prototype>;
+      }
+    )();
 
     try {
-      const refreshedToken: any = await kickBotService.refreshToken(token);
+      const refreshedToken = await kickBotService.refreshToken(token);
 
       res.json({
         success: true,
@@ -1027,19 +1048,22 @@ const refreshBotToken = async (req: any, res: any) => {
           is_active: refreshedToken.is_active,
         },
       });
-    } catch (refreshError: any) {
+    } catch (refreshError) {
       res.status(400).json({
         success: false,
         error: "Could not refresh the token",
-        details: refreshError.message,
-        code: refreshError.code || "REFRESH_FAILED",
+        details:
+          refreshError instanceof Error
+            ? refreshError.message
+            : String(refreshError),
+        code: (refreshError as { code?: string })?.code || "REFRESH_FAILED",
       });
     }
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error refreshing token:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -1047,12 +1071,12 @@ const refreshBotToken = async (req: any, res: any) => {
 /**
  * Deactivate bot token
  */
-const deactivateBotToken = async (req: any, res: any) => {
+const deactivateBotToken = async (req: Request, res: Response) => {
   try {
-    const { tokenId } = req.params;
+    const tokenId = req.params.tokenId as string;
     const { reason } = req.body;
 
-    const token: any = await KickBotToken.findByPk(tokenId);
+    const token = await KickBotToken.findByPk(tokenId);
     if (!token) {
       return res.status(404).json({
         success: false,
@@ -1074,11 +1098,11 @@ const deactivateBotToken = async (req: any, res: any) => {
         reason: reason || "Deactivated manually",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error deactivating token:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };
@@ -1086,12 +1110,21 @@ const deactivateBotToken = async (req: any, res: any) => {
 /**
  * Test sending a message with the bot
  */
-const testBotMessage = async (req: any, res: any) => {
+const testBotMessage = async (req: Request, res: Response) => {
   try {
     const { message = "Test message from the admin panel" } = req.body;
 
-    const kickBotService = new (KickBotService as any)();
-    const result: any = await kickBotService.sendMessage(message);
+    const kickBotService = new (
+      KickBotService as unknown as new () => {
+        sendMessage: (message: string) => Promise<{
+          ok: boolean;
+          status: number;
+          data: unknown;
+          error: unknown;
+        }>;
+      }
+    )();
+    const result = await kickBotService.sendMessage(message);
 
     res.json({
       success: result.ok,
@@ -1104,11 +1137,11 @@ const testBotMessage = async (req: any, res: any) => {
         error: result.error,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     logger.error("[KICK ADMIN DEBUG] Error sending test message:", error);
     res.status(500).json({
       success: false,
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 };

@@ -1,23 +1,22 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import express from "express";
+import type { Request, Response } from "express";
 import kickAdminController from "../controllers/kickAdmin.controller";
 import authRequired from "../middleware/authRequired.middleware";
 import checkPermission from "../middleware/permisos.middleware";
+import botMaintenanceService from "../services/botMaintenance.service";
 
 const router = express.Router();
 
-// Middleware de autenticación ESTRICTA para todas las rutas de admin
+// Strict authentication middleware for all admin routes
 router.use(authRequired);
 
 // ============================================================================
-// RUTAS DE CONFIGURACIÓN
+// CONFIGURATION ROUTES
 // ============================================================================
 
 /**
  * GET /api/kick-admin/config
- * Obtener configuración actual de migración y VIP
+ * Get current migration and VIP configuration
  */
 router.get(
   "/config",
@@ -27,7 +26,7 @@ router.get(
 
 /**
  * PUT /api/kick-admin/migration
- * Activar/desactivar migración de Botrix
+ * Enable/disable Botrix migration
  */
 router.put(
   "/migration",
@@ -37,7 +36,7 @@ router.put(
 
 /**
  * PUT /api/kick-admin/vip-config
- * Actualizar configuración de puntos VIP
+ * Update VIP points configuration
  */
 router.put(
   "/vip-config",
@@ -47,7 +46,7 @@ router.put(
 
 /**
  * PUT /api/kick-admin/watchtime-migration
- * Activar/desactivar migración de watchtime de Botrix
+ * Enable/disable Botrix watchtime migration
  */
 router.put(
   "/watchtime-migration",
@@ -56,12 +55,12 @@ router.put(
 );
 
 // ============================================================================
-// RUTAS DE GESTIÓN VIP
+// VIP MANAGEMENT ROUTES
 // ============================================================================
 
 /**
  * POST /api/kick-admin/canje/:canjeId/grant-vip
- * Otorgar VIP desde un canje entregado
+ * Grant VIP from a delivered canje
  */
 router.post(
   "/canje/:canjeId/grant-vip",
@@ -71,7 +70,7 @@ router.post(
 
 /**
  * POST /api/kick-admin/usuario/:usuarioId/vip
- * Otorgar VIP manualmente a un usuario
+ * Grant VIP manually to a user
  */
 router.post(
   "/usuario/:usuarioId/vip",
@@ -81,7 +80,7 @@ router.post(
 
 /**
  * DELETE /api/kick-admin/usuario/:usuarioId/vip
- * Remover VIP de un usuario
+ * Remove VIP from a user
  */
 router.delete(
   "/usuario/:usuarioId/vip",
@@ -91,7 +90,7 @@ router.delete(
 
 /**
  * POST /api/kick-admin/cleanup-expired-vips
- * Limpiar VIPs expirados
+ * Clean up expired VIPs
  */
 router.post(
   "/cleanup-expired-vips",
@@ -100,12 +99,12 @@ router.post(
 );
 
 // ============================================================================
-// RUTAS DE CONSULTA
+// QUERY ROUTES
 // ============================================================================
 
 /**
  * GET /api/kick-admin/users
- * Obtener lista de usuarios con detalles VIP y migración
+ * Get list of users with VIP and migration details
  * Query params: page, limit, filter (all|vip|migrated|pending_migration)
  */
 router.get(
@@ -115,12 +114,12 @@ router.get(
 );
 
 // ============================================================================
-// RUTAS DE TESTING/DESARROLLO
+// TESTING/DEVELOPMENT ROUTES
 // ============================================================================
 
 /**
  * POST /api/kick-admin/manual-migration
- * Migración manual de puntos (solo para testing)
+ * Manual points migration (testing only)
  */
 router.post(
   "/manual-migration",
@@ -129,19 +128,17 @@ router.post(
 );
 
 // ============================================================================
-// RUTAS DE MANTENIMIENTO AUTOMÁTICO DEL BOT
+// AUTOMATIC BOT MAINTENANCE ROUTES
 // ============================================================================
 
 /**
  * GET /api/kick-admin/bot-maintenance/status
- * Obtener estado del servicio de mantenimiento automático del bot
+ * Get status of the automatic bot maintenance service
  */
 router.get(
   "/bot-maintenance/status",
   checkPermission("gestionar_usuarios"),
-  (req: any, res: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const botMaintenanceService = require("../services/botMaintenance.service");
+  (_req: Request, res: Response) => {
     const stats = botMaintenanceService.getStats();
 
     res.json({
@@ -158,27 +155,25 @@ router.get(
 
 /**
  * POST /api/kick-admin/bot-maintenance/start
- * Iniciar el servicio de mantenimiento automático del bot
+ * Start the automatic bot maintenance service
  */
 router.post(
   "/bot-maintenance/start",
   checkPermission("gestionar_usuarios"),
-  (req: any, res: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const botMaintenanceService = require("../services/botMaintenance.service");
-
+  (_req: Request, res: Response) => {
     if (botMaintenanceService.isRunning) {
-      return res.json({
+      res.json({
         success: false,
-        message: "El servicio de mantenimiento ya está ejecutándose",
+        message: "The maintenance service is already running",
       });
+      return;
     }
 
     botMaintenanceService.start();
 
     res.json({
       success: true,
-      message: "Servicio de mantenimiento del bot iniciado",
+      message: "Bot maintenance service started",
       intervalMinutes: botMaintenanceService.intervalMinutes,
     });
   }
@@ -186,64 +181,60 @@ router.post(
 
 /**
  * POST /api/kick-admin/bot-maintenance/stop
- * Detener el servicio de mantenimiento automático del bot
+ * Stop the automatic bot maintenance service
  */
 router.post(
   "/bot-maintenance/stop",
   checkPermission("gestionar_usuarios"),
-  (req: any, res: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const botMaintenanceService = require("../services/botMaintenance.service");
-
+  (_req: Request, res: Response) => {
     if (!botMaintenanceService.isRunning) {
-      return res.json({
+      res.json({
         success: false,
-        message: "El servicio de mantenimiento no está ejecutándose",
+        message: "The maintenance service is not running",
       });
+      return;
     }
 
     botMaintenanceService.stop();
 
     res.json({
       success: true,
-      message: "Servicio de mantenimiento del bot detenido",
+      message: "Bot maintenance service stopped",
     });
   }
 );
 
 /**
  * POST /api/kick-admin/bot-maintenance/trigger
- * Ejecutar mantenimiento manualmente (para testing)
+ * Run maintenance manually (for testing)
  */
 router.post(
   "/bot-maintenance/trigger",
   checkPermission("gestionar_usuarios"),
-  async (req: any, res: any) => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const botMaintenanceService = require("../services/botMaintenance.service");
-
+  async (_req: Request, res: Response) => {
     try {
       await botMaintenanceService.performMaintenance();
       res.json({
         success: true,
-        message: "Mantenimiento ejecutado manualmente",
+        message: "Maintenance executed manually",
       });
-    } catch (error: any) {
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       res.status(500).json({
         success: false,
-        error: error.message,
+        error: msg,
       });
     }
   }
 );
 
 // ============================================================================
-// RUTAS DE GESTIÓN DE TOKENS DEL BOT
+// BOT TOKEN MANAGEMENT ROUTES
 // ============================================================================
 
 /**
  * GET /api/kick-admin/bot-tokens
- * Obtener estado de todos los tokens del bot
+ * Get status of all bot tokens
  */
 router.get(
   "/bot-tokens",
@@ -253,7 +244,7 @@ router.get(
 
 /**
  * POST /api/kick-admin/bot-tokens/cleanup
- * Limpiar tokens expirados del bot
+ * Clean up expired bot tokens
  */
 router.post(
   "/bot-tokens/cleanup",
@@ -263,7 +254,7 @@ router.post(
 
 /**
  * POST /api/kick-admin/bot-tokens/:tokenId/refresh
- * Renovar un token específico del bot manualmente
+ * Manually refresh a specific bot token
  */
 router.post(
   "/bot-tokens/:tokenId/refresh",
@@ -273,7 +264,7 @@ router.post(
 
 /**
  * DELETE /api/kick-admin/bot-tokens/:tokenId
- * Desactivar un token específico del bot
+ * Deactivate a specific bot token
  */
 router.delete(
   "/bot-tokens/:tokenId",
@@ -283,7 +274,7 @@ router.delete(
 
 /**
  * POST /api/kick-admin/bot-test-message
- * Probar envío de mensaje con el bot
+ * Test sending a message with the bot
  */
 router.post(
   "/bot-test-message",

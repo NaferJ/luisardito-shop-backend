@@ -1,11 +1,37 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
+import type Usuario from "./usuario.model";
 
-const DiscordUserLink: any = sequelize.define(
-  "DiscordUserLink",
+class DiscordUserLink extends Model<
+  InferAttributes<DiscordUserLink>,
+  InferCreationAttributes<DiscordUserLink>
+> {
+  declare id: CreationOptional<number>;
+  declare discord_user_id: string;
+  declare discord_username: string | null;
+  declare discord_discriminator: string | null;
+  declare discord_avatar: string | null;
+  declare tienda_user_id: number;
+  declare kick_user_id: string | null;
+  declare access_token: string | null;
+  declare refresh_token: string | null;
+  declare token_expires_at: Date | null;
+  declare linked_at: CreationOptional<Date>;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+
+  // Association mixin (declared by belongsTo in models/index.ts)
+  declare usuario?: Usuario;
+  declare getUsuario?: () => Promise<Usuario | null>;
+}
+
+DiscordUserLink.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -68,8 +94,15 @@ const DiscordUserLink: any = sequelize.define(
       defaultValue: DataTypes.NOW,
       comment: "Fecha de vinculación",
     },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+    },
   },
   {
+    sequelize,
     tableName: "discord_user_links",
     timestamps: true,
     createdAt: "created_at",
@@ -89,12 +122,5 @@ const DiscordUserLink: any = sequelize.define(
   }
 );
 
-// Relaciones
-DiscordUserLink.associate = (models: any) => {
-  DiscordUserLink.belongsTo(models.Usuario, {
-    foreignKey: "tienda_user_id",
-    as: "usuario",
-  });
-};
-
+// Associations are defined in models/index.ts to avoid duplicate registration
 export = DiscordUserLink;
