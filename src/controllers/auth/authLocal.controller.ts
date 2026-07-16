@@ -1,25 +1,26 @@
-const bcrypt = require("bcryptjs");
-const { Usuario } = require("../../models");
-const { Op } = require("sequelize");
-const {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import bcrypt from "bcryptjs";
+import { Usuario } from "../../models";
+import { Op } from "sequelize";
+import {
   generateAccessToken,
   createRefreshToken,
   validateRefreshToken,
   revokeRefreshToken,
   revokeAllUserTokens,
   rotateRefreshToken,
-} = require("../../services/tokenService");
-const {
-  setAuthCookies,
-  clearAuthCookies,
-} = require("../../utils/cookies.util");
-const { enrichUserWithDiscordInfo } = require("./auth.shared");
-const logger = require("../../utils/logger");
-const asyncHandler = require("../../utils/asyncHandler");
-const AppError = require("../../utils/AppError");
+} from "../../services/tokenService";
+import { setAuthCookies, clearAuthCookies } from "../../utils/cookies.util";
+import { enrichUserWithDiscordInfo } from "./auth.shared";
+import logger from "../../utils/logger";
+import asyncHandler from "../../utils/asyncHandler";
+import AppError from "../../utils/AppError";
 
-exports.registerLocal = asyncHandler(async (req, res) => {
+const registerLocal = asyncHandler(async (req: any, res: any) => {
   try {
+    // eslint-disable-next-line prefer-const
     let { nickname, email, password } = req.body;
 
     if (!nickname || !email || !password) {
@@ -35,7 +36,7 @@ exports.registerLocal = asyncHandler(async (req, res) => {
     }
 
     // Check for duplicates
-    const existe = await Usuario.findOne({
+    const existe: any = await Usuario.findOne({
       where: { [Op.or]: [{ nickname }, { email }] },
     });
     if (existe) {
@@ -43,18 +44,22 @@ exports.registerLocal = asyncHandler(async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const user = await Usuario.create({ nickname, email, password_hash: hash });
+    const user: any = await Usuario.create({
+      nickname,
+      email,
+      password_hash: hash,
+    });
     res.status(201).json({ message: "User created", userId: user.id });
-  } catch (err) {
+  } catch (err: any) {
     if (err instanceof AppError) throw err;
     throw new AppError(err.message, 400);
   }
 });
 
 // Local login
-exports.loginLocal = asyncHandler(async (req, res) => {
+const loginLocal = asyncHandler(async (req: any, res: any) => {
   const { nickname, password } = req.body;
-  const user = await Usuario.findOne({ where: { nickname } });
+  const user: any = await Usuario.findOne({ where: { nickname } });
   if (
     !user?.password_hash ||
     !(await bcrypt.compare(password, user.password_hash))
@@ -98,7 +103,7 @@ exports.loginLocal = asyncHandler(async (req, res) => {
 /**
  * Endpoint to refresh the access token using the refresh token
  */
-exports.refreshToken = asyncHandler(async (req, res) => {
+const refreshToken = asyncHandler(async (req: any, res: any) => {
   const { refreshToken } = req.body;
 
   if (!refreshToken) {
@@ -106,14 +111,14 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   }
 
   // Validate the refresh token
-  const tokenRecord = await validateRefreshToken(refreshToken);
+  const tokenRecord: any = await validateRefreshToken(refreshToken);
 
   if (!tokenRecord) {
     throw new AppError("Invalid or expired refresh token", 401);
   }
 
   // Get user data
-  const usuario = await Usuario.findByPk(tokenRecord.usuario_id);
+  const usuario: any = await Usuario.findByPk(tokenRecord.usuario_id);
 
   if (!usuario) {
     throw new AppError("User not found", 404);
@@ -166,7 +171,7 @@ exports.refreshToken = asyncHandler(async (req, res) => {
 /**
  * Endpoint to log out (revoke refresh token)
  */
-exports.logout = asyncHandler(async (req, res) => {
+const logout = asyncHandler(async (req: any, res: any) => {
   const { refreshToken } = req.body;
 
   if (!refreshToken) {
@@ -191,7 +196,7 @@ exports.logout = asyncHandler(async (req, res) => {
 /**
  * Endpoint to close all sessions for a user
  */
-exports.logoutAll = asyncHandler(async (req, res) => {
+const logoutAll = asyncHandler(async (req: any, res: any) => {
   // Get userId from the current token (assumes auth middleware)
   const { userId } = req.user || req.body;
 
@@ -214,3 +219,5 @@ exports.logoutAll = asyncHandler(async (req, res) => {
     revokedCount,
   });
 });
+
+export { registerLocal, loginLocal, refreshToken, logout, logoutAll };

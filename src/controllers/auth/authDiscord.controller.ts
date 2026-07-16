@@ -1,26 +1,29 @@
-const jwt = require("jsonwebtoken");
-const axios = require("axios");
-const config = require("../../../config");
-const { Usuario, DiscordUserLink } = require("../../models");
-const { generatePkce } = require("../../utils/pkce.util");
-const {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import jwt from "jsonwebtoken";
+import axios from "axios";
+import config from "../../../config";
+import { Usuario, DiscordUserLink } from "../../models";
+import { generatePkce } from "../../utils/pkce.util";
+import {
   enrichUserWithDiscordInfo,
   findDiscordLinkByUserId,
   buildDiscordDisplayName,
-} = require("./auth.shared");
-const logger = require("../../utils/logger");
-const asyncHandler = require("../../utils/asyncHandler");
-const AppError = require("../../utils/AppError");
+} from "./auth.shared";
+import logger from "../../utils/logger";
+import asyncHandler from "../../utils/asyncHandler";
+import AppError from "../../utils/AppError";
 
 // ==========================================
 // DISCORD OAUTH
 // ==========================================
 
-function computeTokenExpiry(expiresIn) {
+function computeTokenExpiry(expiresIn: any) {
   return expiresIn ? new Date(Date.now() + expiresIn * 1000) : null;
 }
 
-function buildDiscordLinkFields(discordUser, tokenData) {
+function buildDiscordLinkFields(discordUser: any, tokenData: any) {
   return {
     discord_username: discordUser.username,
     discord_discriminator: discordUser.discriminator,
@@ -32,11 +35,11 @@ function buildDiscordLinkFields(discordUser, tokenData) {
 }
 
 async function upsertDiscordLink(
-  existingLink,
-  userId,
-  usuario,
-  discordUser,
-  tokenData
+  existingLink: any,
+  userId: any,
+  usuario: any,
+  discordUser: any,
+  tokenData: any
 ) {
   if (existingLink) {
     if (existingLink.tienda_user_id === userId) {
@@ -67,7 +70,7 @@ async function upsertDiscordLink(
 /**
  * Starts the Discord OAuth flow
  */
-exports.redirectDiscord = (req, res) => {
+const redirectDiscord = (req: any, res: any) => {
   try {
     logger.info("[Discord OAuth][redirectDiscord] Starting Discord OAuth flow");
 
@@ -110,7 +113,7 @@ exports.redirectDiscord = (req, res) => {
     logger.info("[Discord OAuth][redirectDiscord] Redirect URL:", url);
 
     return res.redirect(url);
-  } catch (err) {
+  } catch (err: any) {
     logger.error(
       "[Discord OAuth][redirectDiscord] Error:",
       err?.message || err
@@ -124,7 +127,7 @@ exports.redirectDiscord = (req, res) => {
 /**
  * Discord OAuth callback
  */
-exports.callbackDiscord = async (req, res) => {
+const callbackDiscord = async (req: any, res: any) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Discord OAuth][callbackDiscord] Parameters received:", {
@@ -143,7 +146,7 @@ exports.callbackDiscord = async (req, res) => {
     try {
       decoded = jwt.verify(String(state), config.jwtSecret);
       logger.info("[Discord OAuth][callbackDiscord] Decoded state:", decoded);
-    } catch (e) {
+    } catch (e: any) {
       logger.error(
         "[Discord OAuth][callbackDiscord] Invalid or expired state:",
         e?.message || e
@@ -167,7 +170,7 @@ exports.callbackDiscord = async (req, res) => {
     }
 
     // Verify the user exists
-    const usuario = await Usuario.findByPk(userId);
+    const usuario: any = await Usuario.findByPk(userId);
     if (!usuario) {
       logger.error("[Discord OAuth][callbackDiscord] User not found:", userId);
       return res.status(404).json({ error: "User not found" });
@@ -259,7 +262,7 @@ exports.callbackDiscord = async (req, res) => {
     // Redirect to frontend with success
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
-  } catch (error) {
+  } catch (error: any) {
     logger.error("[Discord OAuth][callbackDiscord] Error:", error);
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
@@ -269,7 +272,7 @@ exports.callbackDiscord = async (req, res) => {
 /**
  * Manual Discord linking (via temporary code)
  */
-exports.linkDiscordManual = asyncHandler(async (req, _res) => {
+const linkDiscordManual = asyncHandler(async (req: any, _res: any) => {
   const { code } = req.body;
   const userId = req.user?.id;
 
@@ -290,7 +293,7 @@ exports.linkDiscordManual = asyncHandler(async (req, _res) => {
 /**
  * Unlink Discord account
  */
-exports.unlinkDiscord = asyncHandler(async (req, res) => {
+const unlinkDiscord = asyncHandler(async (req: any, res: any) => {
   const userId = req.user?.id;
 
   if (!userId) {
@@ -317,7 +320,7 @@ exports.unlinkDiscord = asyncHandler(async (req, res) => {
   await discordLink.destroy();
 
   // Clear discord_username on the user if present
-  const usuario = await Usuario.findByPk(userId);
+  const usuario: any = await Usuario.findByPk(userId);
   if (usuario?.discord_username) {
     await usuario.update({ discord_username: null });
   }
@@ -343,3 +346,5 @@ exports.unlinkDiscord = asyncHandler(async (req, res) => {
     },
   });
 });
+
+export { redirectDiscord, callbackDiscord, linkDiscordManual, unlinkDiscord };

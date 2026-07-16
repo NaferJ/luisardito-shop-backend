@@ -1,13 +1,16 @@
-const { DiscordUserLink } = require("../../models");
-const { extractAvatarUrl } = require("../../utils/kickApi");
-const logger = require("../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import { DiscordUserLink } from "../../models";
+import { extractAvatarUrl } from "../../utils/kickApi";
+import logger from "../../utils/logger";
 
 /**
  * Find a DiscordUserLink by tienda_user_id
- * @param {number} userId - Usuario id
+ * @param {number} userId - User id
  * @returns {Promise<Object|null>}
  */
-async function findDiscordLinkByUserId(userId) {
+async function findDiscordLinkByUserId(userId: any) {
   return DiscordUserLink.findOne({
     where: { tienda_user_id: userId },
   });
@@ -21,7 +24,7 @@ async function findDiscordLinkByUserId(userId) {
  * @param {string} discriminator
  * @returns {string}
  */
-function buildDiscordDisplayName(username, discriminator) {
+function buildDiscordDisplayName(username: any, discriminator: any) {
   return discriminator && discriminator !== "0"
     ? `${username}#${discriminator}`
     : username;
@@ -29,12 +32,12 @@ function buildDiscordDisplayName(username, discriminator) {
 
 /**
  * Helper to enrich user info with Discord data
- * @param {Object} user - Usuario model instance
+ * @param {Object} user - User model instance
  * @returns {Promise<{discord_info: Object|null, display_name: string}>} Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user) {
+async function enrichUserWithDiscordInfo(user: any) {
   let discordInfo = null;
-  const discordLink = await findDiscordLinkByUserId(user.id);
+  const discordLink: any = await findDiscordLinkByUserId(user.id);
 
   if (discordLink) {
     discordInfo = {
@@ -62,7 +65,7 @@ async function enrichUserWithDiscordInfo(user) {
  * @param {Object} kickUser - Kick user data
  * @returns {string|null} - Kick avatar URL or null if absent
  */
-function processKickAvatar(kickUser) {
+function processKickAvatar(kickUser: any) {
   try {
     const kickAvatarUrl = extractAvatarUrl(kickUser);
 
@@ -73,7 +76,7 @@ function processKickAvatar(kickUser) {
 
     logger.info(`[Auth] Kick avatar obtained:`, kickAvatarUrl);
     return kickAvatarUrl;
-  } catch (error) {
+  } catch (error: any) {
     logger.warn(
       `[Auth] Error extracting avatar, continuing without it:`,
       error.message
@@ -82,7 +85,7 @@ function processKickAvatar(kickUser) {
   }
 }
 
-module.exports = {
+export {
   enrichUserWithDiscordInfo,
   processKickAvatar,
   findDiscordLinkByUserId,

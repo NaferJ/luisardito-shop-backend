@@ -1,13 +1,16 @@
-const jwt = require("jsonwebtoken");
-const axios = require("axios");
-const config = require("../../../config");
-const { generatePkce } = require("../../utils/pkce.util");
-const { getKickUserData } = require("../../utils/kickApi");
-const KickBotTokenService = require("../../services/kickBotToken.service");
-const logger = require("../../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import jwt from "jsonwebtoken";
+import axios from "axios";
+import config from "../../../config";
+import { generatePkce } from "../../utils/pkce.util";
+import { getKickUserData } from "../../utils/kickApi";
+import KickBotTokenService from "../../services/kickBotToken.service";
+import logger from "../../utils/logger";
 
 // Redirect to Kick OAuth (BOT)
-exports.redirectKickBot = (req, res) => {
+const redirectKickBot = (req: any, res: any) => {
   try {
     const { code_verifier, code_challenge } = generatePkce();
 
@@ -32,7 +35,7 @@ exports.redirectKickBot = (req, res) => {
 
     const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
     return res.redirect(url);
-  } catch (err) {
+  } catch (err: any) {
     logger.error("[Kick OAuth][redirectKickBot] Error:", err?.message || err);
     return res
       .status(500)
@@ -41,7 +44,7 @@ exports.redirectKickBot = (req, res) => {
 };
 
 // Kick OAuth callback (BOT)
-exports.callbackKickBot = async (req, res) => {
+const callbackKickBot = async (req: any, res: any) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Kick OAuth][callbackKickBot] Parameters received:", {
@@ -61,7 +64,7 @@ exports.callbackKickBot = async (req, res) => {
     try {
       decodedState = jwt.verify(state, config.jwtSecret);
       logger.info("[Kick OAuth][callbackKickBot] Decoded state:", decodedState);
-    } catch (err) {
+    } catch (err: any) {
       logger.error("[Kick OAuth][callbackKickBot] Error decoding state:", err);
       return res.status(400).json({ error: "Invalid or expired state" });
     }
@@ -105,7 +108,9 @@ exports.callbackKickBot = async (req, res) => {
 
     // Also save to tokens.json for auto-refresh
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const fs = require("node:fs").promises;
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const path = require("node:path");
       const tokensFile = path.join(__dirname, "../../../tokens/tokens.json");
       const fullPath = path.resolve(tokensFile);
@@ -119,7 +124,7 @@ exports.callbackKickBot = async (req, res) => {
       };
       await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
       logger.info("[Kick OAuth][callbackKickBot] Tokens saved to tokens.json");
-    } catch (error) {
+    } catch (error: any) {
       logger.error(
         "[Kick OAuth][callbackKickBot] Error saving tokens.json:",
         error.message
@@ -132,7 +137,7 @@ exports.callbackKickBot = async (req, res) => {
     return res.redirect(
       `${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`
     );
-  } catch (err) {
+  } catch (err: any) {
     logger.error("[Kick OAuth][callbackKickBot] Error:", err);
     return res.status(500).json({
       error: "Error in the bot authentication callback",
@@ -140,3 +145,5 @@ exports.callbackKickBot = async (req, res) => {
     });
   }
 };
+
+export { redirectKickBot, callbackKickBot };
