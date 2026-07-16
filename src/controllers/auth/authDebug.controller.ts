@@ -1,9 +1,12 @@
-const asyncHandler = require("../../utils/asyncHandler");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import asyncHandler from "../../utils/asyncHandler";
 
 /**
  * Endpoint to check cookie status (debugging)
  */
-exports.cookieStatus = asyncHandler(async (req, res) => {
+const cookieStatus = asyncHandler(async (req: any, res: any) => {
   const cookies = req.headers.cookie;
   const authToken = req.cookies?.auth_token;
   const refreshToken = req.cookies?.refresh_token;
@@ -20,3 +23,5 @@ exports.cookieStatus = asyncHandler(async (req, res) => {
     allCookies: req.cookies,
   });
 });
+
+export { cookieStatus };

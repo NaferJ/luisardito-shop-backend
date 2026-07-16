@@ -1,40 +1,41 @@
-const router = require("express").Router();
-const authCtrl = require("../controllers/auth.controller");
-const validate = require("../middleware/validate.middleware");
-const {
+import { Router } from "express";
+import authCtrl from "../controllers/auth.controller";
+import validate from "../middleware/validate.middleware";
+import authRequired from "../middleware/authRequired.middleware";
+import {
   registerSchema,
   loginSchema,
   refreshSchema,
   logoutSchema,
-} = require("../schemas/auth.schema");
+} from "../schemas/auth.schema";
+
+const router = Router();
 
 // Auth local
 router.post("/register", validate(registerSchema), authCtrl.registerLocal);
 router.post("/login", validate(loginSchema), authCtrl.loginLocal);
 
-// Refresh token y logout
+// Refresh token and logout
 router.post("/refresh", validate(refreshSchema), authCtrl.refreshToken);
 router.post("/logout", validate(logoutSchema), authCtrl.logout);
 router.post("/logout-all", authCtrl.logoutAll);
 
-// OAuth de Kick
+// Kick OAuth
 router.get("/kick", authCtrl.redirectKick);
 router.get("/kick-callback", authCtrl.callbackKick);
 router.post("/store-tokens", authCtrl.storeTokens);
 
-// OAuth de Kick - BOT
+// Kick OAuth - BOT
 router.get("/kick-bot", authCtrl.redirectKickBot);
 router.get("/kick-bot-callback", authCtrl.callbackKickBot);
 
-const authRequired = require("../middleware/authRequired.middleware");
-
-// OAuth de Discord
+// Discord OAuth
 router.get("/discord", authRequired, authCtrl.redirectDiscord);
 router.get("/discord/callback", authCtrl.callbackDiscord);
 router.post("/discord/link", authRequired, authCtrl.linkDiscordManual);
 router.post("/discord/unlink", authRequired, authCtrl.unlinkDiscord);
 
-// Debugging de cookies
+// Cookie debugging
 router.get("/cookie-status", authCtrl.cookieStatus);
 
-module.exports = router;
+export = router;
