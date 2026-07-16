@@ -59,7 +59,7 @@ const getSubscriptions = asyncHandler(async (req: Request, res: Response) => {
 /**
  * Subscription methods allowed by the Kick API
  */
-const ALLOWED_METHODS = ["webhook", "websocket"];
+const ALLOWED_METHODS = new Set(["webhook", "websocket"]);
 
 /**
  * Validates the request body for createSubscriptions.
@@ -139,9 +139,7 @@ const createSubscriptions = asyncHandler(
       if (validationError) throw validationError;
 
       // Validate that method is an allowed value (prevent SSRF / injection)
-      const sanitizedMethod = ALLOWED_METHODS.includes(method)
-        ? method
-        : "webhook";
+      const sanitizedMethod = ALLOWED_METHODS.has(method) ? method : "webhook";
 
       const apiUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 

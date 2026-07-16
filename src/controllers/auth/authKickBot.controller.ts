@@ -93,12 +93,15 @@ const callbackKickBot = async (req: Request, res: Response) => {
 
     // Get bot data
     const botUser = await getKickUserData(access_token);
-    if (!botUser?.id) {
+    if (!botUser?.id || typeof botUser.id !== "number") {
       throw new Error("Could not fetch bot data from Kick");
     }
 
     const botUserId = String(botUser.id);
-    const botUsername = String(botUser.username || `bot-${botUser.id}`);
+    const botUsername =
+      typeof botUser.username === "string" && botUser.username
+        ? botUser.username
+        : `bot-${botUser.id}`;
 
     // Save bot token
     await KickBotTokenService.saveBotToken({

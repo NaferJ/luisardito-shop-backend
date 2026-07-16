@@ -13,6 +13,7 @@ import { Transaction } from "sequelize";
 import { getRedisClient } from "../../../config/redis.config";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickSender {
   user_id: string | number;
@@ -122,16 +123,19 @@ async function processModeratorCommands(
         await bot.sendMessage(modResult.message);
         logger.info(`[MOD-CMD] Response sent to chat: ${modResult.message}`);
       } catch (botError: unknown) {
-        const msg =
-          botError instanceof Error ? botError.message : String(botError);
-        logger.error(`[MOD-CMD] Error sending response to chat:`, msg);
+        logger.error(
+          `[MOD-CMD] Error sending response to chat:`,
+          toErrorMessage(botError)
+        );
       }
     }
 
     return true;
   } catch (modErr: unknown) {
-    const msg = modErr instanceof Error ? modErr.message : String(modErr);
-    logger.error("[MOD-CMD] Error handling moderator commands:", msg);
+    logger.error(
+      "[MOD-CMD] Error handling moderator commands:",
+      toErrorMessage(modErr)
+    );
     return false;
   }
 }
@@ -177,8 +181,10 @@ async function processBotCommands(
       );
     }
   } catch (cmdErr: unknown) {
-    const msg = cmdErr instanceof Error ? cmdErr.message : String(cmdErr);
-    logger.error("[Chat Command] Error handling commands:", msg);
+    logger.error(
+      "[Chat Command] Error handling commands:",
+      toErrorMessage(cmdErr)
+    );
   }
 }
 
@@ -192,9 +198,7 @@ async function isStreamLive(): Promise<boolean> {
 
     return isLive === "true";
   } catch (redisError: unknown) {
-    const msg =
-      redisError instanceof Error ? redisError.message : String(redisError);
-    logger.error(`[STREAM] Error checking status:`, msg);
+    logger.error(`[STREAM] Error checking status:`, toErrorMessage(redisError));
     logger.info(`[STREAM] Assuming LIVE due to Redis error`);
     return true;
   }
@@ -251,11 +255,7 @@ async function processWatchtime(
 
     logger.info(`[WATCHTIME] User ${kickUserId} +1 minute`);
   } catch (watchtimeError: unknown) {
-    const msg =
-      watchtimeError instanceof Error
-        ? watchtimeError.message
-        : String(watchtimeError);
-    logger.error(`[WATCHTIME] Error:`, msg);
+    logger.error(`[WATCHTIME] Error:`, toErrorMessage(watchtimeError));
   }
 }
 
@@ -293,8 +293,10 @@ async function resolveSubscriberStatus(
       `[CHAT] Subscription expired for ${kickUsername} - is_subscribed=false`
     );
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
-    logger.error("[CHAT] Error deactivating expired subscription:", msg);
+    logger.error(
+      "[CHAT] Error deactivating expired subscription:",
+      toErrorMessage(e)
+    );
   }
 
   return { isSubscriber: false, userTracking };
@@ -329,9 +331,7 @@ async function awardChatPoints(
       return;
     }
   } catch (redisError: unknown) {
-    const msg =
-      redisError instanceof Error ? redisError.message : String(redisError);
-    logger.error(`[REDIS COOLDOWN] Redis error:`, msg);
+    logger.error(`[REDIS COOLDOWN] Redis error:`, toErrorMessage(redisError));
   }
 
   const transaction = await sequelize.transaction({
@@ -378,21 +378,19 @@ async function awardChatPoints(
     );
   } catch (transactionError: unknown) {
     await transaction.rollback();
-    const msg =
-      transactionError instanceof Error
-        ? transactionError.message
-        : String(transactionError);
-    logger.error(`[Chat Message] Transaction error for ${kickUsername}:`, msg);
+    logger.error(
+      `[Chat Message] Transaction error for ${kickUsername}:`,
+      toErrorMessage(transactionError)
+    );
 
     try {
       const redis = getRedisClient();
       await redis.del(cooldownKey);
     } catch (redisCleanupError: unknown) {
-      const cleanupMsg =
-        redisCleanupError instanceof Error
-          ? redisCleanupError.message
-          : String(redisCleanupError);
-      logger.error(`[REDIS COOLDOWN] Error cleaning cooldown:`, cleanupMsg);
+      logger.error(
+        `[REDIS COOLDOWN] Error cleaning cooldown:`,
+        toErrorMessage(redisCleanupError)
+      );
     }
 
     throw transactionError;
@@ -511,8 +509,7 @@ async function handleChatMessage(
       kickUsername,
     });
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Chat Message] Error:", msg);
+    logger.error("[Chat Message] Error:", toErrorMessage(error));
   }
 }
 

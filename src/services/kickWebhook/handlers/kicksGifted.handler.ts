@@ -9,6 +9,7 @@ import NotificacionService from "../../notificacion.service";
 import { Transaction } from "sequelize";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickSender {
   user_id: string | number;
@@ -161,19 +162,14 @@ async function handleKicksGifted(
       );
     } catch (transactionError: unknown) {
       await transaction.rollback();
-      const msg =
-        transactionError instanceof Error
-          ? transactionError.message
-          : String(transactionError);
       logger.error(
         `[Kick Webhook][Kicks Gifted] Transaction error for ${kickUsername}:`,
-        msg
+        toErrorMessage(transactionError)
       );
       throw transactionError;
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Kick Webhook][Kicks Gifted] Error:", msg);
+    logger.error("[Kick Webhook][Kicks Gifted] Error:", toErrorMessage(error));
   }
 }
 

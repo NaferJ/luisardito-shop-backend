@@ -15,6 +15,7 @@ import { enrichUserWithDiscordInfo, processKickAvatar } from "./auth.shared";
 import logger from "../../utils/logger";
 import asyncHandler from "../../utils/asyncHandler";
 import AppError from "../../utils/AppError";
+import toErrorMessage from "../../utils/toErrorMessage";
 
 // Redirect to Kick OAuth
 const redirectKick = (req: Request, res: Response) => {
@@ -322,7 +323,7 @@ async function maybeAutoSubscribe(
 function handleCallbackKickError(res: Response, error: unknown) {
   logger.error(
     "[Kick OAuth][callbackKick] General error:",
-    error instanceof Error ? error.message : String(error)
+    toErrorMessage(error)
   );
 
   // Show Sequelize validation error details if present
@@ -366,9 +367,7 @@ function handleCallbackKickError(res: Response, error: unknown) {
 
   return res.status(502).json({
     error: "Provider network failure",
-    detalle:
-      (error as { errors?: unknown[] })?.errors ||
-      (error instanceof Error ? error.message : String(error)),
+    detalle: (error as { errors?: unknown[] })?.errors || toErrorMessage(error),
   });
 }
 

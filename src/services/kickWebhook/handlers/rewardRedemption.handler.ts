@@ -7,6 +7,7 @@ import {
 import NotificacionService from "../../notificacion.service";
 import { Transaction } from "sequelize";
 import logger from "../../../utils/logger";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickRewardData {
   id: string;
@@ -44,8 +45,10 @@ async function notifyUnregisteredReward(
     await bot.sendMessage(message);
     logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
   } catch (botError: unknown) {
-    const msg = botError instanceof Error ? botError.message : String(botError);
-    logger.error(`[Reward Redemption] Error sending chat message:`, msg);
+    logger.error(
+      `[Reward Redemption] Error sending chat message:`,
+      toErrorMessage(botError)
+    );
   }
 }
 
@@ -229,8 +232,7 @@ async function handleRewardRedemption(
       throw error;
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Reward Redemption] Error:", msg);
+    logger.error("[Reward Redemption] Error:", toErrorMessage(error));
   }
 }
 

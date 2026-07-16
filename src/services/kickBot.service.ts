@@ -4,6 +4,7 @@ import KickBotToken from "../models/kickBotToken.model";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import logger from "../utils/logger";
+import toErrorMessage from "../utils/toErrorMessage";
 
 interface TokenFileData {
   accessToken: string;
@@ -132,11 +133,9 @@ class KickBotService {
           `[KickBot] tokens.json updated for ${tokenRecord.kick_username}`
         );
       } catch (fileError: unknown) {
-        const msg =
-          fileError instanceof Error ? fileError.message : String(fileError);
         logger.warn(
           `[KickBot] Could not update tokens.json (non-critical):`,
-          msg
+          toErrorMessage(fileError)
         );
       }
 
@@ -150,12 +149,11 @@ class KickBotService {
       };
       const errorData = axiosErr?.response?.data;
       const errorStatus = axiosErr?.response?.status;
-      const msg = error instanceof Error ? error.message : String(error);
 
       logger.error("[KickBot] Error renewing token:", {
         status: errorStatus,
         data: errorData,
-        message: msg,
+        message: toErrorMessage(error),
       });
 
       // If the error is authentication-related or invalid refresh token
@@ -206,10 +204,9 @@ class KickBotService {
       await this.refreshToken(tokenRecord);
       return true;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
         `[KickBot] Error renewing token for ${tokenRecord.kick_username}:`,
-        msg
+        toErrorMessage(error)
       );
       return false;
     }
@@ -233,8 +230,10 @@ class KickBotService {
         return token;
       }
     } catch (dbError: unknown) {
-      const msg = dbError instanceof Error ? dbError.message : String(dbError);
-      logger.warn("[KickBot] Error querying DB, trying file:", msg);
+      logger.warn(
+        "[KickBot] Error querying DB, trying file:",
+        toErrorMessage(dbError)
+      );
     }
 
     // PRIORITY 2: Fallback to tokens.json if the DB has no tokens
@@ -244,9 +243,10 @@ class KickBotService {
         return token;
       }
     } catch (fileError: unknown) {
-      const msg =
-        fileError instanceof Error ? fileError.message : String(fileError);
-      logger.warn("[KickBot] tokens.json file not available or invalid:", msg);
+      logger.warn(
+        "[KickBot] tokens.json file not available or invalid:",
+        toErrorMessage(fileError)
+      );
     }
 
     // If we get here, no tokens are available
@@ -323,10 +323,9 @@ class KickBotService {
         );
         return updatedRecord.access_token;
       } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : String(error);
         logger.error(
           `[KickBot] Renewal failed for ${record.kick_username}:`,
-          msg
+          toErrorMessage(error)
         );
         // Continue with the next token
         return undefined;
@@ -443,16 +442,14 @@ class KickBotService {
       const axiosErr = error as {
         response?: { data?: unknown; status?: number };
       };
-      const errorData =
-        axiosErr?.response?.data ||
-        (error instanceof Error ? error.message : String(error));
-      logger.error("[KickBot] Error sending message:", errorData);
+      const errorData = axiosErr?.response?.data || toErrorMessage(error);
+      logger.error(
+        "[KickBot] Error sending message:",
+        toErrorMessage(errorData)
+      );
       return {
         ok: false,
-        error:
-          typeof errorData === "object"
-            ? JSON.stringify(errorData)
-            : String(errorData),
+        error: toErrorMessage(errorData),
         status: axiosErr?.response?.status,
       };
     }
@@ -533,8 +530,7 @@ class KickBotService {
       logger.info(`[KickBot] New tokens saved for ${username}`);
       return tokenRecord;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[KickBot] Error exchanging code:", msg);
+      logger.error("[KickBot] Error exchanging code:", toErrorMessage(error));
       throw error;
     }
   }
@@ -555,8 +551,10 @@ class KickBotService {
         try {
           await this.performAutoRefresh();
         } catch (error: unknown) {
-          const msg = error instanceof Error ? error.message : String(error);
-          logger.error("[KickBot] Error on first check:", msg);
+          logger.error(
+            "[KickBot] Error on first check:",
+            toErrorMessage(error)
+          );
         }
       },
       2 * 60 * 1000
@@ -568,8 +566,10 @@ class KickBotService {
         try {
           await this.performAutoRefresh();
         } catch (error: unknown) {
-          const msg = error instanceof Error ? error.message : String(error);
-          logger.error("[KickBot] Error in automatic refresh:", msg);
+          logger.error(
+            "[KickBot] Error in automatic refresh:",
+            toErrorMessage(error)
+          );
         }
       },
       10 * 60 * 1000
@@ -606,8 +606,10 @@ class KickBotService {
         await this._autoRefreshRecord(record);
       }
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[KickBot] Error in performAutoRefresh:", msg);
+      logger.error(
+        "[KickBot] Error in performAutoRefresh:",
+        toErrorMessage(error)
+      );
     }
   }
 
@@ -642,10 +644,9 @@ class KickBotService {
         `[KickBot] Token auto-renewed successfully for ${record.kick_username}`
       );
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
         `[KickBot] Error auto-renewing token for ${record.kick_username}:`,
-        msg
+        toErrorMessage(error)
       );
 
       // If the refresh token expired, alert
@@ -762,8 +763,10 @@ class KickBotService {
 
       return updatedTokens.accessToken;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[KickBot] Error renewing access token:", msg);
+      logger.error(
+        "[KickBot] Error renewing access token:",
+        toErrorMessage(error)
+      );
       throw error;
     }
   }

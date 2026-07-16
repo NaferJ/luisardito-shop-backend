@@ -7,6 +7,7 @@ import {
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickUser {
   user_id: string | number;
@@ -141,8 +142,10 @@ async function handleChannelFollowed(
       `[Kick Webhook][Channel Followed] ${pointsToAward} points awarded to ${kickUsername} (first follow - ${userType})`
     );
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Kick Webhook][Channel Followed] Error:", msg);
+    logger.error(
+      "[Kick Webhook][Channel Followed] Error:",
+      toErrorMessage(error)
+    );
   }
 }
 

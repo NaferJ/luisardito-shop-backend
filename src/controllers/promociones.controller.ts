@@ -271,11 +271,11 @@ function buildUpdatePayload(
     nombre: campos.nombre || promocion.nombre,
     titulo: campos.titulo || promocion.titulo,
     // descripcion is nullable in the model (allowNull: true); null is a valid
-    // value for clearing it, so we keep the !== undefined check instead of ??.
+    // value for clearing it, so we cannot use ?? (which would pass null through).
     descripcion:
-      campos.descripcion !== undefined
-        ? campos.descripcion
-        : promocion.descripcion,
+      campos.descripcion === undefined
+        ? promocion.descripcion
+        : campos.descripcion,
     tipo: (campos.tipo || promocion.tipo) as
       "producto" | "categoria" | "global" | "por_cantidad",
     tipo_descuento: (campos.tipo_descuento || promocion.tipo_descuento) as

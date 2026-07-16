@@ -7,6 +7,7 @@ import {
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickSubscriber {
   user_id: string | number;
@@ -150,8 +151,10 @@ async function processSubscriptionEvent(
       `[Kick Webhook][${opts.logLabel}] ${pointsToAward} points awarded to ${kickUsername}, ${opts.logVerb} ${expiresAt}`
     );
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error(`[Kick Webhook][${opts.logLabel}] Error:`, msg);
+    logger.error(
+      `[Kick Webhook][${opts.logLabel}] Error:`,
+      toErrorMessage(error)
+    );
   }
 }
 

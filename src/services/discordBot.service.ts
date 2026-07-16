@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import config from "../../config";
 import logger from "../utils/logger";
+import toErrorMessage from "../utils/toErrorMessage";
 import KickBotCommandHandlerService from "./kickBotCommandHandler.service";
 
 interface EmbedContent {
@@ -154,7 +155,7 @@ class DiscordBotService {
       logger.warn("[Discord Bot] No message context to send reply");
       return { ok: false, error: "No message context" };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = toErrorMessage(error);
       logger.error("[Discord Bot] Error sending message:", msg);
       return { ok: false, error: msg };
     }
@@ -214,7 +215,7 @@ class DiscordBotService {
       logger.info(`[Discord Bot] Message sent to channel ${channelId}`);
       return { ok: true };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
+      const msg = toErrorMessage(error);
       logger.error("[Discord Bot] Error sending message to channel:", msg);
       return { ok: false, error: msg };
     }

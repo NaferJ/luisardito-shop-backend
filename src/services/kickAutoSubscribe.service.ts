@@ -2,6 +2,7 @@ import axios, { type AxiosResponse } from "axios";
 import config from "../../config";
 import { KickEventSubscription, KickBroadcasterToken } from "../models";
 import logger from "../utils/logger";
+import toErrorMessage from "../utils/toErrorMessage";
 
 // In-flight refresh promises keyed by broadcaster identity (single-flight guard)
 const refreshInFlight = new Map<string, Promise<boolean>>();
@@ -132,7 +133,7 @@ async function processSingleSubscription(
 
       return { subscription: localSub, error: null };
     } catch (dbError: unknown) {
-      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      const msg = toErrorMessage(dbError);
       logger.error(`[Auto Subscribe] DB error ${sub.name}:`, msg);
       return { subscription: null, error: { event: sub.name, error: msg } };
     }
@@ -223,7 +224,7 @@ async function autoSubscribeToEvents(
 
     return result;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
+    const msg = toErrorMessage(error);
     logger.error("[Auto Subscribe] Error:", msg);
 
     // Update the error in the database
@@ -342,8 +343,10 @@ async function performBroadcasterRefresh(
 
     return false;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Token Refresh] Error renewing token:", msg);
+    logger.error(
+      "[Token Refresh] Error renewing token:",
+      toErrorMessage(error)
+    );
     await handleRefreshError(error, broadcasterToken);
     return false;
   }
@@ -382,9 +385,10 @@ async function handleRefreshError(
         subscription_error: "Token expired and could not be refreshed",
       });
     } catch (dbError: unknown) {
-      const dbMsg =
-        dbError instanceof Error ? dbError.message : String(dbError);
-      logger.error("[Token Refresh] Error deactivating token:", dbMsg);
+      logger.error(
+        "[Token Refresh] Error deactivating token:",
+        toErrorMessage(dbError)
+      );
     }
   }
 }
@@ -462,8 +466,7 @@ async function ensureValidToken(
 
     return broadcasterToken.access_token;
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Token Ensure] Error:", msg);
+    logger.error("[Token Ensure] Error:", toErrorMessage(error));
     return null;
   }
 }

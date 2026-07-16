@@ -7,6 +7,7 @@ import {
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
 
 interface KickUser {
   user_id: string | number;
@@ -209,8 +210,10 @@ async function handleSubscriptionGifts(
       }
     }
   } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    logger.error("[Kick Webhook][Subscription Gifts] Error:", msg);
+    logger.error(
+      "[Kick Webhook][Subscription Gifts] Error:",
+      toErrorMessage(error)
+    );
   }
 }
 

@@ -1,5 +1,6 @@
 import { Notificacion } from "../models";
 import logger from "../utils/logger";
+import toErrorMessage from "../utils/toErrorMessage";
 import type { Transaction, WhereOptions } from "sequelize";
 
 type NotificacionTipo =
@@ -81,9 +82,8 @@ class NotificacionService {
 
       return notificacion;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
-        `[Notification] Error creating notification for user ${usuarioId}: ${msg}`
+        `[Notification] Error creating notification for user ${usuarioId}: ${toErrorMessage(error)}`
       );
       throw error;
     }
@@ -151,8 +151,9 @@ class NotificacionService {
         notificaciones: rows,
       };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error listing notifications: ${msg}`);
+      logger.error(
+        `[Notification] Error listing notifications: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }
@@ -181,8 +182,9 @@ class NotificacionService {
 
       return notificacion;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error getting detail: ${msg}`);
+      logger.error(
+        `[Notification] Error getting detail: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }
@@ -224,8 +226,9 @@ class NotificacionService {
       );
       return notificacion;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error marking as read: ${msg}`);
+      logger.error(
+        `[Notification] Error marking as read: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }
@@ -258,8 +261,9 @@ class NotificacionService {
       );
       return { cantidad_actualizadas: count };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error marking all as read: ${msg}`);
+      logger.error(
+        `[Notification] Error marking all as read: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }
@@ -291,8 +295,9 @@ class NotificacionService {
       logger.info(`[Notification] Notification #${notificacionId} deleted`);
       return { id: notificacionId as number, mensaje: "Notification deleted" };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error deleting notification: ${msg}`);
+      logger.error(
+        `[Notification] Error deleting notification: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }
@@ -315,8 +320,9 @@ class NotificacionService {
 
       return { cantidad };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error(`[Notification] Error counting unread: ${msg}`);
+      logger.error(
+        `[Notification] Error counting unread: ${toErrorMessage(error)}`
+      );
       throw error;
     }
   }

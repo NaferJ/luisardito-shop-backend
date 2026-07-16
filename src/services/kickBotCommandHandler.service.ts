@@ -6,6 +6,7 @@ import {
 } from "../models";
 import sequelize from "sequelize";
 import logger from "../utils/logger";
+import toErrorMessage from "../utils/toErrorMessage";
 import formatWatchtime from "../utils/formatWatchtime";
 import axios, { type AxiosResponse } from "axios";
 import { getRedisClient } from "../config/redis.config";
@@ -699,9 +700,8 @@ class KickBotCommandHandlerService {
       const axiosErr = error as {
         response?: { status?: number; data?: unknown };
       };
-      const msg = error instanceof Error ? error.message : String(error);
       logger.error("[DISCORD-API] Error getting server info:", {
-        message: msg,
+        message: toErrorMessage(error),
         status: axiosErr?.response?.status,
         data: axiosErr?.response?.data,
       });
