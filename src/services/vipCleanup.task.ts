@@ -40,4 +40,4 @@ class VipCleanupTask {
   }
 }
 
-export default VipCleanupTask;
+export = VipCleanupTask;

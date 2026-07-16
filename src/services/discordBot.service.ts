@@ -213,7 +213,6 @@ class DiscordBotService {
   }
 }
 
-// Export both the class and a singleton instance
+// Export the singleton instance (compatible with require() in app.js)
 const instance = new DiscordBotService();
-export default instance;
-export { DiscordBotService };
+export = instance;

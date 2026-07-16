@@ -53,4 +53,4 @@ class DbCleanupTask {
     return await DbCleanupService.runAll();
   }
 }
-export default new DbCleanupTask();
+export = new DbCleanupTask();
