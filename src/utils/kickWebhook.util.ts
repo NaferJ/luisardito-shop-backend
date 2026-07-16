@@ -1,5 +1,8 @@
-const crypto = require("node:crypto");
-const logger = require("./logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import crypto from "node:crypto";
+import logger from "./logger";
 
 // Kick public key for verifying signatures (loaded from environment variable)
 // In .env it is stored in a single line with literal \n as separator
@@ -15,7 +18,12 @@ const KICK_PUBLIC_KEY = process.env.KICK_WEBHOOK_PUBLIC_KEY
  * @param {string} signatureBase64 - Kick-Event-Signature header (Base64 encoded)
  * @returns {boolean} - true if the signature is valid, false otherwise
  */
-function verifyWebhookSignature(messageId, timestamp, body, signatureBase64) {
+function verifyWebhookSignature(
+  messageId: any,
+  timestamp: any,
+  body: any,
+  signatureBase64: any
+) {
   try {
     if (!KICK_PUBLIC_KEY) {
       logger.error("[Kick Webhook] KICK_WEBHOOK_PUBLIC_KEY not configured");
@@ -33,13 +41,10 @@ function verifyWebhookSignature(messageId, timestamp, body, signatureBase64) {
     verifier.update(signatureString);
 
     return verifier.verify(KICK_PUBLIC_KEY, signature);
-  } catch (error) {
+  } catch (error: any) {
     logger.error("[Kick Webhook] Error verifying signature:", error.message);
     return false;
   }
 }
 
-module.exports = {
-  verifyWebhookSignature,
-  KICK_PUBLIC_KEY,
-};
+export { verifyWebhookSignature, KICK_PUBLIC_KEY };

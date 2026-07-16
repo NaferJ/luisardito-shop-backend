@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
 /**
  * Operational application error with an HTTP status code.
  *
@@ -6,7 +9,11 @@
  * traces in production.
  */
 class AppError extends Error {
-  constructor(message, statusCode = 500, details = undefined) {
+  statusCode: any;
+  details: any;
+  isOperational: boolean;
+
+  constructor(message: any, statusCode: any = 500, details: any = undefined) {
     super(message);
 
     this.name = "AppError";
@@ -20,4 +27,4 @@ class AppError extends Error {
   }
 }
 
-module.exports = AppError;
+export = AppError;

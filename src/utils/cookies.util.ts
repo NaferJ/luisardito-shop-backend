@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
 /**
  * Utilities for cross-domain cookie handling
  */
@@ -7,7 +10,7 @@
  * @param {string} env - Environment
  * @returns {Object} Cookie options
  */
-function getCookieOptions(env = process.env.NODE_ENV) {
+function getCookieOptions(env: any = process.env.NODE_ENV) {
   const isProduction = env === "production";
 
   return {
@@ -25,7 +28,7 @@ function getCookieOptions(env = process.env.NODE_ENV) {
  * @param {string} env - Environment
  * @returns {Object} Cookie options
  */
-function getRefreshCookieOptions(env = process.env.NODE_ENV) {
+function getRefreshCookieOptions(env: any = process.env.NODE_ENV) {
   return {
     ...getCookieOptions(env),
     maxAge: 90 * 24 * 60 * 60 * 1000, // 90 days for refresh token
@@ -37,7 +40,7 @@ function getRefreshCookieOptions(env = process.env.NODE_ENV) {
  * @param {string} env - Environment
  * @returns {Object} Options for clearCookie
  */
-function getClearCookieOptions(env = process.env.NODE_ENV) {
+function getClearCookieOptions(env: any = process.env.NODE_ENV) {
   const isProduction = env === "production";
 
   return {
@@ -55,10 +58,10 @@ function getClearCookieOptions(env = process.env.NODE_ENV) {
  * @param {string} env - Environment
  */
 function setAuthCookies(
-  res,
-  accessToken,
-  refreshToken,
-  env = process.env.NODE_ENV
+  res: any,
+  accessToken: any,
+  refreshToken: any,
+  env: any = process.env.NODE_ENV
 ) {
   const cookieOptions = getCookieOptions(env);
   const refreshOptions = getRefreshCookieOptions(env);
@@ -72,14 +75,14 @@ function setAuthCookies(
  * @param {Object} res - Express response object
  * @param {string} env - Environment
  */
-function clearAuthCookies(res, env = process.env.NODE_ENV) {
+function clearAuthCookies(res: any, env: any = process.env.NODE_ENV) {
   const clearOptions = getClearCookieOptions(env);
 
   res.clearCookie("auth_token", clearOptions);
   res.clearCookie("refresh_token", clearOptions);
 }
 
-module.exports = {
+export {
   getCookieOptions,
   getRefreshCookieOptions,
   getClearCookieOptions,
