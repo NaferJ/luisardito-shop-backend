@@ -77,7 +77,11 @@ const loginLocal = asyncHandler(async (req: any, res: any) => {
   const ipAddress = req.ip || req.connection.remoteAddress;
   const userAgent = req.headers["user-agent"];
 
-  const refreshToken = await createRefreshToken(user.id, ipAddress, userAgent);
+  const refreshToken: any = await createRefreshToken(
+    user.id,
+    ipAddress,
+    userAgent
+  );
 
   // Set cross-domain cookies
   setAuthCookies(res, accessToken, refreshToken.token);

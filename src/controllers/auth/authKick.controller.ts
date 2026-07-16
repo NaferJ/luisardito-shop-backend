@@ -259,7 +259,7 @@ async function maybeAutoSubscribe(
 
   try {
     // Use ITS OWN token to subscribe to ITS OWN channel events
-    const autoSubscribeResult = await autoSubscribeToEvents(
+    const autoSubscribeResult: any = await autoSubscribeToEvents(
       accessToken,
       kickUserId,
       kickUserId
@@ -465,7 +465,7 @@ const callbackKick = async (req: any, res: any) => {
     const { broadcasterToken, accessToken, isBroadcasterPrincipal } =
       await persistBroadcasterToken(kickUserId, kickUser, tokenData);
 
-    const autoSubscribeResult = await maybeAutoSubscribe(
+    const autoSubscribeResult: any = await maybeAutoSubscribe(
       broadcasterToken,
       accessToken,
       kickUserId,
@@ -483,7 +483,7 @@ const callbackKick = async (req: any, res: any) => {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.headers["user-agent"];
 
-    const refreshTokenObj = await createRefreshToken(
+    const refreshTokenObj: any = await createRefreshToken(
       usuario.id,
       ipAddress,
       userAgent
