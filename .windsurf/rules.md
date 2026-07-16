@@ -84,4 +84,5 @@ The agent must run all of these and report their output before handing back:
 - PR descriptions MUST follow the repo template at
   `.github/pull_request_template.md`
   (What / Why / Scope-Non-goals / Verification / Rollback).
+- PR titles and descriptions MUST always be written in Markdown format.
 - Keep PRs small and single-concern.
