@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import {
   KickPointsConfig,
   KickUserTracking,
@@ -10,17 +7,36 @@ import {
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
+
+interface KickUser {
+  user_id: string | number;
+  username: string;
+  profile_picture?: string;
+  is_anonymous?: boolean;
+}
+
+interface SubscriptionGiftsPayload {
+  gifter: KickUser;
+  giftees: KickUser[];
+  broadcaster: { username: string };
+  expires_at: string;
+}
+
+interface WebhookMetadata {
+  [key: string]: unknown;
+}
 
 /**
  * Award points to the gifter of subscription gifts.
  */
 async function awardGifterPoints(
-  gifter: any,
-  giftees: any,
-  pointsForGifter: any
-) {
+  gifter: KickUser,
+  giftees: KickUser[],
+  pointsForGifter: number
+): Promise<void> {
   const gifterKickUserId = String(gifter.user_id);
-  const gifterUsuario: any = await Usuario.findOne({
+  const gifterUsuario = await Usuario.findOne({
     where: { user_id_ext: gifterKickUserId },
   });
 
@@ -33,7 +49,7 @@ async function awardGifterPoints(
     gifter.username,
     gifterKickUserId,
     true,
-    gifter.profile_picture
+    gifter.profile_picture ?? null
   );
 
   const totalPoints = pointsForGifter * giftees.length;
@@ -64,7 +80,7 @@ async function awardGifterPoints(
     kick_username: gifter.username,
     total_gifts_given: KickUserTracking.sequelize.literal(
       `total_gifts_given + ${giftees.length}`
-    ),
+    ) as unknown as number,
   });
 
   logger.info(
@@ -76,15 +92,15 @@ async function awardGifterPoints(
  * Award points to a single giftee of a subscription gift.
  */
 async function awardGifteePoints(
-  giftee: any,
-  gifter: any,
-  pointsForGiftee: any,
-  expiresAt: any
-) {
+  giftee: KickUser,
+  gifter: KickUser,
+  pointsForGiftee: number,
+  expiresAt: Date
+): Promise<void> {
   const gifteeKickUserId = String(giftee.user_id);
   const gifteeUsername = giftee.username;
 
-  const gifteeUsuario: any = await Usuario.findOne({
+  const gifteeUsuario = await Usuario.findOne({
     where: { user_id_ext: gifteeKickUserId },
   });
 
@@ -97,7 +113,7 @@ async function awardGifteePoints(
     gifteeUsername,
     gifteeKickUserId,
     true,
-    giftee.profile_picture
+    giftee.profile_picture ?? null
   );
 
   await gifteeUsuario.increment("puntos", { by: pointsForGiftee });
@@ -132,10 +148,10 @@ async function awardGifteePoints(
     subscription_expires_at: expiresAt,
     total_gifts_received: KickUserTracking.sequelize.literal(
       "total_gifts_received + 1"
-    ),
+    ) as unknown as number,
     total_subscriptions: KickUserTracking.sequelize.literal(
       "total_subscriptions + 1"
-    ),
+    ) as unknown as number,
   });
 
   logger.info(
@@ -150,7 +166,10 @@ async function awardGifteePoints(
 /**
  * Handle subscription gifts
  */
-async function handleSubscriptionGifts(payload: any, _metadata: any) {
+async function handleSubscriptionGifts(
+  payload: SubscriptionGiftsPayload,
+  _metadata: WebhookMetadata
+): Promise<void> {
   try {
     const gifter = payload.gifter;
     const giftees = payload.giftees || [];
@@ -164,14 +183,14 @@ async function handleSubscriptionGifts(payload: any, _metadata: any) {
     });
 
     // Get points configurations
-    const configs: any = await KickPointsConfig.findAll({
+    const configs = await KickPointsConfig.findAll({
       where: {
         config_key: ["gift_given_points", "gift_received_points"],
         enabled: true,
       },
     });
 
-    const configMap = {};
+    const configMap: Record<string, number> = {};
     configs.forEach((c) => {
       configMap[c.config_key] = c.config_value;
     });
@@ -190,8 +209,11 @@ async function handleSubscriptionGifts(payload: any, _metadata: any) {
         await awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt);
       }
     }
-  } catch (error) {
-    logger.error("[Kick Webhook][Subscription Gifts] Error:", error.message);
+  } catch (error: unknown) {
+    logger.error(
+      "[Kick Webhook][Subscription Gifts] Error:",
+      toErrorMessage(error)
+    );
   }
 }
 

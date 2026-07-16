@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Script de restauración de emergencia de backups
+ * Emergency backup restoration helper.
  *
- * Uso:
- *   node scripts/restore-backup.js                    # Restaurar el backup más reciente
- *   node scripts/restore-backup.js backup-2025-12-02.sql.gz  # Restaurar un backup específico
+ * Requires `npm run build` first (loads compiled output from dist/).
+ * Usage:
+ *   node scripts/restore-backup.js                       # Restore the most recent backup
+ *   node scripts/restore-backup.js backup-2025-12-02.sql.gz  # Restore a specific backup
  */
 
-const backupService = require("./src/services/backup.service");
-const logger = require("./src/utils/logger");
+const backupService = require("./dist/src/services/backup.service");
 const readline = require("readline");
 
 const rl = readline.createInterface({
@@ -17,7 +17,7 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-async function promptUser(question) {
+function promptUser(question) {
   return new Promise((resolve) => {
     rl.question(question, (answer) => {
       resolve(answer);
@@ -26,77 +26,67 @@ async function promptUser(question) {
 }
 
 async function main() {
-  console.log("\n🔄 SCRIPT DE RESTAURACIÓN DE BACKUP\n");
+  console.log("\nBACKUP RESTORATION SCRIPT\n");
 
   try {
-    // Listar backups disponibles
     const backups = await backupService.listBackups();
 
     if (backups.length === 0) {
-      console.log("❌ No hay backups disponibles localmente");
-      console.log("💡 Descarga un backup desde GitHub primero");
+      console.log("No local backups available");
+      console.log("Download a backup from GitHub first");
       process.exit(1);
     }
 
-    console.log("📦 Backups disponibles:\n");
+    console.log("Available backups:\n");
     backups.forEach((backup, index) => {
       console.log(`  ${index + 1}. ${backup.filename}`);
-      console.log(`     Tamaño: ${backup.size}`);
-      console.log(`     Fecha: ${backup.date.toLocaleString()}`);
+      console.log(`     Size: ${backup.size}`);
+      console.log(`     Date: ${backup.date.toLocaleString()}`);
       console.log("");
     });
 
-    // Determinar qué backup restaurar
     let selectedBackup;
     const filename = process.argv[2];
 
     if (filename) {
-      // Backup específico pasado como argumento
       selectedBackup = backups.find((b) => b.filename === filename);
       if (!selectedBackup) {
-        console.log(`❌ Backup no encontrado: ${filename}`);
+        console.log(`Backup not found: ${filename}`);
         process.exit(1);
       }
     } else {
-      // Usar el más reciente
       selectedBackup = backups[0];
     }
 
-    console.log(`🎯 Backup seleccionado: ${selectedBackup.filename}`);
-    console.log(`📅 Fecha: ${selectedBackup.date.toLocaleString()}`);
-    console.log(`📊 Tamaño: ${selectedBackup.size}\n`);
+    console.log(`Selected backup: ${selectedBackup.filename}`);
+    console.log(`Date: ${selectedBackup.date.toLocaleString()}`);
+    console.log(`Size: ${selectedBackup.size}\n`);
 
-    // Confirmar con el usuario
-    console.log(
-      "⚠️  ADVERTENCIA: Esta operación sobrescribirá la base de datos actual"
-    );
-    console.log(
-      "⚠️  Asegúrate de haber creado un backup reciente si es necesario\n"
-    );
+    console.log("WARNING: This operation will overwrite the current database");
+    console.log("Make sure to create a recent backup first if needed\n");
 
     const confirm = await promptUser(
-      '¿Estás seguro de continuar? (escribe "SI" para confirmar): '
+      'Are you sure you want to continue? (type "YES" to confirm): '
     );
 
-    if (confirm.trim().toUpperCase() !== "SI") {
-      console.log("\n❌ Restauración cancelada");
+    if (confirm.trim().toUpperCase() !== "YES") {
+      console.log("\nRestoration cancelled");
       process.exit(0);
     }
 
-    console.log("\n🔄 Iniciando restauración...\n");
+    console.log("\nStarting restoration...\n");
 
-    // Ejecutar restauración
     const result = await backupService.restoreBackup(selectedBackup.filename);
 
     if (result.success) {
-      console.log("\n✅ ¡Backup restaurado exitosamente!");
-      console.log("💡 Reinicia la aplicación si es necesario");
+      console.log("\nBackup restored successfully!");
+      console.log("Restart the application if necessary");
     } else {
-      console.log("\n❌ Error al restaurar backup:", result.error);
+      console.log("\nError restoring backup:", result.error);
       process.exit(1);
     }
   } catch (error) {
-    console.error("\n❌ Error fatal:", error.message);
+    console.error("\nFatal error:", error.message);
     process.exit(1);
   } finally {
     rl.close();

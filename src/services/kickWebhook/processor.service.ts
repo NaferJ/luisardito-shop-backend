@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import logger from "../../utils/logger";
 import { handleChatMessage } from "./handlers/chatMessage.handler";
 import { handleChannelFollowed } from "./handlers/channelFollowed.handler";
@@ -13,22 +10,36 @@ import { handleModerationBanned } from "./handlers/moderationBanned.handler";
 import { handleKicksGifted } from "./handlers/kicksGifted.handler";
 import { handleRewardRedemption } from "./handlers/rewardRedemption.handler";
 
+/** Webhook metadata received alongside each event. */
+interface WebhookMetadata {
+  messageId: string;
+  subscriptionId: string;
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+/** Handler function signature for all event handlers. */
+type EventHandler = (
+  payload: unknown,
+  metadata: WebhookMetadata
+) => Promise<void>;
+
 /**
  * Process event by type
- * @param {string} eventType - Event type (e.g. chat.message.sent)
- * @param {string} eventVersion - Event version
- * @param {object} payload - Event data
- * @param {object} metadata - Webhook metadata (messageId, subscriptionId, timestamp)
+ * @param eventType - Event type (e.g. chat.message.sent)
+ * @param eventVersion - Event version
+ * @param payload - Event data
+ * @param metadata - Webhook metadata (messageId, subscriptionId, timestamp)
  */
 async function processWebhookEvent(
-  eventType: any,
-  eventVersion: any,
-  payload: any,
-  metadata: any
+  eventType: string,
+  eventVersion: number,
+  payload: unknown,
+  metadata: WebhookMetadata
 ) {
   logger.info(`[Kick Webhook] Processing event ${eventType}`);
 
-  const handlers: any = {
+  const handlers: Record<string, EventHandler> = {
     "chat.message.sent": handleChatMessage,
     "channel.followed": handleChannelFollowed,
     "channel.subscription.new": handleNewSubscription,

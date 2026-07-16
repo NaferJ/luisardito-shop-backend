@@ -1,8 +1,35 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const KickReward = sequelize.define(
-  "KickReward",
+class KickReward extends Model<
+  InferAttributes<KickReward>,
+  InferCreationAttributes<KickReward>
+> {
+  declare id: CreationOptional<number>;
+  declare kick_reward_id: string;
+  declare title: string;
+  declare description: string | null;
+  declare cost: number;
+  declare background_color: CreationOptional<string>;
+  declare puntos_a_otorgar: CreationOptional<number>;
+  declare is_enabled: CreationOptional<boolean>;
+  declare is_paused: CreationOptional<boolean>;
+  declare is_user_input_required: CreationOptional<boolean>;
+  declare should_redemptions_skip_request_queue: CreationOptional<boolean>;
+  declare auto_accept: CreationOptional<boolean>;
+  declare total_redemptions: CreationOptional<number>;
+  declare last_synced_at: Date | null;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+KickReward.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -83,8 +110,15 @@ const KickReward = sequelize.define(
       allowNull: true,
       comment: "Última vez que se sincronizó con Kick",
     },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
+    },
   },
   {
+    sequelize,
     tableName: "kick_rewards",
     timestamps: true,
     createdAt: "created_at",

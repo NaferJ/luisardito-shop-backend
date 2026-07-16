@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import {
   Usuario,
   Canje,
@@ -10,27 +8,38 @@ import { sequelize } from "../models/database";
 import { Op } from "sequelize";
 import logger from "../utils/logger";
 
+interface VipConfig {
+  duration_days?: number;
+}
+
+interface VipPointsConfig {
+  vip_points_enabled: boolean;
+  vip_chat_points: number;
+  vip_follow_points: number;
+  vip_sub_points: number;
+}
+
 class VipService {
   /**
    * Grant VIP to a user based on a redemption
-   * @param {number} canjeId - Redemption ID
-   * @param {number} usuarioId - User ID
-   * @param {Object} vipConfig - VIP configuration (duration, etc.)
+   * @param canjeId - Redemption ID
+   * @param usuarioId - User ID
+   * @param vipConfig - VIP configuration (duration, etc.)
    */
   static async grantVipFromCanje(
-    canjeId: any,
-    usuarioId: any,
-    vipConfig: any = {}
+    canjeId: number,
+    usuarioId: number,
+    vipConfig: VipConfig = {}
   ) {
     const transaction = await sequelize.transaction();
 
     try {
-      const usuario: any = await Usuario.findByPk(usuarioId);
+      const usuario = await Usuario.findByPk(usuarioId);
       if (!usuario) {
         throw new Error("User not found");
       }
 
-      const canje: any = await Canje.findByPk(canjeId);
+      const canje = await Canje.findByPk(canjeId);
       if (!canje) {
         throw new Error("Redemption not found");
       }
@@ -89,7 +98,7 @@ class VipService {
         vip_expires_at: vipExpiresAt,
         is_permanent: !vipExpiresAt,
       };
-    } catch (error: any) {
+    } catch (error) {
       await transaction.rollback();
       throw error;
     }
@@ -97,14 +106,14 @@ class VipService {
 
   /**
    * Remove VIP from a user
-   * @param {number} usuarioId - User ID
-   * @param {string} reason - Reason for removing VIP
+   * @param usuarioId - User ID
+   * @param reason - Reason for removing VIP
    */
-  static async removeVip(usuarioId: any, reason: any = "Manual") {
+  static async removeVip(usuarioId: number, reason: string = "Manual") {
     const transaction = await sequelize.transaction();
 
     try {
-      const usuario: any = await Usuario.findByPk(usuarioId);
+      const usuario = await Usuario.findByPk(usuarioId);
       if (!usuario) {
         throw new Error("User not found");
       }
@@ -152,7 +161,7 @@ class VipService {
         reason: reason,
         removed_at: new Date(),
       };
-    } catch (error: any) {
+    } catch (error) {
       await transaction.rollback();
       throw error;
     }
@@ -162,7 +171,7 @@ class VipService {
    * Check and clean up expired VIPs
    */
   static async cleanupExpiredVips() {
-    const expiredVips: any = await Usuario.findAll({
+    const expiredVips = await Usuario.findAll({
       where: {
         is_vip: true,
         vip_expires_at: {
@@ -176,10 +185,11 @@ class VipService {
       try {
         await this.removeVip(user.id, "Automatic expiration");
         cleanedCount++;
-      } catch (error: any) {
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
         logger.error(
           `[VIP CLEANUP] Error removing expired VIP for user ${user.id}:`,
-          error
+          msg
         );
       }
     }
@@ -191,8 +201,8 @@ class VipService {
   /**
    * Get VIP points configuration
    */
-  static async getVipPointsConfig() {
-    const config: any = await BotrixMigrationConfig.getConfig();
+  static async getVipPointsConfig(): Promise<VipPointsConfig> {
+    const config = await BotrixMigrationConfig.getConfig();
     return {
       vip_points_enabled: config.vip_points_enabled,
       vip_chat_points: config.vip_chat_points,
@@ -204,9 +214,14 @@ class VipService {
   /**
    * Update VIP points configuration
    */
-  static async updateVipPointsConfig(newConfig: any) {
-    const config: any = await BotrixMigrationConfig.getConfig();
-    const updateData: any = {};
+  static async updateVipPointsConfig(
+    newConfig: Partial<VipPointsConfig>
+  ): Promise<BotrixMigrationConfig> {
+    const config = await BotrixMigrationConfig.findByPk(1);
+    if (!config) {
+      throw new Error("Botrix migration config not found");
+    }
+    const updateData: Record<string, boolean | number> = {};
 
     if (typeof newConfig.vip_points_enabled === "boolean") {
       updateData.vip_points_enabled = newConfig.vip_points_enabled;
@@ -227,15 +242,15 @@ class VipService {
 
   /**
    * Calculate points based on user type
-   * @param {Object} usuario - User
-   * @param {string} eventType - Event type ('chat', 'follow', 'sub')
-   * @param {number} defaultPoints - Default points
+   * @param usuario - User
+   * @param eventType - Event type ('chat', 'follow', 'sub')
+   * @param defaultPoints - Default points
    */
   static async calculatePointsForUser(
-    usuario: any,
-    eventType: any,
-    defaultPoints: any
-  ) {
+    usuario: Usuario,
+    eventType: "chat" | "follow" | "sub",
+    defaultPoints: number
+  ): Promise<number> {
     const config = await this.getVipPointsConfig();
 
     if (!config.vip_points_enabled || !usuario.isVipActive()) {

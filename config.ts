@@ -1,15 +1,83 @@
-require("dotenv").config();
-const fs = require("fs");
+import dotenv from "dotenv";
+import fs from "node:fs";
+
+dotenv.config();
+
 if (fs.existsSync(".env.development")) {
-  require("dotenv").config({ path: ".env.development", override: true });
+  dotenv.config({ path: ".env.development", override: true });
 }
 
-const toBool = (val, def = false) => {
+const toBool = (val: string | undefined, def = false): boolean => {
   if (val === undefined) return def;
   return /^(1|true|yes|on)$/i.test(String(val).trim());
 };
 
-module.exports = {
+interface DbConfig {
+  host: string | undefined;
+  port: number;
+  user: string | undefined;
+  password: string | undefined;
+  database: string | undefined;
+  ssl: boolean;
+  sslRejectUnauthorized: boolean;
+}
+
+interface KickConfig {
+  clientId: string | undefined;
+  clientSecret: string | undefined;
+  redirectUri: string | undefined;
+  broadcasterId: string | undefined;
+  apiBaseUrl: string;
+  oauthAuthorize: string;
+  oauthToken: string;
+  oauthRevoke: string;
+}
+
+interface KickBotConfig {
+  clientId: string | undefined;
+  clientSecret: string | undefined;
+  redirectUri: string | undefined;
+  accessToken: string | undefined;
+  username: string | undefined;
+}
+
+interface CloudinaryConfig {
+  cloudName: string | undefined;
+  apiKey: string | undefined;
+  apiSecret: string | undefined;
+}
+
+interface CookiesConfig {
+  domain: string | undefined;
+  secure: boolean;
+  sameSite: "lax" | "strict" | "none";
+}
+
+interface DiscordConfig {
+  botToken: string | undefined;
+  clientId: string | undefined;
+  clientSecret: string | undefined;
+  guildId: string | undefined;
+  oauthAuthorize: string;
+  oauthToken: string;
+  oauthRevoke: string;
+  apiBaseUrl: string;
+  redirectUri: string;
+}
+
+interface AppConfig {
+  db: DbConfig;
+  jwtSecret: string | undefined;
+  kick: KickConfig;
+  kickBot: KickBotConfig;
+  cloudinary: CloudinaryConfig;
+  cookies: CookiesConfig;
+  frontendUrl: string | undefined;
+  port: number;
+  discord: DiscordConfig;
+}
+
+const config: AppConfig = {
   db: {
     host: process.env.DB_HOST,
     port: Number(process.env.DB_PORT || 3306),
@@ -27,10 +95,10 @@ module.exports = {
     clientId: process.env.KICK_CLIENT_ID,
     clientSecret: process.env.KICK_CLIENT_SECRET,
     redirectUri: process.env.KICK_REDIRECT_URI,
-    broadcasterId: process.env.KICK_BROADCASTER_ID, // ID de Luisardito
-    // API base (host distinto al de OAuth). Ajusta según la doc de APIs públicas.
+    broadcasterId: process.env.KICK_BROADCASTER_ID, // Luisardito's broadcaster ID
+    // API base (different host from OAuth). Adjust per the public API docs.
     apiBaseUrl: process.env.KICK_API_BASE_URL || "https://api.kick.com",
-    // Permite override por entorno si fuera necesario
+    // Allow environment override if needed
     oauthAuthorize:
       process.env.KICK_OAUTH_AUTHORIZE_URL ||
       "https://id.kick.com/oauth/authorize",
@@ -39,14 +107,14 @@ module.exports = {
     oauthRevoke:
       process.env.KICK_OAUTH_REVOKE_URL || "https://id.kick.com/oauth/revoke",
   },
-  // Configuración específica del BOT de chat (aplicación separada)
+  // Chat bot configuration (separate application)
   kickBot: {
     clientId: process.env.KICK_BOT_CLIENT_ID,
     clientSecret: process.env.KICK_BOT_CLIENT_SECRET,
     redirectUri: process.env.KICK_BOT_REDIRECT_URI,
-    // Para simplificar el envío de mensajes, usaremos un Access Token del bot (user token)
+    // To simplify sending messages, a bot access token (user token) is used
     accessToken: process.env.KICK_BOT_ACCESS_TOKEN,
-    // Opcional: username del bot para logs/diagnóstico
+    // Optional: bot username for logs/diagnostics
     username: process.env.KICK_BOT_USERNAME,
   },
   cloudinary: {
@@ -68,7 +136,7 @@ module.exports = {
     clientId: process.env.DISCORD_CLIENT_ID,
     clientSecret: process.env.DISCORD_CLIENT_SECRET,
     guildId: process.env.DISCORD_GUILD_ID,
-    // URLs de OAuth de Discord
+    // Discord OAuth URLs
     oauthAuthorize: "https://discord.com/api/oauth2/authorize",
     oauthToken: "https://discord.com/api/oauth2/token",
     oauthRevoke: "https://discord.com/api/oauth2/token/revoke",
@@ -78,3 +146,5 @@ module.exports = {
       "https://api.luisardito.com/api/auth/discord/callback",
   },
 };
+
+export = config;

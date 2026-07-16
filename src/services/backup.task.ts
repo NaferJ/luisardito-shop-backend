@@ -1,12 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 import backupService from "./backup.service";
 import logger from "../utils/logger";
 
 class BackupScheduler {
-  scheduledTask: any = null;
+  scheduledTask: ScheduledTask | null = null;
 
   /**
    * Starts the automatic backup scheduler
@@ -41,8 +38,9 @@ class BackupScheduler {
             `Scheduled backup failed: ${result.error || result.reason}`
           );
         }
-      } catch (error: any) {
-        logger.error("Error in scheduled backup:", error);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        logger.error("Error in scheduled backup:", msg);
       }
     });
 

@@ -1,13 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import { refreshAccessToken } from "./kickAutoSubscribe.service";
 import { KickBroadcasterToken } from "../models";
 import logger from "../utils/logger";
 
 class TokenRefreshService {
   isRunning: boolean = false;
-  intervalId: any = null;
+  intervalId: NodeJS.Timeout | null = null;
   intervalMs: number = 30 * 60 * 1000; // 30 minutes in milliseconds
 
   /**
@@ -67,22 +64,20 @@ class TokenRefreshService {
       for (const token of activeTokens) {
         await this.checkTokenExpiration(token);
       }
-    } catch (error: any) {
-      logger.error(
-        "[Token Refresh Service] Error checking tokens:",
-        error.message
-      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[Token Refresh Service] Error checking tokens:", msg);
     }
   }
 
   /**
    * Checks if a specific token needs to be refreshed
    */
-  async checkTokenExpiration(broadcasterToken: any) {
+  async checkTokenExpiration(broadcasterToken: KickBroadcasterToken) {
     try {
       const now = new Date();
       const bufferTime = 60 * 60 * 1000; // 1 hour buffer
-      const expiresAt = new Date(broadcasterToken.token_expires_at);
+      const expiresAt = new Date(broadcasterToken.token_expires_at as Date);
 
       logger.info(
         `[Token Refresh Service] Checking token for ${broadcasterToken.kick_username}`
@@ -117,10 +112,11 @@ class TokenRefreshService {
           `[Token Refresh Service] Token for ${broadcasterToken.kick_username} still valid`
         );
       }
-    } catch (error: any) {
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
       logger.error(
         `[Token Refresh Service] Error checking token for ${broadcasterToken.kick_username}:`,
-        error.message
+        msg
       );
     }
   }
@@ -128,9 +124,9 @@ class TokenRefreshService {
   /**
    * Forces refresh of a specific token
    */
-  async forceRefresh(kickUserId: any) {
+  async forceRefresh(kickUserId: string) {
     try {
-      const token: any = await KickBroadcasterToken.findOne({
+      const token = await KickBroadcasterToken.findOne({
         where: {
           kick_user_id: kickUserId,
           is_active: true,
@@ -154,12 +150,10 @@ class TokenRefreshService {
       } else {
         throw new Error("Could not refresh the token");
       }
-    } catch (error: any) {
-      logger.error(
-        "[Token Refresh Service] Error in forced refresh:",
-        error.message
-      );
-      return { success: false, error: error.message };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[Token Refresh Service] Error in forced refresh:", msg);
+      return { success: false, error: msg };
     }
   }
 

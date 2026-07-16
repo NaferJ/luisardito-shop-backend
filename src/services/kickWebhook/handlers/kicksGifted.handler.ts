@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import {
   KickPointsConfig,
   KickUserTracking,
@@ -12,12 +9,40 @@ import NotificacionService from "../../notificacion.service";
 import { Transaction } from "sequelize";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
+
+interface KickSender {
+  user_id: string | number;
+  username: string;
+  profile_picture?: string;
+}
+
+interface KickGift {
+  amount: number;
+  name: string;
+  tier: string;
+  message?: string;
+}
+
+interface KicksGiftedPayload {
+  sender: KickSender;
+  broadcaster: { username: string };
+  gift?: KickGift;
+  created_at?: string;
+}
+
+interface WebhookMetadata {
+  [key: string]: unknown;
+}
 
 /**
  * Handle kicks gifts (kicks.gifted)
  * Awards points equivalent to the amount of kicks gifted
  */
-async function handleKicksGifted(payload: any, _metadata: any) {
+async function handleKicksGifted(
+  payload: KicksGiftedPayload,
+  _metadata: WebhookMetadata
+): Promise<void> {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -38,7 +63,7 @@ async function handleKicksGifted(payload: any, _metadata: any) {
     });
 
     // Check if user exists in our DB
-    const usuario: any = await Usuario.findOne({
+    const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -55,11 +80,11 @@ async function handleKicksGifted(payload: any, _metadata: any) {
       kickUsername,
       kickUserId,
       true,
-      sender.profile_picture
+      sender.profile_picture ?? null
     );
 
     // Get multiplier from configuration
-    const config: any = await KickPointsConfig.findOne({
+    const config = await KickPointsConfig.findOne({
       where: {
         config_key: "kicks_gifted_multiplier",
         enabled: true,
@@ -81,7 +106,7 @@ async function handleKicksGifted(payload: any, _metadata: any) {
 
     try {
       // Award points
-      await usuario.increment("puntos", { by: pointsToAward }, { transaction });
+      await usuario.increment("puntos", { by: pointsToAward, transaction });
 
       // Register in history
       await HistorialPunto.create(
@@ -125,7 +150,7 @@ async function handleKicksGifted(payload: any, _metadata: any) {
           kick_username: kickUsername,
           total_kicks_gifted: sequelize.literal(
             `COALESCE(total_kicks_gifted, 0) + ${kickAmount}`
-          ),
+          ) as unknown as number,
         },
         { transaction }
       );
@@ -135,16 +160,16 @@ async function handleKicksGifted(payload: any, _metadata: any) {
       logger.info(
         `[Kick Webhook][Kicks Gifted] ${pointsToAward} points awarded to ${kickUsername} for gifting ${kickAmount} kicks`
       );
-    } catch (transactionError) {
+    } catch (transactionError: unknown) {
       await transaction.rollback();
       logger.error(
         `[Kick Webhook][Kicks Gifted] Transaction error for ${kickUsername}:`,
-        transactionError.message
+        toErrorMessage(transactionError)
       );
       throw transactionError;
     }
-  } catch (error) {
-    logger.error("[Kick Webhook][Kicks Gifted] Error:", error.message);
+  } catch (error: unknown) {
+    logger.error("[Kick Webhook][Kicks Gifted] Error:", toErrorMessage(error));
   }
 }
 

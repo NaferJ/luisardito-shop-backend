@@ -1,8 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import { getRedisClient } from "../../../config/redis.config";
 import logger from "../../../utils/logger";
+
+/** Payload shape for the livestream.metadata.updated event. */
+interface LivestreamMetadataPayload {
+  broadcaster: { username: string };
+  metadata: {
+    title: string;
+    category?: { name: string; id: number };
+    language: string;
+    has_mature_content: boolean;
+  };
+}
 
 /**
  * Handle livestream metadata updates
@@ -10,7 +18,10 @@ import logger from "../../../utils/logger";
  * Only updates stream info (title, category, etc.)
  * Must NOT change stream:is_live state
  */
-async function handleLivestreamMetadataUpdated(payload: any, _metadata: any) {
+async function handleLivestreamMetadataUpdated(
+  payload: LivestreamMetadataPayload,
+  _metadata: unknown
+) {
   try {
     const redis = getRedisClient();
 
@@ -41,7 +52,8 @@ async function handleLivestreamMetadataUpdated(payload: any, _metadata: any) {
       `[STREAM METADATA] Metadata updated: "${streamInfo.title}" - ${streamInfo.category}`
     );
   } catch (error) {
-    logger.error("[Kick Webhook][Livestream Metadata] Error:", error.message);
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Kick Webhook][Livestream Metadata] Error:", msg);
   }
 }
 

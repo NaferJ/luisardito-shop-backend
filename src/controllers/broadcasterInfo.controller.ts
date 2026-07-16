@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import broadcasterInfoService from "../services/broadcasterInfo.service";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
@@ -14,25 +13,31 @@ import AppError from "../utils/AppError";
  * Gets full info for the main broadcaster
  * Public endpoint - no authentication required
  */
-const getBroadcasterInfo = asyncHandler(async (req: any, res: any) => {
-  try {
-    const broadcasterInfo = await broadcasterInfoService.getBroadcasterInfo();
+const getBroadcasterInfo = asyncHandler(
+  async (_req: Request, res: Response) => {
+    try {
+      const broadcasterInfo = await broadcasterInfoService.getBroadcasterInfo();
 
-    res.json({
-      success: true,
-      data: broadcasterInfo,
-    });
-  } catch (error: any) {
-    throw new AppError("Error fetching broadcaster info", 500, error.message);
+      res.json({
+        success: true,
+        data: broadcasterInfo,
+      });
+    } catch (error) {
+      throw new AppError(
+        "Error fetching broadcaster info",
+        500,
+        error instanceof Error ? error.message : String(error)
+      );
+    }
   }
-});
+);
 
 /**
  * GET /api/broadcaster/status
  * Gets only the stream status (online/offline)
  * Public endpoint - lighter and faster
  */
-const getStreamStatus = asyncHandler(async (req: any, res: any) => {
+const getStreamStatus = asyncHandler(async (_req: Request, res: Response) => {
   try {
     const status = await broadcasterInfoService.getStreamStatus();
 
@@ -40,8 +45,12 @@ const getStreamStatus = asyncHandler(async (req: any, res: any) => {
       success: true,
       data: status,
     });
-  } catch (error: any) {
-    throw new AppError("Error fetching stream status", 500, error.message);
+  } catch (error) {
+    throw new AppError(
+      "Error fetching stream status",
+      500,
+      error instanceof Error ? error.message : String(error)
+    );
   }
 });
 

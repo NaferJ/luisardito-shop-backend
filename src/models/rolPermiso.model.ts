@@ -1,13 +1,24 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 import Rol from "./rol.model";
 import Permiso from "./permiso.model";
 
-const RolPermiso = sequelize.define(
-  "RolPermiso",
+class RolPermiso extends Model<
+  InferAttributes<RolPermiso>,
+  InferCreationAttributes<RolPermiso>
+> {
+  declare id: CreationOptional<number>;
+  declare rol_id: number;
+  declare permiso_id: number;
+}
+
+RolPermiso.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -26,6 +37,7 @@ const RolPermiso = sequelize.define(
     },
   },
   {
+    sequelize,
     tableName: "rol_permisos",
     timestamps: false,
     uniqueKeys: {
@@ -33,19 +45,9 @@ const RolPermiso = sequelize.define(
         fields: ["rol_id", "permiso_id"],
       },
     },
-  } as any
+  } as unknown as Parameters<typeof RolPermiso.init>[1]
 );
 
-// Relaciones
-Rol.belongsToMany(Permiso, {
-  through: RolPermiso,
-  foreignKey: "rol_id",
-  otherKey: "permiso_id",
-});
-Permiso.belongsToMany(Rol, {
-  through: RolPermiso,
-  foreignKey: "permiso_id",
-  otherKey: "rol_id",
-});
+// Associations are defined in models/index.ts to avoid duplicate registration
 
 export = RolPermiso;

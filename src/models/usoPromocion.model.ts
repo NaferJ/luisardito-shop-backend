@@ -1,8 +1,30 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const UsoPromocion = sequelize.define(
-  "UsoPromocion",
+class UsoPromocion extends Model<
+  InferAttributes<UsoPromocion>,
+  InferCreationAttributes<UsoPromocion>
+> {
+  declare id: CreationOptional<number>;
+  declare promocion_id: number;
+  declare usuario_id: number;
+  declare canje_id: number | null;
+  declare producto_id: number | null;
+  declare codigo_usado: string | null;
+  declare precio_original: number;
+  declare descuento_aplicado: number;
+  declare precio_final: number;
+  declare metadata: CreationOptional<Record<string, unknown> | null>;
+  declare fecha_uso: CreationOptional<Date>;
+}
+
+UsoPromocion.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -38,7 +60,7 @@ const UsoPromocion = sequelize.define(
       },
       onDelete: "SET NULL",
       onUpdate: "CASCADE",
-      comment: "Referencia al canje donde se aplicó el descuento",
+      comment: "Reference to the canje where the discount was applied",
     },
     producto_id: {
       type: DataTypes.INTEGER,
@@ -49,36 +71,40 @@ const UsoPromocion = sequelize.define(
       },
       onDelete: "SET NULL",
       onUpdate: "CASCADE",
-      comment: "Producto al que se aplicó el descuento",
+      comment: "Product to which the discount was applied",
     },
     codigo_usado: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      comment: "Código de cupón usado (si aplica)",
+      comment: "Coupon code used (if applicable)",
     },
     precio_original: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Precio original en puntos antes del descuento",
+      comment: "Original price in points before the discount",
     },
     descuento_aplicado: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Cantidad de puntos descontados",
+      comment: "Amount of points discounted",
     },
     precio_final: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Precio final en puntos después del descuento",
+      comment: "Final price in points after the discount",
     },
     metadata: {
       type: DataTypes.JSON,
       allowNull: true,
-      comment: "Información adicional sobre el uso",
+      comment: "Additional information about the usage",
       defaultValue: {},
+    },
+    fecha_uso: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "uso_promociones",
     timestamps: true,
     createdAt: "fecha_uso",

@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 /**
  * Utility to format watchtime minutes into a readable format
  * Converts minutes to the most relevant units: years, months, weeks, days, hours, minutes
@@ -17,7 +14,12 @@ const MINUTES_PER_YEAR = 60 * 24 * 365;
 // selections (and by the years+months sub-branch). When `days > 0` it emits the
 // day unit followed by the most significant of hours/mins; otherwise it emits the
 // most significant of hours/mins directly.
-function appendDaySubBranch(parts: any, days: any, hours: any, mins: any) {
+function appendDaySubBranch(
+  parts: string[],
+  days: number,
+  hours: number,
+  mins: number
+): void {
   if (days > 0) {
     parts.push(`${days}d`);
     if (hours > 0) {
@@ -32,7 +34,7 @@ function appendDaySubBranch(parts: any, days: any, hours: any, mins: any) {
   }
 }
 
-function formatWatchtime(minutes: any) {
+function formatWatchtime(minutes: number): string {
   if (!minutes || minutes === 0) return "0 min";
 
   const totalMinutes = Math.round(minutes);
@@ -56,7 +58,7 @@ function formatWatchtime(minutes: any) {
   // Build the response. The selection is intentionally branch-specific: under
   // years, weeks is only shown when months is zero (and is terminal); lower
   // units are dropped entirely when years>0 has no months and no weeks.
-  const parts: any[] = [];
+  const parts: string[] = [];
 
   if (years > 0) {
     parts.push(`${years}a`);

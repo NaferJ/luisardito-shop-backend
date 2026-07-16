@@ -1,7 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response, NextFunction, RequestHandler } from "express";
+import type { ZodType, ZodError } from "zod";
 import AppError from "../utils/AppError";
+
+type RequestSource = "body" | "query" | "params";
 
 /**
  * Factory that returns an Express middleware which validates req[source]
@@ -12,21 +13,29 @@ import AppError from "../utils/AppError";
  * human-readable message is forwarded to the centralized error handler via
  * next(new AppError(...)).
  *
- * @param {import("zod").ZodType} schema - zod schema to validate against
- * @param {"body"|"query"|"params"} [source="body"] - request property to validate
- * @returns {import("express").RequestHandler}
+ * @param schema - zod schema to validate against
+ * @param source - request property to validate
+ * @returns Express RequestHandler
  */
-function validate(schema: any, source: any = "body") {
-  return (req: any, _res: any, next: any) => {
+function validate(
+  schema: ZodType,
+  source: RequestSource = "body"
+): RequestHandler {
+  return (req: Request, _res: Response, next: NextFunction) => {
     const result = schema.safeParse(req[source]);
 
     if (result.success) {
-      req[source] = result.data;
-      return next();
+      req[source] = result.data as Request[RequestSource];
+      next();
+      return;
     }
 
-    const message = result.error.issues.map((i: any) => i.message).join(" ");
-    return next(new AppError(message, 400, { issues: result.error.issues }));
+    const message = (result.error as ZodError).issues
+      .map((i) => i.message)
+      .join(" ");
+    next(
+      new AppError(message, 400, { issues: (result.error as ZodError).issues })
+    );
   };
 }
 

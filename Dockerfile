@@ -10,7 +10,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 # Copy source files needed for compilation
-COPY app.js config.js ./
+COPY app.ts config.ts ./
 COPY tsconfig.json tsconfig.build.json ./
 COPY src/ ./src/
 
@@ -39,10 +39,10 @@ COPY seeders/ ./seeders/
 COPY assets/ ./assets/
 COPY scripts/ ./scripts/
 
-# Dar permisos al usuario node sobre /app
+# Grant the node user ownership over /app
 RUN chown -R node:node /app
 
-# No ejecutar como root
+# Do not run as root
 USER node
 
 # Expose app port

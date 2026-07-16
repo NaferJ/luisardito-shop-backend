@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
+import type { Request, Response } from "express";
 import {
   Promocion,
   PromocionProducto,
@@ -8,25 +7,30 @@ import {
   sequelize,
 } from "../models";
 import promocionService from "../services/promocion.service";
-import { Op } from "sequelize";
+import { Op, WhereOptions, Transaction } from "sequelize";
 import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
-import generarPDFPromociones from "../utils/promociones.pdf";
+import generatePromotionsPDF from "../utils/promociones.pdf";
+
+/** Type for Promocion with eagerly-loaded associations. */
+type PromocionWithAssociations = Promocion & {
+  productos?: Producto[];
+};
 
 /**
  * List all promotions with filters
  */
-const listar = asyncHandler(async (req: any, res: any) => {
+const listar = asyncHandler(async (req: Request, res: Response) => {
   const { estado, tipo, activas_solo } = req.query;
-  const where: any = {};
+  const where: WhereOptions = {};
 
   if (estado) {
-    where.estado = estado;
+    where.estado = estado as string;
   }
 
   if (tipo) {
-    where.tipo = tipo;
+    where.tipo = tipo as string;
   }
 
   if (activas_solo === "true") {
@@ -59,10 +63,10 @@ const listar = asyncHandler(async (req: any, res: any) => {
 /**
  * Get a promotion by ID
  */
-const obtener = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const obtener = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
 
-  const promocion: any = await Promocion.findByPk(id, {
+  const promocion = await Promocion.findByPk(id, {
     include: [
       {
         model: Producto,
@@ -83,7 +87,7 @@ const obtener = asyncHandler(async (req: any, res: any) => {
 /**
  * Create new promotion
  */
-const crear = asyncHandler(async (req: any, res: any) => {
+const crear = asyncHandler(async (req: Request, res: Response) => {
   const {
     codigo,
     nombre,
@@ -107,7 +111,7 @@ const crear = asyncHandler(async (req: any, res: any) => {
     productos_ids,
   } = req.body;
 
-  // Validaciones
+  // Validations
   if (
     !nombre ||
     !titulo ||
@@ -122,7 +126,7 @@ const crear = asyncHandler(async (req: any, res: any) => {
     );
   }
 
-  // Validar fechas
+  // Validate dates
   if (new Date(fecha_fin) <= new Date(fecha_inicio)) {
     throw new AppError(
       "La fecha de fin debe ser posterior a la fecha de inicio",
@@ -130,7 +134,7 @@ const crear = asyncHandler(async (req: any, res: any) => {
     );
   }
 
-  // Validar descuento
+  // Validate discount
   if (tipo_descuento === "porcentaje" && valor_descuento > 100) {
     throw new AppError(
       "El descuento por porcentaje no puede ser mayor a 100%",
@@ -142,77 +146,83 @@ const crear = asyncHandler(async (req: any, res: any) => {
     throw new AppError("El valor del descuento no puede ser negativo", 400);
   }
 
-  const promocion = await sequelize.transaction(async (transaction: any) => {
-    // Validate unique code if provided
-    if (codigo) {
-      const existeCodigo = await Promocion.findOne({
-        where: { codigo: codigo.toUpperCase() },
-        transaction,
-      });
-      if (existeCodigo) {
-        throw new AppError("Promotion code already exists", 400);
-      }
-    }
-
-    // Create promotion
-    const promo = await Promocion.create(
-      {
-        codigo: codigo ? codigo.toUpperCase() : null,
-        nombre,
-        titulo,
-        descripcion,
-        tipo: tipo || "producto",
-        tipo_descuento,
-        valor_descuento,
-        descuento_maximo,
-        fecha_inicio,
-        fecha_fin,
-        cantidad_usos_maximos,
-        usos_por_usuario: usos_por_usuario || 1,
-        minimo_puntos: minimo_puntos || 0,
-        requiere_codigo: requiere_codigo || false,
-        prioridad: prioridad || 0,
-        estado: estado || "programado",
-        aplica_acumulacion: aplica_acumulacion || false,
-        metadata_visual: metadata_visual || {
-          badge: { texto: "OFERTA", posicion: "top-right", animacion: "pulse" },
-          gradiente: ["#FF6B6B", "#FF8E53"],
-          badge_color: "#FF0000",
-          mostrar_countdown: true,
-          mostrar_ahorro: true,
-        },
-        reglas_aplicacion: reglas_aplicacion || {
-          productos_ids: [],
-          categorias_ids: [],
-          excluir_productos_ids: [],
-          minimo_cantidad: 1,
-        },
-        creado_por: req.user ? req.user.id : null,
-      },
-      { transaction }
-    );
-
-    // Associate products if provided
-    if (
-      productos_ids &&
-      Array.isArray(productos_ids) &&
-      productos_ids.length > 0
-    ) {
-      // Validate that products exist
-      const productos = await Producto.findAll({
-        where: { id: { [Op.in]: productos_ids } },
-        transaction,
-      });
-
-      if (productos.length !== productos_ids.length) {
-        throw new Error("Algunos productos no existen");
+  const promocion = await sequelize.transaction(
+    async (transaction: Transaction) => {
+      // Validate unique code if provided
+      if (codigo) {
+        const existeCodigo = await Promocion.findOne({
+          where: { codigo: codigo.toUpperCase() },
+          transaction,
+        });
+        if (existeCodigo) {
+          throw new AppError("Promotion code already exists", 400);
+        }
       }
 
-      await promo.addProductos(productos, { transaction });
-    }
+      // Create promotion
+      const promo = await Promocion.create(
+        {
+          codigo: codigo ? codigo.toUpperCase() : null,
+          nombre,
+          titulo,
+          descripcion,
+          tipo: tipo || "producto",
+          tipo_descuento,
+          valor_descuento,
+          descuento_maximo,
+          fecha_inicio,
+          fecha_fin,
+          cantidad_usos_maximos,
+          usos_por_usuario: usos_por_usuario || 1,
+          minimo_puntos: minimo_puntos || 0,
+          requiere_codigo: requiere_codigo || false,
+          prioridad: prioridad || 0,
+          estado: estado || "programado",
+          aplica_acumulacion: aplica_acumulacion || false,
+          metadata_visual: metadata_visual || {
+            badge: {
+              texto: "OFERTA",
+              posicion: "top-right",
+              animacion: "pulse",
+            },
+            gradiente: ["#FF6B6B", "#FF8E53"],
+            badge_color: "#FF0000",
+            mostrar_countdown: true,
+            mostrar_ahorro: true,
+          },
+          reglas_aplicacion: reglas_aplicacion || {
+            productos_ids: [],
+            categorias_ids: [],
+            excluir_productos_ids: [],
+            minimo_cantidad: 1,
+          },
+          creado_por: req.user ? req.user.id : null,
+        },
+        { transaction }
+      );
 
-    return promo;
-  });
+      // Associate products if provided
+      if (
+        productos_ids &&
+        Array.isArray(productos_ids) &&
+        productos_ids.length > 0
+      ) {
+        // Validate that products exist
+        const productos = await Producto.findAll({
+          where: { id: { [Op.in]: productos_ids } },
+          transaction,
+        });
+
+        if (productos.length !== productos_ids.length) {
+          throw new Error("Some products do not exist");
+        }
+
+        await promo.addProductos(productos, { transaction });
+      }
+
+      return promo;
+    }
+  );
 
   // Reload with products
   const promocionCompleta = await Promocion.findByPk(promocion.id, {
@@ -233,64 +243,72 @@ const crear = asyncHandler(async (req: any, res: any) => {
  * Update existing promotion
  */
 function buildUpdatePayload(
-  promocion: any,
-  campos: any,
-  nuevaFechaInicio: any,
-  nuevaFechaFin: any
+  promocion: Promocion,
+  campos: {
+    codigo?: string;
+    nombre?: string;
+    titulo?: string;
+    descripcion?: string;
+    tipo?: string;
+    tipo_descuento?: string;
+    valor_descuento?: number;
+    descuento_maximo?: number;
+    cantidad_usos_maximos?: number;
+    usos_por_usuario?: number;
+    minimo_puntos?: number;
+    requiere_codigo?: boolean;
+    prioridad?: number;
+    estado?: string;
+    aplica_acumulacion?: boolean;
+    metadata_visual?: unknown;
+    reglas_aplicacion?: unknown;
+  },
+  nuevaFechaInicio: Date | string,
+  nuevaFechaFin: Date | string
 ) {
   return {
     codigo: campos.codigo ? campos.codigo.toUpperCase() : promocion.codigo,
     nombre: campos.nombre || promocion.nombre,
     titulo: campos.titulo || promocion.titulo,
+    // descripcion is nullable in the model (allowNull: true); null is a valid
+    // value for clearing it, so we cannot use ?? (which would pass null through).
     descripcion:
-      campos.descripcion !== undefined
-        ? campos.descripcion
-        : promocion.descripcion,
-    tipo: campos.tipo || promocion.tipo,
-    tipo_descuento: campos.tipo_descuento || promocion.tipo_descuento,
-    valor_descuento:
-      campos.valor_descuento !== undefined
-        ? campos.valor_descuento
-        : promocion.valor_descuento,
-    descuento_maximo:
-      campos.descuento_maximo !== undefined
-        ? campos.descuento_maximo
-        : promocion.descuento_maximo,
-    fecha_inicio: nuevaFechaInicio,
-    fecha_fin: nuevaFechaFin,
+      campos.descripcion === undefined
+        ? promocion.descripcion
+        : campos.descripcion,
+    tipo: (campos.tipo || promocion.tipo) as
+      "producto" | "categoria" | "global" | "por_cantidad",
+    tipo_descuento: (campos.tipo_descuento || promocion.tipo_descuento) as
+      "porcentaje" | "fijo" | "2x1" | "3x2",
+    valor_descuento: campos.valor_descuento ?? promocion.valor_descuento,
+    descuento_maximo: campos.descuento_maximo ?? promocion.descuento_maximo,
+    fecha_inicio: new Date(nuevaFechaInicio),
+    fecha_fin: new Date(nuevaFechaFin),
     cantidad_usos_maximos:
-      campos.cantidad_usos_maximos !== undefined
-        ? campos.cantidad_usos_maximos
-        : promocion.cantidad_usos_maximos,
+      campos.cantidad_usos_maximos ?? promocion.cantidad_usos_maximos,
     usos_por_usuario: campos.usos_por_usuario || promocion.usos_por_usuario,
-    minimo_puntos:
-      campos.minimo_puntos !== undefined
-        ? campos.minimo_puntos
-        : promocion.minimo_puntos,
-    requiere_codigo:
-      campos.requiere_codigo !== undefined
-        ? campos.requiere_codigo
-        : promocion.requiere_codigo,
-    prioridad:
-      campos.prioridad !== undefined ? campos.prioridad : promocion.prioridad,
-    estado: campos.estado || promocion.estado,
+    minimo_puntos: campos.minimo_puntos ?? promocion.minimo_puntos,
+    requiere_codigo: campos.requiere_codigo ?? promocion.requiere_codigo,
+    prioridad: campos.prioridad ?? promocion.prioridad,
+    estado: (campos.estado || promocion.estado) as
+      "activo" | "programado" | "expirado" | "inactivo" | "pausado",
     aplica_acumulacion:
-      campos.aplica_acumulacion !== undefined
-        ? campos.aplica_acumulacion
-        : promocion.aplica_acumulacion,
-    metadata_visual: campos.metadata_visual || promocion.metadata_visual,
-    reglas_aplicacion: campos.reglas_aplicacion || promocion.reglas_aplicacion,
+      campos.aplica_acumulacion ?? promocion.aplica_acumulacion,
+    metadata_visual: (campos.metadata_visual ||
+      promocion.metadata_visual) as Record<string, unknown> | null,
+    reglas_aplicacion: (campos.reglas_aplicacion ||
+      promocion.reglas_aplicacion) as Record<string, unknown> | null,
   };
 }
 
 async function updateProductAssociations(
-  promocion: any,
-  id: any,
-  productos_ids: any,
-  transaction: any
+  promocion: Promocion,
+  id: string,
+  productos_ids: number[],
+  transaction: Transaction
 ) {
   await PromocionProducto.destroy({
-    where: { promocion_id: id },
+    where: { promocion_id: Number(id) },
     transaction,
   });
 
@@ -301,19 +319,19 @@ async function updateProductAssociations(
     });
 
     if (productos.length !== productos_ids.length) {
-      throw new Error("Algunos productos no existen");
+      throw new Error("Some products do not exist");
     }
 
     await promocion.addProductos(productos, { transaction });
   }
 }
 
-const actualizar = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const actualizar = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
   const { productos_ids, ...campos } = req.body;
 
-  await sequelize.transaction(async (transaction: any) => {
-    const promocion: any = await Promocion.findByPk(id, { transaction });
+  await sequelize.transaction(async (transaction: Transaction) => {
+    const promocion = await Promocion.findByPk(id, { transaction });
 
     if (!promocion) {
       throw new AppError("Promotion not found", 404);
@@ -335,7 +353,7 @@ const actualizar = asyncHandler(async (req: any, res: any) => {
       const existeCodigo = await Promocion.findOne({
         where: {
           codigo: campos.codigo.toUpperCase(),
-          id: { [Op.ne]: id },
+          id: { [Op.ne]: Number(id) },
         },
         transaction,
       });
@@ -378,10 +396,10 @@ const actualizar = asyncHandler(async (req: any, res: any) => {
 /**
  * Delete promotion
  */
-const eliminar = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const eliminar = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
 
-  const promocion: any = await Promocion.findByPk(id);
+  const promocion = await Promocion.findByPk(id);
 
   if (!promocion) {
     throw new AppError("Promotion not found", 404);
@@ -396,10 +414,10 @@ const eliminar = asyncHandler(async (req: any, res: any) => {
 /**
  * Permanently delete a promotion
  */
-const eliminarPermanente = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const eliminarPermanente = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
 
-  const promocion: any = await Promocion.findByPk(id);
+  const promocion = await Promocion.findByPk(id);
 
   if (!promocion) {
     throw new AppError("Promotion not found", 404);
@@ -413,16 +431,20 @@ const eliminarPermanente = asyncHandler(async (req: any, res: any) => {
 /**
  * Get promotion statistics
  */
-const obtenerEstadisticas = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
-  const estadisticas = await promocionService.obtenerEstadisticasPromocion(id);
-  res.json(estadisticas);
-});
+const obtenerEstadisticas = asyncHandler(
+  async (req: Request, res: Response) => {
+    const id = req.params.id as string;
+    const estadisticas = await promocionService.obtenerEstadisticasPromocion(
+      Number(id)
+    );
+    res.json(estadisticas);
+  }
+);
 
 /**
  * Validate promotion code
  */
-const validarCodigo = asyncHandler(async (req: any, res: any) => {
+const validarCodigo = asyncHandler(async (req: Request, res: Response) => {
   const { codigo, producto_id } = req.body;
   const usuarioId = req.user ? req.user.id : null;
 
@@ -459,34 +481,39 @@ const validarCodigo = asyncHandler(async (req: any, res: any) => {
 /**
  * Get active promotions (public)
  */
-const obtenerPromocionesActivas = asyncHandler(async (req: any, res: any) => {
-  const promociones = await promocionService.obtenerPromocionesActivas();
+const obtenerPromocionesActivas = asyncHandler(
+  async (_req: Request, res: Response) => {
+    const promociones = await promocionService.obtenerPromocionesActivas();
 
-  // Filter sensitive information
-  const promocionesPublicas = promociones.map((promo: any) => ({
-    id: promo.id,
-    titulo: promo.titulo,
-    descripcion: promo.descripcion,
-    tipo_descuento: promo.tipo_descuento,
-    valor_descuento: promo.valor_descuento,
-    fecha_fin: promo.fecha_fin,
-    metadata_visual: promo.metadata_visual,
-    productos: promo.productos.map((p: any) => ({
-      id: p.id,
-      nombre: p.nombre,
-      precio: p.precio,
-      imagen_url: p.imagen_url,
-      slug: p.slug,
-    })),
-  }));
+    // Filter sensitive information
+    const promocionesPublicas = promociones.map((promo) => {
+      const p = promo as PromocionWithAssociations;
+      return {
+        id: p.id,
+        titulo: p.titulo,
+        descripcion: p.descripcion,
+        tipo_descuento: p.tipo_descuento,
+        valor_descuento: p.valor_descuento,
+        fecha_fin: p.fecha_fin,
+        metadata_visual: p.metadata_visual,
+        productos: (p.productos || []).map((prod) => ({
+          id: prod.id,
+          nombre: prod.nombre,
+          precio: prod.precio,
+          imagen_url: prod.imagen_url,
+          slug: prod.slug,
+        })),
+      };
+    });
 
-  res.json(promocionesPublicas);
-});
+    res.json(promocionesPublicas);
+  }
+);
 
 /**
  * Update promotion states (scheduled task or manual)
  */
-const actualizarEstados = asyncHandler(async (req: any, res: any) => {
+const actualizarEstados = asyncHandler(async (_req: Request, res: Response) => {
   await promocionService.actualizarEstadosPromociones();
   res.json({ mensaje: "Promotion states updated successfully" });
 });
@@ -494,12 +521,12 @@ const actualizarEstados = asyncHandler(async (req: any, res: any) => {
 /**
  * Export promotions to PDF
  */
-const exportarPDF = asyncHandler(async (req: any, res: any) => {
+const exportarPDF = asyncHandler(async (req: Request, res: Response) => {
   const { estado, activas_solo } = req.query;
-  const where: any = {};
+  const where: WhereOptions = {};
 
   if (estado) {
-    where.estado = estado;
+    where.estado = estado as string;
   }
 
   if (activas_solo === "true") {
@@ -529,10 +556,10 @@ const exportarPDF = asyncHandler(async (req: any, res: any) => {
   logger.info(`[PDF Export] Total promotions found: ${promociones.length}`);
 
   // Get usage statistics separately and prepare data
-  const promocionesConEstadisticas: any = [];
+  const promocionesConEstadisticas: Array<Record<string, unknown>> = [];
 
   for (const promocion of promociones) {
-    const estadisticas: any = await UsoPromocion.findOne({
+    const estadisticas = (await UsoPromocion.findOne({
       where: { promocion_id: promocion.id },
       attributes: [
         [sequelize.fn("COUNT", sequelize.col("id")), "total_usos"],
@@ -542,14 +569,14 @@ const exportarPDF = asyncHandler(async (req: any, res: any) => {
         ],
       ],
       raw: true,
-    });
+    })) as unknown as { total_usos: string; puntos_descontados: string } | null;
 
     // Convert to plain object for easier PDF access
     const promocionData = {
       ...promocion.toJSON(),
-      total_usos: Number.parseInt(estadisticas?.total_usos) || 0,
+      total_usos: Number.parseInt(estadisticas?.total_usos as string) || 0,
       puntos_descontados:
-        Number.parseInt(estadisticas?.puntos_descontados) || 0,
+        Number.parseInt(estadisticas?.puntos_descontados as string) || 0,
     };
 
     promocionesConEstadisticas.push(promocionData);
@@ -557,7 +584,11 @@ const exportarPDF = asyncHandler(async (req: any, res: any) => {
 
   logger.debug("[PDF Export] Sample data:", promocionesConEstadisticas[0]);
 
-  const pdfBuffer = await generarPDFPromociones(promocionesConEstadisticas);
+  const pdfBuffer = await generatePromotionsPDF(
+    promocionesConEstadisticas as unknown as Parameters<
+      typeof generatePromotionsPDF
+    >[0]
+  );
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
@@ -570,28 +601,28 @@ const exportarPDF = asyncHandler(async (req: any, res: any) => {
 /**
  * Assign promotions to a product
  */
-const asignarProductos = asyncHandler(async (req: any, res: any) => {
-  const { promocionId } = req.params;
+const asignarProductos = asyncHandler(async (req: Request, res: Response) => {
+  const promocionId = req.params.promocionId as string;
   const { producto_ids } = req.body; // Array of product IDs
 
   if (!Array.isArray(producto_ids)) {
     throw new AppError("producto_ids must be an array", 400);
   }
 
-  const promocion: any = await Promocion.findByPk(promocionId);
+  const promocion = await Promocion.findByPk(promocionId);
   if (!promocion) {
     throw new AppError("Promotion not found", 404);
   }
 
   // Remove previous assignments
   await PromocionProducto.destroy({
-    where: { promocion_id: promocionId },
+    where: { promocion_id: Number(promocionId) },
   });
 
   // Create new assignments
   if (producto_ids.length > 0) {
-    const asignaciones = producto_ids.map((producto_id: any) => ({
-      promocion_id: promocionId,
+    const asignaciones = producto_ids.map((producto_id: number) => ({
+      promocion_id: Number(promocionId),
       producto_id,
     }));
 
@@ -610,8 +641,9 @@ const asignarProductos = asyncHandler(async (req: any, res: any) => {
 /**
  * Unassign a product from a promotion
  */
-const desasignarProducto = asyncHandler(async (req: any, res: any) => {
-  const { promocionId, productoId } = req.params;
+const desasignarProducto = asyncHandler(async (req: Request, res: Response) => {
+  const promocionId = req.params.promocionId as string;
+  const productoId = req.params.productoId as string;
 
   const deleted = await PromocionProducto.destroy({
     where: {
@@ -634,32 +666,34 @@ const desasignarProducto = asyncHandler(async (req: any, res: any) => {
 /**
  * Get promotions for a specific product
  */
-const obtenerPromocionesProducto = asyncHandler(async (req: any, res: any) => {
-  const { productoId } = req.params;
+const obtenerPromocionesProducto = asyncHandler(
+  async (req: Request, res: Response) => {
+    const productoId = req.params.productoId as string;
 
-  const producto: any = await Producto.findByPk(productoId);
-  if (!producto) {
-    throw new AppError("Product not found", 404);
+    const producto = await Producto.findByPk(productoId);
+    if (!producto) {
+      throw new AppError("Product not found", 404);
+    }
+
+    const promociones = await Promocion.findAll({
+      include: [
+        {
+          model: Producto,
+          as: "productos",
+          where: { id: productoId },
+          through: { attributes: [] },
+          required: true,
+        },
+      ],
+      order: [
+        ["prioridad", "DESC"],
+        ["fecha_inicio", "DESC"],
+      ],
+    });
+
+    res.json(promociones);
   }
-
-  const promociones = await Promocion.findAll({
-    include: [
-      {
-        model: Producto,
-        as: "productos",
-        where: { id: productoId },
-        through: { attributes: [] },
-        required: true,
-      },
-    ],
-    order: [
-      ["prioridad", "DESC"],
-      ["fecha_inicio", "DESC"],
-    ],
-  });
-
-  res.json(promociones);
-});
+);
 
 export = {
   listar,

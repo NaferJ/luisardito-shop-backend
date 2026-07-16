@@ -1,11 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const LeaderboardSnapshot = sequelize.define(
-  "LeaderboardSnapshot",
+class LeaderboardSnapshot extends Model<
+  InferAttributes<LeaderboardSnapshot>,
+  InferCreationAttributes<LeaderboardSnapshot>
+> {
+  declare id: CreationOptional<number>;
+  declare usuario_id: number;
+  declare nickname: string;
+  declare puntos: number;
+  declare position: number;
+  declare snapshot_date: CreationOptional<Date>;
+  declare is_vip: CreationOptional<boolean>;
+  declare is_subscriber: CreationOptional<boolean>;
+  declare kick_data: Record<string, unknown> | null;
+  declare creado: CreationOptional<Date>;
+}
+
+LeaderboardSnapshot.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -15,49 +33,58 @@ const LeaderboardSnapshot = sequelize.define(
     usuario_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "ID del usuario en el ranking",
+      comment: "User ID in the ranking",
     },
     nickname: {
       type: DataTypes.STRING,
       allowNull: false,
-      comment: "Nickname del usuario en ese momento",
+      comment: "User nickname at that moment",
     },
     puntos: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Puntos totales del usuario",
+      comment: "User total points",
     },
     position: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      comment: "Posición en el ranking (1 = primero)",
+      comment: "Ranking position (1 = first)",
     },
     snapshot_date: {
       type: DataTypes.DATE,
       allowNull: false,
       defaultValue: DataTypes.NOW,
-      comment: "Fecha y hora del snapshot",
+      comment: "Snapshot date and time",
       index: true,
-    } as any,
+    } as unknown as {
+      type: typeof DataTypes.DATE;
+      allowNull: false;
+      defaultValue: typeof DataTypes.NOW;
+      comment: string;
+    },
     is_vip: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      comment: "Si el usuario era VIP en ese momento",
+      comment: "Whether the user was VIP at that moment",
     },
     is_subscriber: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-      comment: "Si el usuario era suscriptor en ese momento",
+      comment: "Whether the user was a subscriber at that moment",
     },
     kick_data: {
       type: DataTypes.JSON,
       allowNull: true,
-      comment: "Datos adicionales de Kick (avatar, etc.)",
+      comment: "Additional Kick data (avatar, etc.)",
+    },
+    creado: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "leaderboard_snapshots",
     timestamps: true,
     createdAt: "creado",

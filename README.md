@@ -136,8 +136,8 @@ src/
 migrations/      Sequelize migration files
 seeders/         Sequelize seed files
 scripts/         Operational helper scripts
-app.js           Express application entrypoint
-config.js        Environment-driven configuration
+app.ts           Express application entrypoint
+config.ts        Environment-driven configuration
 ```
 
 ## License

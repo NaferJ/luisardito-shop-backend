@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import { KickPointsConfig } from "../models";
 import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
@@ -9,15 +7,15 @@ import AppError from "../utils/AppError";
 /**
  * Gets all points configuration
  */
-const getConfig = asyncHandler(async (req: any, res: any) => {
+const getConfig = asyncHandler(async (_req: Request, res: Response) => {
   try {
-    const config: any = await KickPointsConfig.findAll({
+    const config = await KickPointsConfig.findAll({
       order: [["config_key", "ASC"]],
     });
 
     logger.debug("[KICK POINTS DEBUG] Configuration found:", {
       total: config.length,
-      configs: config.map((c: any) => ({
+      configs: config.map((c) => ({
         key: c.config_key,
         value: c.config_value,
         enabled: c.enabled,
@@ -89,7 +87,7 @@ const getConfig = asyncHandler(async (req: any, res: any) => {
 
       const created = [];
       for (const configData of defaultConfigs) {
-        const newConfig: any = await KickPointsConfig.create(configData);
+        const newConfig = await KickPointsConfig.create(configData);
         created.push(newConfig);
       }
 
@@ -112,11 +110,11 @@ const getConfig = asyncHandler(async (req: any, res: any) => {
       total: config.length,
       initialized: false,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error(
       "[KICK POINTS DEBUG] Error fetching configuration:",
-      error.message
+      error instanceof Error ? error.message : String(error)
     );
     throw new AppError("Internal server error", 500);
   }
@@ -125,7 +123,7 @@ const getConfig = asyncHandler(async (req: any, res: any) => {
 /**
  * Updates a configuration value
  */
-const updateConfig = asyncHandler(async (req: any, res: any) => {
+const updateConfig = asyncHandler(async (req: Request, res: Response) => {
   try {
     const { config_key, config_value, enabled } = req.body;
 
@@ -133,7 +131,7 @@ const updateConfig = asyncHandler(async (req: any, res: any) => {
       throw new AppError("config_key is required", 400);
     }
 
-    const config: any = await KickPointsConfig.findOne({
+    const config = await KickPointsConfig.findOne({
       where: { config_key },
     });
 
@@ -141,7 +139,7 @@ const updateConfig = asyncHandler(async (req: any, res: any) => {
       throw new AppError("Configuration not found", 404);
     }
 
-    const updateData: any = {};
+    const updateData: { config_value?: number; enabled?: boolean } = {};
     if (config_value !== undefined) updateData.config_value = config_value;
     if (enabled !== undefined) updateData.enabled = enabled;
 
@@ -151,66 +149,79 @@ const updateConfig = asyncHandler(async (req: any, res: any) => {
       message: "Configuration updated",
       config,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error(
       "[Kick Points Config] Error updating configuration:",
-      error.message
+      error instanceof Error ? error.message : String(error)
     );
     throw new AppError("Internal server error", 500);
   }
 });
+
+/**
+ * Updates a single config entry by key, returning the updated config or null.
+ */
+async function updateSingleConfig(configData: {
+  config_key?: string;
+  config_value?: number;
+  enabled?: boolean;
+}): Promise<KickPointsConfig | null> {
+  const { config_key, config_value, enabled } = configData;
+  if (!config_key) return null;
+
+  const config = await KickPointsConfig.findOne({
+    where: { config_key },
+  });
+
+  if (!config) return null;
+
+  const updateData: { config_value?: number; enabled?: boolean } = {};
+  if (config_value !== undefined) updateData.config_value = config_value;
+  if (enabled !== undefined) updateData.enabled = enabled;
+
+  await config.update(updateData);
+  return config;
+}
 
 /**
  * Updates multiple configurations at once
  */
-const updateMultipleConfigs = asyncHandler(async (req: any, res: any) => {
-  try {
-    const { configs } = req.body;
+const updateMultipleConfigs = asyncHandler(
+  async (req: Request, res: Response) => {
+    try {
+      const { configs } = req.body;
 
-    if (!Array.isArray(configs)) {
-      throw new AppError("configs must be an array", 400);
-    }
-
-    const updated = [];
-
-    for (const configData of configs) {
-      const { config_key, config_value, enabled } = configData;
-
-      if (!config_key) continue;
-
-      const config: any = await KickPointsConfig.findOne({
-        where: { config_key },
-      });
-
-      if (config) {
-        const updateData: any = {};
-        if (config_value !== undefined) updateData.config_value = config_value;
-        if (enabled !== undefined) updateData.enabled = enabled;
-
-        await config.update(updateData);
-        updated.push(config);
+      if (!Array.isArray(configs)) {
+        throw new AppError("configs must be an array", 400);
       }
-    }
 
-    return res.json({
-      message: `${updated.length} configurations updated`,
-      configs: updated,
-    });
-  } catch (error: any) {
-    if (error instanceof AppError) throw error;
-    logger.error(
-      "[Kick Points Config] Error updating configurations:",
-      error.message
-    );
-    throw new AppError("Internal server error", 500);
+      const updated: KickPointsConfig[] = [];
+
+      for (const configData of configs) {
+        const config = await updateSingleConfig(configData);
+        if (config) updated.push(config);
+      }
+
+      return res.json({
+        message: `${updated.length} configurations updated`,
+        configs: updated,
+      });
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error(
+        "[Kick Points Config] Error updating configurations:",
+        error instanceof Error ? error.message : String(error)
+      );
+      throw new AppError("Internal server error", 500);
+    }
   }
-});
+);
 
 /**
  * Initializes configuration with default values
  */
-const initializeConfig = asyncHandler(async (req: any, res: any) => {
+const initializeConfig = asyncHandler(async (_req: Request, res: Response) => {
   try {
     const defaultConfigs = [
       {
@@ -281,11 +292,11 @@ const initializeConfig = asyncHandler(async (req: any, res: any) => {
       created,
       total: defaultConfigs.length,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof AppError) throw error;
     logger.error(
       "[Kick Points Config] Error initializing configuration:",
-      error.message
+      error instanceof Error ? error.message : String(error)
     );
     throw new AppError("Internal server error", 500);
   }

@@ -1,8 +1,29 @@
-import { DataTypes } from "sequelize";
+import {
+  DataTypes,
+  Model,
+  InferAttributes,
+  InferCreationAttributes,
+  CreationOptional,
+} from "sequelize";
 import { sequelize } from "./database";
 
-const KickBotToken = sequelize.define(
-  "KickBotToken",
+class KickBotToken extends Model<
+  InferAttributes<KickBotToken>,
+  InferCreationAttributes<KickBotToken>
+> {
+  declare id: CreationOptional<number>;
+  declare kick_user_id: string;
+  declare kick_username: string;
+  declare access_token: string;
+  declare refresh_token: string | null;
+  declare token_expires_at: Date;
+  declare is_active: CreationOptional<boolean>;
+  declare scopes: string[] | null;
+  declare created_at: CreationOptional<Date>;
+  declare updated_at: CreationOptional<Date>;
+}
+
+KickBotToken.init(
   {
     id: {
       type: DataTypes.INTEGER,
@@ -37,10 +58,17 @@ const KickBotToken = sequelize.define(
     scopes: {
       type: DataTypes.JSON,
       allowNull: true,
-      comment: "Scopes autorizados para el bot",
+      comment: "Scopes authorized for the bot",
+    },
+    created_at: {
+      type: DataTypes.DATE,
+    },
+    updated_at: {
+      type: DataTypes.DATE,
     },
   },
   {
+    sequelize,
     tableName: "kick_bot_tokens",
     timestamps: true,
     createdAt: "created_at",

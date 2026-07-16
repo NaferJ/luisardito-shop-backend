@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import {
   KickPointsConfig,
   KickUserTracking,
@@ -10,12 +7,40 @@ import {
 import NotificacionService from "../../notificacion.service";
 import logger from "../../../utils/logger";
 import { syncUserProfileIfNeeded } from "../../../utils/usernameSync.util";
+import toErrorMessage from "../../../utils/toErrorMessage";
+
+interface KickSubscriber {
+  user_id: string | number;
+  username: string;
+  profile_picture?: string;
+}
+
+interface SubscriptionSharedPayload {
+  subscriber: KickSubscriber;
+  broadcaster: { username: string };
+  duration: number;
+  expires_at: string;
+}
+
+interface WebhookMetadata {
+  [key: string]: unknown;
+}
+
+interface SubscriptionEventOptions {
+  logLabel: string;
+  configKey: string;
+  eventType: string;
+  conceptPrefix: string;
+  logVerb: string;
+  includeUserType: boolean;
+  sendNotification: boolean;
+}
 
 async function processSubscriptionEvent(
-  payload: any,
-  _metadata: any,
-  opts: any
-) {
+  payload: SubscriptionSharedPayload,
+  _metadata: WebhookMetadata,
+  opts: SubscriptionEventOptions
+): Promise<void> {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -31,7 +56,7 @@ async function processSubscriptionEvent(
     });
 
     // Check if user exists in our DB
-    const usuario: any = await Usuario.findOne({
+    const usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
@@ -48,11 +73,11 @@ async function processSubscriptionEvent(
       kickUsername,
       kickUserId,
       true,
-      subscriber.profile_picture
+      subscriber.profile_picture ?? null
     );
 
     // Get points configuration
-    const config: any = await KickPointsConfig.findOne({
+    const config = await KickPointsConfig.findOne({
       where: {
         config_key: opts.configKey,
         enabled: true,
@@ -77,7 +102,7 @@ async function processSubscriptionEvent(
         ? `${opts.conceptPrefix} (${durationStr}) - ${userType}`
         : `${opts.conceptPrefix} (${durationStr})`;
 
-      const kickEventData: Record<string, any> = {
+      const kickEventData: Record<string, unknown> = {
         event_type: opts.eventType,
         kick_user_id: kickUserId,
         kick_username: kickUsername,
@@ -119,15 +144,19 @@ async function processSubscriptionEvent(
       subscription_duration_months: duration,
       total_subscriptions: KickUserTracking.sequelize.literal(
         "total_subscriptions + 1"
-      ),
+      ) as unknown as number,
     });
 
     logger.info(
       `[Kick Webhook][${opts.logLabel}] ${pointsToAward} points awarded to ${kickUsername}, ${opts.logVerb} ${expiresAt}`
     );
-  } catch (error) {
-    logger.error(`[Kick Webhook][${opts.logLabel}] Error:`, error.message);
+  } catch (error: unknown) {
+    logger.error(
+      `[Kick Webhook][${opts.logLabel}] Error:`,
+      toErrorMessage(error)
+    );
   }
 }
 
 export { processSubscriptionEvent };
+export type { SubscriptionSharedPayload, WebhookMetadata };

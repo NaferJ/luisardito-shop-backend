@@ -1,16 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import { DiscordUserLink } from "../../models";
+import { DiscordUserLink, Usuario } from "../../models";
 import { extractAvatarUrl } from "../../utils/kickApi";
 import logger from "../../utils/logger";
 
 /**
  * Find a DiscordUserLink by tienda_user_id
- * @param {number} userId - User id
- * @returns {Promise<Object|null>}
+ * @param userId - User id
  */
-async function findDiscordLinkByUserId(userId: any) {
+async function findDiscordLinkByUserId(userId: number) {
   return DiscordUserLink.findOne({
     where: { tienda_user_id: userId },
   });
@@ -20,11 +16,14 @@ async function findDiscordLinkByUserId(userId: any) {
  * Build a Discord display name from username and discriminator.
  * Returns "username#discriminator" when a non-zero discriminator exists,
  * otherwise just the username.
- * @param {string} username
- * @param {string} discriminator
- * @returns {string}
+ * @param username
+ * @param discriminator
+ * @returns Display name string
  */
-function buildDiscordDisplayName(username: any, discriminator: any) {
+function buildDiscordDisplayName(
+  username: string,
+  discriminator: string
+): string {
   return discriminator && discriminator !== "0"
     ? `${username}#${discriminator}`
     : username;
@@ -32,12 +31,12 @@ function buildDiscordDisplayName(username: any, discriminator: any) {
 
 /**
  * Helper to enrich user info with Discord data
- * @param {Object} user - User model instance
- * @returns {Promise<{discord_info: Object|null, display_name: string}>} Enriched Discord info
+ * @param user - User model instance
+ * @returns Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user: any) {
+async function enrichUserWithDiscordInfo(user: Usuario) {
   let discordInfo = null;
-  const discordLink: any = await findDiscordLinkByUserId(user.id);
+  const discordLink = await findDiscordLinkByUserId(user.id);
 
   if (discordLink) {
     discordInfo = {
@@ -46,7 +45,7 @@ async function enrichUserWithDiscordInfo(user: any) {
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
-      linked_at: discordLink.createdAt,
+      linked_at: discordLink.created_at,
       display_name: buildDiscordDisplayName(
         discordLink.discord_username,
         discordLink.discord_discriminator
@@ -62,12 +61,12 @@ async function enrichUserWithDiscordInfo(user: any) {
 
 /**
  * Extracts the Kick avatar
- * @param {Object} kickUser - Kick user data
- * @returns {string|null} - Kick avatar URL or null if absent
+ * @param kickUser - Kick user data
+ * @returns Kick avatar URL or null if absent
  */
-function processKickAvatar(kickUser: any) {
+function processKickAvatar(kickUser: unknown): string | null {
   try {
-    const kickAvatarUrl = extractAvatarUrl(kickUser);
+    const kickAvatarUrl = extractAvatarUrl(kickUser as Record<string, unknown>);
 
     if (!kickAvatarUrl) {
       logger.info(`[Auth] No avatar found in Kick data`);
@@ -76,10 +75,10 @@ function processKickAvatar(kickUser: any) {
 
     logger.info(`[Auth] Kick avatar obtained:`, kickAvatarUrl);
     return kickAvatarUrl;
-  } catch (error: any) {
+  } catch (error) {
     logger.warn(
       `[Auth] Error extracting avatar, continuing without it:`,
-      error.message
+      error instanceof Error ? error.message : String(error)
     );
     return null;
   }

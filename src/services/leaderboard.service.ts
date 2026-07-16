@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
 import Usuario from "../models/usuario.model";
 import LeaderboardSnapshot from "../models/leaderboardSnapshot.model";
 import KickUserTracking from "../models/kickUserTracking.model";
@@ -8,16 +6,112 @@ import { UserWatchtime } from "../models";
 import { sequelize } from "../models/database";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
+import type { Transaction } from "sequelize";
+
+interface DiscordInfo {
+  linked: boolean;
+  id: string;
+  username: string | null;
+  discriminator: string | null;
+  avatar: string | null;
+  linked_at: Date | null;
+  display_name: string;
+}
+
+interface LeaderboardEntry {
+  usuario_id: number;
+  nickname: string;
+  display_name: string;
+  puntos: number;
+  max_puntos: number;
+  watchtime_minutes: number;
+  message_count: number;
+  position: number;
+  position_change?: number;
+  change_indicator?: string;
+  previous_position?: number | null;
+  previous_points?: number | null;
+  is_vip: boolean;
+  is_subscriber: boolean;
+  kick_data: Record<string, unknown> | null;
+  discord_info: DiscordInfo | null;
+}
+
+interface SnapshotMap {
+  [key: number]: { position: number; puntos: number };
+}
+
+interface ResetInfo {
+  next_reset_date: Date | null;
+  days_until_reset: number | null;
+  hours_until_reset: number | null;
+}
+
+interface LeaderboardOptions {
+  limit?: number;
+  offset?: number;
+  userId?: number | null;
+}
+
+interface LeaderboardResult {
+  success: boolean;
+  data: LeaderboardEntry[];
+  meta: {
+    total: number;
+    limit: number;
+    offset: number;
+    last_update: Date | null;
+    next_reset_date: Date | null;
+    days_until_reset: number | null;
+    hours_until_reset: number | null;
+  };
+  user_position: LeaderboardEntry | null | undefined;
+}
+
+interface SnapshotResult {
+  success: boolean;
+  snapshot_date: Date;
+  users_count: number;
+}
+
+interface CleanupResult {
+  success: boolean;
+  deleted_count: number;
+}
+
+interface HistoryEntry {
+  position: number | null;
+  puntos: number;
+  snapshot_date: Date;
+}
+
+interface HistoryResult {
+  success: boolean;
+  history: HistoryEntry[];
+}
+
+interface StatsResult {
+  success: boolean;
+  stats: {
+    total_users: number;
+    total_points: number;
+    average_points: number;
+    top_user: { nickname: string; puntos: number } | null;
+    vip_users: number;
+  };
+}
 
 /**
  * Resolves whether a user is an active subscriber based on KickUserTracking
- * @param {string|null} userIdExt - Kick user ID
- * @returns {Promise<boolean>} true if actively subscribed
+ * @param userIdExt - Kick user ID
+ * @returns true if actively subscribed
  */
-async function resolveSubscriberStatus(userIdExt: any) {
+async function resolveSubscriberStatus(
+  userIdExt: string | null
+): Promise<boolean> {
   if (!userIdExt) return false;
 
-  const userTracking: any = await KickUserTracking.findOne({
+  const userTracking = await KickUserTracking.findOne({
     where: { kick_user_id: userIdExt },
     attributes: ["is_subscribed", "subscription_expires_at"],
     raw: true,
@@ -33,15 +127,15 @@ async function resolveSubscriberStatus(userIdExt: any) {
 
 /**
  * Builds a userPosition object for a user outside the current ranking
- * @param {number} userId - Usuario ID
- * @param {Array} currentRanking - Current ranking array
- * @returns {Promise<Object|undefined>} userPosition object or undefined if user not found
+ * @param userId - Usuario ID
+ * @param currentRanking - Current ranking array
+ * @returns userPosition object or undefined if user not found
  */
 async function buildUserPositionOutsideRanking(
-  userId: any,
-  currentRanking: any
-) {
-  const usuario: any = await Usuario.findByPk(userId, {
+  userId: number,
+  currentRanking: LeaderboardEntry[]
+): Promise<LeaderboardEntry | undefined> {
+  const usuario = await Usuario.findByPk(userId, {
     include: [
       {
         model: UserWatchtime,
@@ -54,8 +148,7 @@ async function buildUserPositionOutsideRanking(
 
   if (!usuario) return undefined;
 
-  const position =
-    currentRanking.findIndex((u: any) => u.usuario_id === userId) + 1;
+  const position = currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
 
   const isSubscriber = await resolveSubscriberStatus(usuario.user_id_ext);
 
@@ -82,12 +175,14 @@ async function buildUserPositionOutsideRanking(
 
 /**
  * Helper function to enrich user info with Discord data
- * @param {Object} user - Usuario model instance
- * @returns {Object} Enriched Discord info
+ * @param user - Usuario model instance
+ * @returns Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user: any) {
-  let discordInfo = null;
-  const discordLink: any = await DiscordUserLink.findOne({
+async function enrichUserWithDiscordInfo(
+  user: Usuario | { id: number; nickname: string }
+): Promise<{ discord_info: DiscordInfo | null; display_name: string }> {
+  let discordInfo: DiscordInfo | null = null;
+  const discordLink = await DiscordUserLink.findOne({
     where: { tienda_user_id: user.id },
   });
 
@@ -98,12 +193,12 @@ async function enrichUserWithDiscordInfo(user: any) {
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
-      linked_at: discordLink.createdAt,
+      linked_at: (discordLink as unknown as { createdAt: Date }).createdAt,
       display_name:
         discordLink.discord_discriminator &&
         discordLink.discord_discriminator !== "0"
           ? `${discordLink.discord_username}#${discordLink.discord_discriminator}`
-          : discordLink.discord_username,
+          : (discordLink.discord_username as string),
     };
   }
 
@@ -116,13 +211,17 @@ async function enrichUserWithDiscordInfo(user: any) {
 class LeaderboardService {
   /**
    * Gets the current leaderboard with position change indicators
-   * @param {Object} options - Query options
-   * @param {number} options.limit - Number of users to return (default: 100)
-   * @param {number} options.offset - Offset for pagination (default: 0)
-   * @param {number} options.userId - Specific user ID to find their position
-   * @returns {Object} Leaderboard with positions and changes
+   * @param options - Query options
+   * @param options.limit - Number of users to return (default: 100)
+   * @param options.offset - Offset for pagination (default: 0)
+   * @param options.userId - Specific user ID to find their position
+   * @returns Leaderboard with positions and changes
    */
-  async getLeaderboard({ limit = 100, offset = 0, userId = null }: any = {}) {
+  async getLeaderboard({
+    limit = 100,
+    offset = 0,
+    userId = null,
+  }: LeaderboardOptions = {}): Promise<LeaderboardResult> {
     try {
       // 1. Get current ranking
       const currentRanking = await this._getCurrentRanking();
@@ -137,10 +236,10 @@ class LeaderboardService {
       );
 
       // 4. If a specific user is requested, include their position even if outside the top
-      let userPosition = null;
+      let userPosition: LeaderboardEntry | null | undefined = null;
       if (userId) {
         userPosition = leaderboardWithChanges.find(
-          (u: any) => u.usuario_id === userId
+          (u) => u.usuario_id === userId
         );
         if (!userPosition) {
           userPosition = await buildUserPositionOutsideRanking(
@@ -166,14 +265,16 @@ class LeaderboardService {
           total: leaderboardWithChanges.length,
           limit,
           offset,
-          last_update: lastSnapshot?.snapshot_date || null,
+          last_update:
+            (lastSnapshot as unknown as { snapshot_date?: Date | null })
+              ?.snapshot_date || null,
           next_reset_date: resetInfo.next_reset_date,
           days_until_reset: resetInfo.days_until_reset,
           hours_until_reset: resetInfo.hours_until_reset,
         },
         user_position: userPosition,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Error getting leaderboard:", error);
       throw error;
     }
@@ -183,7 +284,7 @@ class LeaderboardService {
    * Gets the current user ranking sorted by points
    * @private
    */
-  async _getCurrentRanking() {
+  async _getCurrentRanking(): Promise<LeaderboardEntry[]> {
     const usuarios = await Usuario.findAll({
       where: {
         puntos: {
@@ -218,7 +319,7 @@ class LeaderboardService {
 
     // Assign positions and get subscriber status from KickUserTracking
     const usuariosConPosicion = await Promise.all(
-      usuarios.map(async (usuario: any, index: any) => {
+      usuarios.map(async (usuario, index) => {
         const isVipActive =
           usuario.is_vip &&
           (!usuario.vip_expires_at ||
@@ -239,8 +340,14 @@ class LeaderboardService {
           display_name,
           puntos: usuario.puntos,
           max_puntos: usuario.max_puntos || 0,
-          watchtime_minutes: usuario["watchtime.total_watchtime_minutes"] || 0,
-          message_count: usuario["watchtime.message_count"] || 0,
+          watchtime_minutes:
+            ((usuario as unknown as Record<string, unknown>)[
+              "watchtime.total_watchtime_minutes"
+            ] as number) || 0,
+          message_count:
+            ((usuario as unknown as Record<string, unknown>)[
+              "watchtime.message_count"
+            ] as number) || 0,
           position: index + 1,
           is_vip: isVipActive,
           is_subscriber: isSubscriber,
@@ -257,11 +364,11 @@ class LeaderboardService {
    * Gets the last saved snapshot
    * @private
    */
-  async _getLastSnapshot() {
+  async _getLastSnapshot(): Promise<SnapshotMap> {
     const lastSnapshotDate = await LeaderboardSnapshot.max("snapshot_date");
 
     if (!lastSnapshotDate) {
-      return [];
+      return {};
     }
 
     const snapshots = await LeaderboardSnapshot.findAll({
@@ -273,13 +380,13 @@ class LeaderboardService {
     });
 
     // Create a map for quick access
-    return snapshots.reduce((acc: any, snapshot: any) => {
+    return snapshots.reduce((acc, snapshot) => {
       acc[snapshot.usuario_id] = {
         position: snapshot.position,
         puntos: snapshot.puntos,
       };
       return acc;
-    }, {});
+    }, {} as SnapshotMap);
   }
 
   /**
@@ -287,10 +394,10 @@ class LeaderboardService {
    * Reset occurs every LEADERBOARD_SNAPSHOT_INTERVAL_HOURS (336 hours = 14 days)
    * @private
    */
-  async _getNextResetDate() {
+  async _getNextResetDate(): Promise<ResetInfo> {
     try {
       const RESET_INTERVAL_HOURS = Number.parseInt(
-        (process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS as any) || 336
+        process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS || "336"
       );
 
       const lastSnapshotDate = await LeaderboardSnapshot.max("snapshot_date");
@@ -307,12 +414,12 @@ class LeaderboardService {
       }
 
       // Calculate next reset
-      const nextReset = new Date(lastSnapshotDate as any);
+      const nextReset = new Date(lastSnapshotDate as string | number | Date);
       nextReset.setHours(nextReset.getHours() + RESET_INTERVAL_HOURS);
 
       // Calculate remaining time
       const now = new Date();
-      const timeDiff = (nextReset as any) - (now as any);
+      const timeDiff = nextReset.getTime() - now.getTime();
       const hoursUntilReset = Math.ceil(timeDiff / (1000 * 60 * 60));
       const daysUntilReset = Math.ceil(hoursUntilReset / 24);
 
@@ -321,7 +428,7 @@ class LeaderboardService {
         days_until_reset: Math.max(0, daysUntilReset),
         hours_until_reset: Math.max(0, hoursUntilReset),
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Error calculating next reset:", error);
       return {
         next_reset_date: null,
@@ -335,12 +442,15 @@ class LeaderboardService {
    * Calculates position changes by comparing current ranking with previous snapshot
    * @private
    */
-  _calculatePositionChanges(currentRanking: any, lastSnapshotMap: any) {
-    return currentRanking.map((current: any) => {
+  _calculatePositionChanges(
+    currentRanking: LeaderboardEntry[],
+    lastSnapshotMap: SnapshotMap
+  ): LeaderboardEntry[] {
+    return currentRanking.map((current) => {
       const previous = lastSnapshotMap[current.usuario_id];
 
       let position_change = 0;
-      let change_indicator;
+      let change_indicator: string;
 
       if (!previous) {
         // New user in the ranking
@@ -371,8 +481,8 @@ class LeaderboardService {
    * Creates a snapshot of the current leaderboard
    * This method should run periodically (e.g.: every hour, every day)
    */
-  async createSnapshot() {
-    const transaction = await sequelize.transaction();
+  async createSnapshot(): Promise<SnapshotResult> {
+    const transaction: Transaction = await sequelize.transaction();
 
     try {
       logger.info("Creating leaderboard snapshot...");
@@ -380,7 +490,7 @@ class LeaderboardService {
       const currentRanking = await this._getCurrentRanking();
       const snapshotDate = new Date();
 
-      const snapshotRecords = currentRanking.map((user: any) => ({
+      const snapshotRecords = currentRanking.map((user) => ({
         usuario_id: user.usuario_id,
         nickname: user.nickname,
         puntos: user.puntos,
@@ -404,7 +514,7 @@ class LeaderboardService {
         snapshot_date: snapshotDate,
         users_count: snapshotRecords.length,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       await transaction.rollback();
       logger.error("Error creating leaderboard snapshot:", error);
       throw error;
@@ -413,9 +523,9 @@ class LeaderboardService {
 
   /**
    * Cleans old snapshots to keep the database optimized
-   * @param {number} daysToKeep - Days of history to keep (default: 30)
+   * @param daysToKeep - Days of history to keep (default: 30)
    */
-  async cleanOldSnapshots(daysToKeep: any = 30) {
+  async cleanOldSnapshots(daysToKeep: number = 30): Promise<CleanupResult> {
     try {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
@@ -434,7 +544,7 @@ class LeaderboardService {
         success: true,
         deleted_count: deleted,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Error cleaning old snapshots:", error);
       throw error;
     }
@@ -442,15 +552,18 @@ class LeaderboardService {
 
   /**
    * Gets position history for a specific user
-   * @param {number} userId - User ID
-   * @param {number} days - Days of history to return (default: 7)
+   * @param userId - User ID
+   * @param days - Days of history to return (default: 7)
    */
-  async getUserPositionHistory(userId: any, days: any = 7) {
+  async getUserPositionHistory(
+    userId: number,
+    days: number = 7
+  ): Promise<HistoryResult> {
     try {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - days);
 
-      const history: any = await LeaderboardSnapshot.findAll({
+      const history: HistoryEntry[] = await LeaderboardSnapshot.findAll({
         where: {
           usuario_id: userId,
           snapshot_date: {
@@ -464,20 +577,18 @@ class LeaderboardService {
 
       // Add current position if there is no recent snapshot
       const lastSnapshotDate =
-        history.length > 0
-          ? new Date(history[history.length - 1].snapshot_date)
-          : null;
+        history.length > 0 ? new Date(history.at(-1)!.snapshot_date) : null;
       const hoursSinceLastSnapshot = lastSnapshotDate
         ? (Date.now() - lastSnapshotDate.getTime()) / (1000 * 60 * 60)
         : Infinity;
 
       if (hoursSinceLastSnapshot > 1) {
         // If more than 1 hour has passed
-        const usuario: any = await Usuario.findByPk(userId);
+        const usuario = await Usuario.findByPk(userId);
         if (usuario) {
           const currentRanking = await this._getCurrentRanking();
           const currentPosition =
-            currentRanking.findIndex((u: any) => u.usuario_id === userId) + 1;
+            currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
 
           history.push({
             position: currentPosition || null,
@@ -491,7 +602,7 @@ class LeaderboardService {
         success: true,
         history,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error(`Error getting history for user ${userId}:`, error);
       throw error;
     }
@@ -500,7 +611,7 @@ class LeaderboardService {
   /**
    * Gets general leaderboard statistics
    */
-  async getLeaderboardStats() {
+  async getLeaderboardStats(): Promise<StatsResult> {
     try {
       const totalUsers = await Usuario.count({
         where: {
@@ -546,7 +657,7 @@ class LeaderboardService {
           vip_users: vipCount,
         },
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error("Error getting leaderboard statistics:", error);
       throw error;
     }

@@ -1,10 +1,16 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
-import jwt from "jsonwebtoken";
+import type { RequestHandler } from "express";
+import jwt, {
+  type JwtPayload,
+  type TokenExpiredError,
+  type JsonWebTokenError,
+} from "jsonwebtoken";
 import config from "../../config";
 import { Usuario, Rol } from "../models";
 import logger from "../utils/logger";
+
+interface AuthJwtPayload extends JwtPayload {
+  userId: number;
+}
 
 /**
  * Strict authentication middleware
@@ -15,16 +21,14 @@ import logger from "../utils/logger";
  * Usage:
  *   router.get('/protected-route', authRequired, permiso('ver'), controller)
  *
- * Difference with auth.middleware.js:
+ * Difference with auth.middleware:
  *   - auth.middleware: Allows passthrough without authentication (req.user = null)
  *   - authRequired.middleware: Blocks if not authenticated (401)
- *
- * @returns {Function} Middleware function
  */
-export = async (req: any, res: any, next: any) => {
+const authRequired: RequestHandler = async (req, res, next) => {
   try {
     // 1. Check token in COOKIES first
-    let token = req.cookies?.auth_token;
+    let token: string | undefined = req.cookies?.auth_token;
 
     // 2. Fallback to Authorization header
     if (!token && req.headers?.authorization?.startsWith("Bearer ")) {
@@ -33,26 +37,28 @@ export = async (req: any, res: any, next: any) => {
 
     // No token -> BLOCK
     if (!token) {
-      return res.status(401).json({
+      res.status(401).json({
         error: "Token not provided",
         message: "You must include an authentication token",
         code: "TOKEN_MISSING",
       });
+      return;
     }
 
     // Verify token
-    const payload: any = jwt.verify(token, config.jwtSecret);
+    const payload = jwt.verify(token, config.jwtSecret!) as AuthJwtPayload;
 
     // Get user from the database
-    const user: any = await Usuario.findByPk(payload.userId, { include: Rol });
+    const user = await Usuario.findByPk(payload.userId, { include: Rol });
 
     // User not found -> BLOCK
     if (!user) {
-      return res.status(401).json({
+      res.status(401).json({
         error: "User not found",
         message: "The token does not correspond to a valid user",
         code: "USER_NOT_FOUND",
       });
+      return;
     }
 
     // User authenticated successfully
@@ -64,30 +70,35 @@ export = async (req: any, res: any, next: any) => {
     next();
   } catch (error) {
     // Token expired -> BLOCK with specific message
-    if (error.name === "TokenExpiredError") {
-      return res.status(401).json({
+    if ((error as TokenExpiredError).name === "TokenExpiredError") {
+      res.status(401).json({
         error: "Token expired",
         message: "Your session has expired, please log in again",
         code: "TOKEN_EXPIRED",
-        expiredAt: error.expiredAt,
+        expiredAt: (error as TokenExpiredError).expiredAt,
       });
+      return;
     }
 
     // Token invalid -> BLOCK
-    if (error.name === "JsonWebTokenError") {
-      return res.status(401).json({
+    if ((error as JsonWebTokenError).name === "JsonWebTokenError") {
+      res.status(401).json({
         error: "Token invalid",
         message: "The authentication token is not valid",
         code: "TOKEN_INVALID",
       });
+      return;
     }
 
     // General error -> BLOCK
-    logger.error("[Auth Required] Error:", error.message);
-    return res.status(401).json({
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Auth Required] Error:", msg);
+    res.status(401).json({
       error: "Authentication error",
       message: "Could not validate your authentication",
       code: "AUTH_ERROR",
     });
   }
 };
+
+export = authRequired;

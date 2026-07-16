@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-import axios from "axios";
+import axios, { type AxiosResponse } from "axios";
 import config from "../../config";
 import { KickEventSubscription } from "../models";
 import logger from "../utils/logger";
@@ -11,11 +9,45 @@ import { Op } from "sequelize";
  * App Tokens do not expire and allow permanent webhooks without user re-authentication
  */
 
+interface KickSubscriptionData {
+  subscription_id: string;
+  name: string;
+  version: number;
+  error?: string;
+}
+
+interface KickSubscriptionResponse {
+  data: KickSubscriptionData[];
+}
+
+interface SubscribeResult {
+  success: boolean;
+  totalSubscribed: number;
+  totalErrors: number;
+  subscriptions: KickEventSubscription[];
+  errors: { event: string; error: string }[];
+  kickResponse: KickSubscriptionResponse;
+  tokenType: string;
+  permanent: boolean;
+  error?: string;
+  status?: number;
+  message?: string;
+}
+
+interface WebhookStatus {
+  app_token_subscriptions: number;
+  user_token_subscriptions: number;
+  total_subscriptions: number;
+  is_permanent: boolean;
+  requires_user_auth: boolean;
+  error?: string;
+}
+
 /**
  * Get App Access Token using Client Credentials Grant
- * @returns {Promise<string|null>} Access token or null on failure
+ * @returns Access token or null on failure
  */
-async function getAppAccessToken() {
+async function getAppAccessToken(): Promise<string | null> {
   try {
     logger.info(
       "[App Token] Getting App Access Token with Client Credentials..."
@@ -53,12 +85,16 @@ async function getAppAccessToken() {
       logger.error("[App Token] No access_token received in the response");
       return null;
     }
-  } catch (error: any) {
-    logger.error("[App Token] Error getting App Access Token:", error.message);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[App Token] Error getting App Access Token:", msg);
 
-    if (error.response) {
-      logger.error("[App Token] Status:", error.response.status);
-      logger.error("[App Token] Response:", error.response.data);
+    if (error && typeof error === "object" && "response" in error) {
+      const axiosError = error as {
+        response: { status: number; data: unknown };
+      };
+      logger.error("[App Token] Status:", axiosError.response.status);
+      logger.error("[App Token] Response:", axiosError.response.data);
     }
 
     return null;
@@ -68,7 +104,10 @@ async function getAppAccessToken() {
 /**
  * Upsert a single Kick event subscription (update if exists, create otherwise)
  */
-async function upsertSubscription(sub: any, broadcasterUserId: any) {
+async function upsertSubscription(
+  sub: KickSubscriptionData,
+  broadcasterUserId: string
+): Promise<KickEventSubscription> {
   const existing = await KickEventSubscription.findOne({
     where: { subscription_id: sub.subscription_id },
   });
@@ -77,8 +116,8 @@ async function upsertSubscription(sub: any, broadcasterUserId: any) {
     broadcaster_user_id: Number.parseInt(broadcasterUserId),
     event_type: sub.name,
     event_version: sub.version,
-    method: "webhook",
-    status: "active",
+    method: "webhook" as const,
+    status: "active" as const,
     app_id: "APP_TOKEN",
   };
 
@@ -97,11 +136,51 @@ async function upsertSubscription(sub: any, broadcasterUserId: any) {
 }
 
 /**
- * Subscribe to all events using App Access Token
- * @param {string} broadcasterUserId - Broadcaster ID
- * @returns {Promise<Object>} Subscription result
+ * Process the subscription response from Kick, upserting each valid
+ * subscription to the database and collecting errors.
+ * @param subscriptionsData - Subscription entries returned by Kick
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Created subscriptions and errors
  */
-async function subscribeToEventsWithAppToken(broadcasterUserId: any) {
+async function processAppSubscriptions(
+  subscriptionsData: KickSubscriptionData[],
+  broadcasterUserId: string
+): Promise<{
+  createdSubscriptions: KickEventSubscription[];
+  errors: { event: string; error: string }[];
+}> {
+  const createdSubscriptions: KickEventSubscription[] = [];
+  const errors: { event: string; error: string }[] = [];
+
+  for (const sub of subscriptionsData) {
+    if (!sub.subscription_id || sub.error) {
+      if (sub.error) {
+        errors.push({ event: sub.name, error: sub.error });
+        logger.error(`[App Webhook] ${sub.name}:`, sub.error);
+      }
+      continue;
+    }
+    try {
+      const localSub = await upsertSubscription(sub, broadcasterUserId);
+      createdSubscriptions.push(localSub);
+    } catch (dbError) {
+      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
+      errors.push({ event: sub.name, error: msg });
+    }
+  }
+
+  return { createdSubscriptions, errors };
+}
+
+/**
+ * Subscribe to all events using App Access Token
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Subscription result
+ */
+async function subscribeToEventsWithAppToken(
+  broadcasterUserId: string
+): Promise<SubscribeResult> {
   try {
     logger.info(
       "[App Webhook] Starting subscription with App Token for broadcaster:",
@@ -139,13 +218,17 @@ async function subscribeToEventsWithAppToken(broadcasterUserId: any) {
 
     logger.info("[App Webhook] Payload:", JSON.stringify(payload, null, 2));
 
-    const response = await axios.post(subscribeUrl, payload, {
-      headers: {
-        Authorization: `Bearer ${appToken}`,
-        "Content-Type": "application/json",
-      },
-      timeout: 15000,
-    });
+    const response: AxiosResponse<KickSubscriptionResponse> = await axios.post(
+      subscribeUrl,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${appToken}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      }
+    );
 
     logger.info(
       "[App Webhook] Kick response:",
@@ -154,27 +237,12 @@ async function subscribeToEventsWithAppToken(broadcasterUserId: any) {
 
     // 4. Process response and save subscriptions
     const subscriptionsData = response.data.data || [];
-    const createdSubscriptions = [];
-    const errors = [];
+    const { createdSubscriptions, errors } = await processAppSubscriptions(
+      subscriptionsData,
+      broadcasterUserId
+    );
 
-    for (const sub of subscriptionsData) {
-      if (!sub.subscription_id || sub.error) {
-        if (sub.error) {
-          errors.push({ event: sub.name, error: sub.error });
-          logger.error(`[App Webhook] ${sub.name}:`, sub.error);
-        }
-        continue;
-      }
-      try {
-        const localSub = await upsertSubscription(sub, broadcasterUserId);
-        createdSubscriptions.push(localSub);
-      } catch (dbError: any) {
-        logger.error(`[App Webhook] DB error ${sub.name}:`, dbError.message);
-        errors.push({ event: sub.name, error: dbError.message });
-      }
-    }
-
-    const result = {
+    const result: SubscribeResult = {
       success: createdSubscriptions.length > 0,
       totalSubscribed: createdSubscriptions.length,
       totalErrors: errors.length,
@@ -193,32 +261,43 @@ async function subscribeToEventsWithAppToken(broadcasterUserId: any) {
     );
 
     return result;
-  } catch (error: any) {
-    logger.error("[App Webhook] Error:", error.message);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[App Webhook] Error:", msg);
 
-    if (error.response) {
+    if (error && typeof error === "object" && "response" in error) {
+      const axiosError = error as {
+        response: { status: number; data: unknown };
+      };
       logger.error(
         "[App Webhook] API Error:",
-        error.response.status,
-        error.response.data
+        axiosError.response.status,
+        axiosError.response.data
       );
     }
 
     return {
       success: false,
-      error: error.message,
+      error: msg,
       tokenType: "APP_TOKEN",
       permanent: false,
+      totalSubscribed: 0,
+      totalErrors: 0,
+      subscriptions: [],
+      errors: [],
+      kickResponse: { data: [] },
     };
   }
 }
 
 /**
  * Check if App Token webhooks are working
- * @param {string} broadcasterUserId - Broadcaster ID
- * @returns {Promise<Object>} Webhook status
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Webhook status
  */
-async function checkAppTokenWebhooksStatus(broadcasterUserId: any) {
+async function checkAppTokenWebhooksStatus(
+  broadcasterUserId: string
+): Promise<WebhookStatus> {
   try {
     // Count App Token subscriptions
     const appTokenSubs = await KickEventSubscription.count({
@@ -245,10 +324,11 @@ async function checkAppTokenWebhooksStatus(broadcasterUserId: any) {
       is_permanent: appTokenSubs > 0,
       requires_user_auth: appTokenSubs === 0 && userTokenSubs > 0,
     };
-  } catch (error: any) {
-    logger.error("[App Webhook Status] Error:", error.message);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[App Webhook Status] Error:", msg);
     return {
-      error: error.message,
+      error: msg,
       app_token_subscriptions: 0,
       user_token_subscriptions: 0,
       total_subscriptions: 0,

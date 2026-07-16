@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import {
   KickReward,
   Usuario,
@@ -10,28 +7,102 @@ import {
 import NotificacionService from "../../notificacion.service";
 import { Transaction } from "sequelize";
 import logger from "../../../utils/logger";
+import toErrorMessage from "../../../utils/toErrorMessage";
+
+interface KickRewardData {
+  id: string;
+  title: string;
+  cost: number;
+}
+
+interface KickRedeemer {
+  user_id: string | number;
+  username: string;
+}
+
+interface RewardRedemptionPayload {
+  id: string;
+  reward: KickRewardData;
+  redeemer: KickRedeemer;
+  status: string;
+  user_input?: string;
+}
+
+interface WebhookMetadata {
+  [key: string]: unknown;
+}
 
 /**
  * Send chat message notifying user they are not registered for reward redemption
  */
-async function notifyUnregisteredReward(kickUsername: any, localReward: any) {
+async function notifyUnregisteredReward(
+  kickUsername: string,
+  localReward: KickReward
+): Promise<void> {
   try {
     const bot = (await import("../../kickBot.service")).default;
     const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
     await bot.sendMessage(message);
     logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
-  } catch (botError) {
+  } catch (botError: unknown) {
     logger.error(
       `[Reward Redemption] Error sending chat message:`,
-      botError.message
+      toErrorMessage(botError)
     );
   }
 }
 
 /**
+ * Evaluate status-based early-return guard clauses for a reward redemption.
+ * Returns true when processing should stop (pending, rejected, or unknown status).
+ * Side effects (chat notification, logging) are preserved exactly as inline code.
+ */
+async function shouldSkipRedemptionByStatus(
+  status: string,
+  usuario: Usuario | null,
+  kickUsername: string,
+  localReward: KickReward
+): Promise<boolean> {
+  // If pending and user doesn't exist, send message
+  if (status === "pending" && !usuario) {
+    logger.warn(
+      `[Reward Redemption] User ${kickUsername} not registered in store`
+    );
+
+    await notifyUnregisteredReward(kickUsername, localReward);
+    return true;
+  }
+
+  // If pending and user DOES exist, just wait
+  if (status === "pending") {
+    logger.info(
+      `[Reward Redemption] User registered. Redemption pending approval - waiting...`
+    );
+    return true;
+  }
+
+  if (status === "rejected") {
+    logger.info(
+      `[Reward Redemption] Redemption rejected - no points processed`
+    );
+    return true;
+  }
+
+  if (status !== "accepted") {
+    logger.warn(`[Reward Redemption] Unknown status: ${status}`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handle channel reward redemptions
  */
-async function handleRewardRedemption(payload: any, _metadata: any) {
+async function handleRewardRedemption(
+  payload: RewardRedemptionPayload,
+  _metadata: WebhookMetadata
+): Promise<void> {
   try {
     const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
@@ -43,7 +114,7 @@ async function handleRewardRedemption(payload: any, _metadata: any) {
     );
 
     // Find reward in our DB
-    const localReward: any = await KickReward.findOne({
+    const localReward = await KickReward.findOne({
       where: { kick_reward_id: kickRewardId },
     });
 
@@ -55,37 +126,19 @@ async function handleRewardRedemption(payload: any, _metadata: any) {
     }
 
     // ALWAYS find user in our DB (for both cases: pending and accepted)
-    let usuario: any = await Usuario.findOne({
+    let usuario = await Usuario.findOne({
       where: { user_id_ext: kickUserId },
     });
 
-    // If pending and user doesn't exist, send message
-    if (status === "pending" && !usuario) {
-      logger.warn(
-        `[Reward Redemption] User ${kickUsername} not registered in store`
-      );
-
-      await notifyUnregisteredReward(kickUsername, localReward);
-      return;
-    }
-
-    // If pending and user DOES exist, just wait
-    if (status === "pending") {
-      logger.info(
-        `[Reward Redemption] User registered. Redemption pending approval - waiting...`
-      );
-      return;
-    }
-
-    if (status === "rejected") {
-      logger.info(
-        `[Reward Redemption] Redemption rejected - no points processed`
-      );
-      return;
-    }
-
-    if (status !== "accepted") {
-      logger.warn(`[Reward Redemption] Unknown status: ${status}`);
+    // Handle status-based early returns (pending, rejected, unknown status)
+    if (
+      await shouldSkipRedemptionByStatus(
+        status,
+        usuario,
+        kickUsername,
+        localReward
+      )
+    ) {
       return;
     }
 
@@ -119,7 +172,7 @@ async function handleRewardRedemption(payload: any, _metadata: any) {
       return;
     }
 
-    const transaction: any = await sequelize.transaction({
+    const transaction = await sequelize.transaction({
       isolationLevel: Transaction.ISOLATION_LEVELS.READ_COMMITTED,
     });
 
@@ -172,14 +225,14 @@ async function handleRewardRedemption(payload: any, _metadata: any) {
       logger.info(
         `[Reward Redemption] ${kickUsername} received ${puntosAOtorgar} points. Total: ${usuario.puntos}`
       );
-    } catch (error) {
-      if (!transaction.finished) {
+    } catch (error: unknown) {
+      if (!(transaction as unknown as { finished: string }).finished) {
         await transaction.rollback();
       }
       throw error;
     }
-  } catch (error) {
-    logger.error("[Reward Redemption] Error:", error.message);
+  } catch (error: unknown) {
+    logger.error("[Reward Redemption] Error:", toErrorMessage(error));
   }
 }
 

@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import crypto from "node:crypto";
 import logger from "./logger";
 
@@ -12,18 +9,18 @@ const KICK_PUBLIC_KEY = process.env.KICK_WEBHOOK_PUBLIC_KEY
 
 /**
  * Verifies a Kick webhook signature
- * @param {string} messageId - Kick-Event-Message-Id header
- * @param {string} timestamp - Kick-Event-Message-Timestamp header
- * @param {string} body - Raw body of the request
- * @param {string} signatureBase64 - Kick-Event-Signature header (Base64 encoded)
- * @returns {boolean} - true if the signature is valid, false otherwise
+ * @param messageId - Kick-Event-Message-Id header
+ * @param timestamp - Kick-Event-Message-Timestamp header
+ * @param body - Raw body of the request
+ * @param signatureBase64 - Kick-Event-Signature header (Base64 encoded)
+ * @returns true if the signature is valid, false otherwise
  */
 function verifyWebhookSignature(
-  messageId: any,
-  timestamp: any,
-  body: any,
-  signatureBase64: any
-) {
+  messageId: string,
+  timestamp: string,
+  body: string,
+  signatureBase64: string
+): boolean {
   try {
     if (!KICK_PUBLIC_KEY) {
       logger.error("[Kick Webhook] KICK_WEBHOOK_PUBLIC_KEY not configured");
@@ -41,8 +38,9 @@ function verifyWebhookSignature(
     verifier.update(signatureString);
 
     return verifier.verify(KICK_PUBLIC_KEY, signature);
-  } catch (error: any) {
-    logger.error("[Kick Webhook] Error verifying signature:", error.message);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error("[Kick Webhook] Error verifying signature:", msg);
     return false;
   }
 }

@@ -1,6 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
+import type { Request, Response } from "express";
 import {
   Canje,
   Producto,
@@ -9,7 +7,7 @@ import {
   KickUserTracking,
   DiscordUserLink,
 } from "../models";
-import { Op } from "sequelize";
+import { Op, WhereOptions, Transaction } from "sequelize";
 import VipService from "../services/vip.service";
 import KickBotService from "../services/kickBot.service";
 import promocionService from "../services/promocion.service";
@@ -18,14 +16,20 @@ import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
 
+/** Type for Canje with eagerly-loaded associations. */
+type CanjeWithAssociations = Canje & {
+  Usuario?: Usuario | null;
+  Producto?: Producto | null;
+};
+
 /**
  * Helper to enrich user info with Discord data
- * @param {Object} user - Usuario model instance
- * @returns {Promise<Object>} Enriched Discord info
+ * @param user - Usuario model instance
+ * @returns Enriched Discord info
  */
-async function enrichUserWithDiscordInfo(user: any) {
+async function enrichUserWithDiscordInfo(user: Usuario) {
   let discordInfo = null;
-  const discordLink: any = await DiscordUserLink.findOne({
+  const discordLink = await DiscordUserLink.findOne({
     where: { tienda_user_id: user.id },
   });
 
@@ -36,7 +40,7 @@ async function enrichUserWithDiscordInfo(user: any) {
       username: discordLink.discord_username,
       discriminator: discordLink.discord_discriminator,
       avatar: discordLink.discord_avatar,
-      linked_at: discordLink.createdAt,
+      linked_at: discordLink.created_at,
       display_name:
         discordLink.discord_discriminator &&
         discordLink.discord_discriminator !== "0"
@@ -54,18 +58,20 @@ async function enrichUserWithDiscordInfo(user: any) {
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 async function enrichUsuarioWithStatus(
-  usuario: any,
-  now: any,
+  usuario: Usuario,
+  now: Date,
   includeDiscord = false
 ) {
+  const dataValues = usuario.dataValues as Record<string, unknown>;
+
   if (includeDiscord) {
     const { discord_info, display_name } =
       await enrichUserWithDiscordInfo(usuario);
-    usuario.dataValues.display_name = display_name;
-    usuario.dataValues.discord_info = discord_info;
+    dataValues.display_name = display_name;
+    dataValues.discord_info = discord_info;
   }
 
-  usuario.dataValues.vip_status = {
+  dataValues.vip_status = {
     is_active:
       usuario.is_vip &&
       (!usuario.vip_expires_at || new Date(usuario.vip_expires_at) > now),
@@ -76,7 +82,7 @@ async function enrichUsuarioWithStatus(
   };
 
   if (usuario.user_id_ext) {
-    const userTracking: any = await KickUserTracking.findOne({
+    const userTracking = await KickUserTracking.findOne({
       where: { kick_user_id: usuario.user_id_ext },
     });
 
@@ -96,16 +102,16 @@ async function enrichUsuarioWithStatus(
       };
     }
 
-    usuario.dataValues.subscriber_status = subscriberInfo;
+    dataValues.subscriber_status = subscriberInfo;
   } else {
-    usuario.dataValues.subscriber_status = {
+    dataValues.subscriber_status = {
       is_active: false,
       expires_soon: false,
     };
   }
 }
 
-const crear = asyncHandler(async (req: any, res: any) => {
+const crear = asyncHandler(async (req: Request, res: Response) => {
   const { producto_id } = req.body;
   const usuarioId = req.user.id;
 
@@ -116,8 +122,8 @@ const crear = asyncHandler(async (req: any, res: any) => {
     infoDescuento,
     promocionAplicada,
     nickname,
-  } = await Canje.sequelize.transaction(async (t: any) => {
-    const producto: any = await Producto.findByPk(producto_id, {
+  } = await Canje.sequelize.transaction(async (t: Transaction) => {
+    const producto = await Producto.findByPk(producto_id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -129,7 +135,7 @@ const crear = asyncHandler(async (req: any, res: any) => {
       throw new AppError("No stock available for this product", 400);
     }
 
-    const usuario: any = await Usuario.findByPk(usuarioId, {
+    const usuario = await Usuario.findByPk(usuarioId, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
@@ -152,7 +158,7 @@ const crear = asyncHandler(async (req: any, res: any) => {
     }
 
     // 2) Create canje with historical price and promotion
-    const canje: any = await Canje.create(
+    const canje = await Canje.create(
       {
         usuario_id: usuario.id,
         producto_id,
@@ -232,8 +238,11 @@ const crear = asyncHandler(async (req: any, res: any) => {
     const mensaje = `${nickname} canjeo ${producto.nombre}${mensajeDescuento}.`;
     await KickBotService.sendMessage(mensaje);
     logger.info(`[Canje] Message sent to chat: "${mensaje}"`);
-  } catch (botError: any) {
-    logger.error("[Canje] Error sending message to chat:", botError.message);
+  } catch (botError) {
+    logger.error(
+      "[Canje] Error sending message to chat:",
+      botError instanceof Error ? botError.message : String(botError)
+    );
     // Do not fail the response if the bot message fails
   }
 
@@ -253,22 +262,28 @@ const crear = asyncHandler(async (req: any, res: any) => {
   });
 });
 
-const listar = asyncHandler(async (req: any, res: any) => {
+const listar = asyncHandler(async (req: Request, res: Response) => {
   // Route protected by permiso('gestionar_canjes'): return all canjes
-  const search = req.query.search ? req.query.search.trim() : undefined;
-  const estado = req.query.estado ? req.query.estado.trim() : undefined;
+  const search = req.query.search
+    ? (req.query.search as string).trim()
+    : undefined;
+  const estado = req.query.estado
+    ? (req.query.estado as string).trim()
+    : undefined;
 
   // Build where clause
-  const whereClause: any = {};
+  const whereClause: WhereOptions = {};
   if (estado) {
     whereClause.estado = estado;
   }
   if (search) {
     // Search by user nickname
-    whereClause["$Usuario.nickname$"] = { [Op.iLike]: `%${search}%` };
+    (whereClause as Record<string, unknown>)["$Usuario.nickname$"] = {
+      [Op.iLike]: `%${search}%`,
+    };
   }
 
-  const canjes: any = await Canje.findAll({
+  const canjes = await Canje.findAll({
     where: whereClause,
     include: [Usuario, Producto],
     order: [["fecha", "DESC"]],
@@ -277,8 +292,9 @@ const listar = asyncHandler(async (req: any, res: any) => {
   // Add VIP and subscriber info to each user
   const now = new Date();
   for (const canje of canjes) {
-    if (canje.Usuario) {
-      await enrichUsuarioWithStatus(canje.Usuario, now, true);
+    const c = canje as CanjeWithAssociations;
+    if (c.Usuario) {
+      await enrichUsuarioWithStatus(c.Usuario, now, true);
     }
   }
 
@@ -286,8 +302,8 @@ const listar = asyncHandler(async (req: any, res: any) => {
 });
 
 // List only the authenticated user's canjes (for "My Canjes")
-const listarMios = asyncHandler(async (req: any, res: any) => {
-  const canjes: any = await Canje.findAll({
+const listarMios = asyncHandler(async (req: Request, res: Response) => {
+  const canjes = await Canje.findAll({
     where: { usuario_id: req.user.id },
     include: [Usuario, Producto],
     order: [["fecha", "DESC"]],
@@ -296,8 +312,9 @@ const listarMios = asyncHandler(async (req: any, res: any) => {
   // Add VIP and subscriber info to the user (same user, for consistency)
   const now = new Date();
   for (const canje of canjes) {
-    if (canje.Usuario) {
-      await enrichUsuarioWithStatus(canje.Usuario, now, false);
+    const c = canje as CanjeWithAssociations;
+    if (c.Usuario) {
+      await enrichUsuarioWithStatus(c.Usuario, now, false);
     }
   }
 
@@ -305,13 +322,13 @@ const listarMios = asyncHandler(async (req: any, res: any) => {
 });
 
 // List canjes for a specific user (admin/management view)
-const listarPorUsuario = asyncHandler(async (req: any, res: any) => {
+const listarPorUsuario = asyncHandler(async (req: Request, res: Response) => {
   const { usuarioId } = req.params;
   const id = Number(usuarioId);
   if (!Number.isInteger(id) || id <= 0) {
     throw new AppError("Invalid usuarioId", 400);
   }
-  const canjes: any = await Canje.findAll({
+  const canjes = await Canje.findAll({
     where: { usuario_id: id },
     include: [Usuario, Producto],
     order: [["fecha", "DESC"]],
@@ -320,15 +337,16 @@ const listarPorUsuario = asyncHandler(async (req: any, res: any) => {
   // Add VIP and subscriber info to the user
   const now = new Date();
   for (const canje of canjes) {
-    if (canje.Usuario) {
-      await enrichUsuarioWithStatus(canje.Usuario, now, true);
+    const c = canje as CanjeWithAssociations;
+    if (c.Usuario) {
+      await enrichUsuarioWithStatus(c.Usuario, now, true);
     }
   }
 
   res.json(canjes);
 });
 
-async function maybeGrantVip(canje: any) {
+async function maybeGrantVip(canje: CanjeWithAssociations) {
   logger.info(
     `[VIP GRANT] VIP product delivered detected: ${canje.Producto.nombre}`
   );
@@ -349,7 +367,7 @@ async function maybeGrantVip(canje: any) {
       logger.info(
         `[VIP GRANT] VIP granted to ${canje.Usuario.nickname} for canje #${canje.id}`
       );
-    } catch (vipError: any) {
+    } catch (vipError) {
       logger.error(`[VIP GRANT] Error granting VIP:`, vipError);
     }
   } else {
@@ -359,12 +377,12 @@ async function maybeGrantVip(canje: any) {
   }
 }
 
-const actualizarEstado = asyncHandler(async (req: any, res: any) => {
-  const { id } = req.params;
+const actualizarEstado = asyncHandler(async (req: Request, res: Response) => {
+  const id = req.params.id as string;
   const { estado } = req.body;
   const estadosPermitidos = ["pendiente", "entregado", "cancelado"];
 
-  const result = await Canje.sequelize.transaction(async (t: any) => {
+  const result = await Canje.sequelize.transaction(async (t: Transaction) => {
     if (!estadosPermitidos.includes(estado)) {
       throw new AppError(
         `Invalid state. Allowed: ${estadosPermitidos.join(", ")}. To return use PUT /api/canjes/:id/devolver.`,
@@ -372,13 +390,13 @@ const actualizarEstado = asyncHandler(async (req: any, res: any) => {
       );
     }
 
-    const canje: any = await Canje.findByPk(id, {
+    const canje = (await Canje.findByPk(id, {
       include: [
         { model: Usuario, attributes: ["id", "nickname", "is_vip"] },
         { model: Producto, attributes: ["id", "nombre", "descripcion"] },
       ],
       transaction: t,
-    });
+    })) as CanjeWithAssociations | null;
 
     if (!canje) {
       throw new AppError("Not found", 404);
@@ -445,9 +463,9 @@ const actualizarEstado = asyncHandler(async (req: any, res: any) => {
 });
 
 // Return a canje: mark as 'devuelto', refund points and restock
-const devolverCanje = asyncHandler(async (req: any, res: any) => {
-  const result = await Canje.sequelize.transaction(async (t: any) => {
-    const { id } = req.params;
+const devolverCanje = asyncHandler(async (req: Request, res: Response) => {
+  const result = await Canje.sequelize.transaction(async (t: Transaction) => {
+    const id = req.params.id as string;
     const { motivo } = req.body;
     const adminNickname = req.user.nickname;
 
@@ -455,11 +473,11 @@ const devolverCanje = asyncHandler(async (req: any, res: any) => {
       throw new AppError("Return reason is required", 400);
     }
 
-    const canje: any = await Canje.findByPk(id, {
+    const canje = (await Canje.findByPk(id, {
       include: [Usuario, Producto],
       transaction: t,
       lock: t.LOCK.UPDATE,
-    });
+    })) as CanjeWithAssociations | null;
     if (!canje) {
       throw new AppError("Canje not found", 404);
     }

@@ -1,13 +1,23 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import { getRedisClient } from "../../../config/redis.config";
 import logger from "../../../utils/logger";
+
+interface LivestreamStatusPayload {
+  is_live: boolean;
+  title?: string;
+  started_at?: string;
+  ended_at?: string;
+  broadcaster: { username: string };
+}
+
+interface WebhookMetadata {
+  timestamp?: string;
+  [key: string]: unknown;
+}
 
 /**
  * Validate event timestamp — warn if event is too old.
  */
-function warnIfStaleTimestamp(timestamp: any) {
+function warnIfStaleTimestamp(timestamp: string | undefined): void {
   if (!timestamp) return;
 
   const eventTimestamp = new Date(timestamp);
@@ -25,7 +35,10 @@ function warnIfStaleTimestamp(timestamp: any) {
 /**
  * Handle livestream status changes
  */
-async function handleLivestreamStatusUpdated(payload: any, metadata: any) {
+async function handleLivestreamStatusUpdated(
+  payload: LivestreamStatusPayload,
+  metadata: WebhookMetadata
+): Promise<void> {
   try {
     const isLive = payload.is_live;
     const redis = getRedisClient();
@@ -103,9 +116,11 @@ async function handleLivestreamStatusUpdated(payload: any, metadata: any) {
         ? "[STREAM] LIVE - Chat points ACTIVATED"
         : "[STREAM] OFFLINE - Chat points DEACTIVATED"
     );
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error("[Kick Webhook][Livestream Status] Error:", error);
-    logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
+    if (error instanceof Error) {
+      logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
+    }
   }
 }
 

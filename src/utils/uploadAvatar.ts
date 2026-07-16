@@ -1,20 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import cloudinary from "../config/cloudinary";
 import axios from "axios";
 import logger from "./logger";
 
+interface CloudinaryUploadResult {
+  secure_url: string;
+}
+
+interface AxiosErrorLike {
+  response?: { status?: number };
+  config?: { url?: string };
+  http_code?: number;
+  error?: { message?: string };
+  message?: string;
+}
+
 /**
  * Downloads Kick avatar and uploads it to Cloudinary
- * @param {string} kickAvatarUrl - Kick avatar URL
- * @param {string} userId - User ID for the file name
- * @returns {Promise<string>} - Cloudinary avatar URL
+ * @param kickAvatarUrl - Kick avatar URL
+ * @param userId - User ID for the file name
+ * @returns Cloudinary avatar URL (or the original URL on fallback)
  */
 async function uploadKickAvatarToCloudinary(
   kickAvatarUrl: string,
   userId: string
-) {
+): Promise<string> {
   try {
     // Check if Cloudinary is available
     if (!cloudinary) {
@@ -38,7 +47,7 @@ async function uploadKickAvatarToCloudinary(
     );
 
     // 1. Download the image from Kick with improved headers
-    const response: any = await axios.get(kickAvatarUrl, {
+    const response = await axios.get<ArrayBuffer>(kickAvatarUrl, {
       responseType: "arraybuffer",
       headers: {
         "User-Agent":
@@ -65,7 +74,7 @@ async function uploadKickAvatarToCloudinary(
     );
 
     // 3. Upload to Cloudinary
-    const result: any = await cloudinary.uploader.upload(dataUri, {
+    const result = (await cloudinary.uploader.upload(dataUri, {
       folder: "user-avatars",
       public_id: `avatar-user-${userId}`,
       overwrite: true,
@@ -74,18 +83,19 @@ async function uploadKickAvatarToCloudinary(
         { quality: "auto" },
         { format: "webp" },
       ],
-    });
+    })) as unknown as CloudinaryUploadResult;
 
     logger.info(`[Upload Avatar] Avatar uploaded successfully`);
     return result.secure_url;
-  } catch (error: any) {
-    logger.error("[Upload Avatar] Error processing avatar:", error.message);
+  } catch (error) {
+    const err = error as AxiosErrorLike;
+    logger.error(
+      "[Upload Avatar] Error processing avatar:",
+      err.message ?? error
+    );
 
     // If it is specifically a 403 error from Kick, it is likely a protected image
-    if (
-      error.response?.status === 403 &&
-      error.config?.url?.includes("kick.com")
-    ) {
+    if (err.response?.status === 403 && err.config?.url?.includes("kick.com")) {
       logger.warn(
         "[Upload Avatar] Kick.com blocked download (protected image), using original URL"
       );
@@ -94,11 +104,11 @@ async function uploadKickAvatarToCloudinary(
 
     // For other errors, also use fallback
     logger.error("[Upload Avatar] Full error:", error);
-    if (error.http_code) {
-      logger.error("[Upload Avatar] HTTP Code:", error.http_code);
+    if (err.http_code) {
+      logger.error("[Upload Avatar] HTTP Code:", err.http_code);
     }
-    if (error.error?.message) {
-      logger.error("[Upload Avatar] Cloudinary Error:", error.error.message);
+    if (err.error?.message) {
+      logger.error("[Upload Avatar] Cloudinary Error:", err.error.message);
     }
     logger.warn("[Upload Avatar] Using original Kick URL as fallback");
     return kickAvatarUrl; // Fallback to original URL on error

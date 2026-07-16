@@ -1,19 +1,27 @@
+/**
+ * Backup system diagnostic helper.
+ *
+ * Requires `npm run build` first (loads compiled output from dist/).
+ * Usage: node scripts/diagnose-backups.js
+ */
+
 require("dotenv").config();
 
-const backupService = require("./src/services/backup.service");
-const backupScheduler = require("./src/services/backup.task");
-const logger = require("./src/utils/logger");
+const backupService = require("./dist/src/services/backup.service");
+const backupScheduler = require("./dist/src/services/backup.task");
+const fs = require("fs");
+const path = require("path");
 
 async function diagnoseBackups() {
-  console.log("🔍 Diagnóstico del Sistema de Backups\n");
+  console.log("Backup System Diagnostic\n");
 
-  // 1. Verificar configuración
-  console.log("📋 1. Configuración:");
+  // 1. Verify configuration
+  console.log("1. Configuration:");
   console.log("   BACKUP_ENABLED:", process.env.BACKUP_ENABLED);
   console.log("   BACKUP_TIME:", process.env.BACKUP_TIME);
   console.log(
     "   BACKUP_GITHUB_TOKEN:",
-    process.env.BACKUP_GITHUB_TOKEN ? "✅ Configurado" : "❌ Faltante"
+    process.env.BACKUP_GITHUB_TOKEN ? "Configured" : "Missing"
   );
   console.log("   BACKUP_GITHUB_REPO_URL:", process.env.BACKUP_GITHUB_REPO_URL);
   console.log(
@@ -22,50 +30,46 @@ async function diagnoseBackups() {
   );
   console.log("");
 
-  // 2. Verificar scheduler
-  console.log("⏰ 2. Scheduler:");
+  // 2. Verify scheduler
+  console.log("2. Scheduler:");
   try {
     backupScheduler.start();
-    console.log("   ✅ Scheduler inicializado correctamente");
+    console.log("   Scheduler initialized successfully");
   } catch (error) {
-    console.log("   ❌ Error inicializando scheduler:", error.message);
+    console.log("   Error initializing scheduler:", error.message);
   }
   console.log("");
 
-  // 3. Verificar directorios
-  console.log("📁 3. Directorios:");
-  const fs = require("fs");
-  const path = require("path");
-
+  // 3. Verify directories
+  console.log("3. Directories:");
   const localPath = path.join(__dirname, "backups/local");
   const githubPath = path.join(__dirname, "backups/github");
 
   console.log(
     "   Local path:",
     localPath,
-    fs.existsSync(localPath) ? "✅ Existe" : "❌ No existe"
+    fs.existsSync(localPath) ? "Exists" : "Missing"
   );
   console.log(
     "   GitHub path:",
     githubPath,
-    fs.existsSync(githubPath) ? "✅ Existe" : "❌ No existe"
+    fs.existsSync(githubPath) ? "Exists" : "Missing"
   );
 
-  // Verificar si el repo de GitHub está inicializado
   const gitPath = path.join(githubPath, ".git");
   console.log(
     "   GitHub .git:",
     gitPath,
-    fs.existsSync(gitPath) ? "✅ Inicializado" : "❌ No inicializado"
+    fs.existsSync(gitPath) ? "Initialized" : "Not initialized"
   );
   console.log("");
 
-  // 4. Verificar backups existentes
-  console.log("📦 4. Backups existentes:");
+  // 4. Verify existing backups
+  console.log("4. Existing backups:");
   try {
     const backups = await backupService.listBackups();
     if (backups.length > 0) {
-      console.log("   ✅ Encontrados", backups.length, "backups:");
+      console.log("   Found", backups.length, "backups:");
       backups.slice(-3).forEach((backup) => {
         console.log(
           "     -",
@@ -74,54 +78,54 @@ async function diagnoseBackups() {
         );
       });
     } else {
-      console.log("   ⚠️ No se encontraron backups");
+      console.log("   No backups found");
     }
   } catch (error) {
-    console.log("   ❌ Error listando backups:", error.message);
+    console.log("   Error listing backups:", error.message);
   }
   console.log("");
 
-  // 5. Probar backup manual (sin ejecutar realmente)
-  console.log("🧪 5. Test de configuración:");
+  // 5. Configuration test
+  console.log("5. Configuration test:");
   if (process.env.BACKUP_ENABLED === "true") {
-    console.log("   ✅ Backups habilitados");
+    console.log("   Backups enabled");
   } else {
-    console.log("   ❌ Backups deshabilitados (BACKUP_ENABLED != true)");
+    console.log("   Backups disabled (BACKUP_ENABLED != true)");
   }
 
   if (process.env.BACKUP_GITHUB_TOKEN) {
-    console.log("   ✅ Token de GitHub configurado");
+    console.log("   GitHub token configured");
   } else {
-    console.log("   ❌ Token de GitHub faltante");
+    console.log("   GitHub token missing");
   }
 
-  // 6. Verificar estado del repositorio GitHub
-  console.log("📊 6. Estado del repositorio GitHub:");
+  // 6. Verify GitHub repository state
+  console.log("6. GitHub repository state:");
   if (fs.existsSync(gitPath)) {
     try {
       const { execFileSync } = require("child_process");
-      // Ruta absoluta de git para evitar inyección vía PATH (S4036)
+      // Absolute git path to avoid PATH injection (S4036)
       const gitBin = process.platform === "win32" ? "git" : "/usr/bin/git";
       const lastCommit = execFileSync(gitBin, ["log", "-1", "--oneline"], {
         cwd: githubPath,
         encoding: "utf8",
       }).trim();
-      console.log("   ✅ Último commit:", lastCommit);
+      console.log("   Last commit:", lastCommit);
 
       const status = execFileSync(gitBin, ["status", "--porcelain"], {
         cwd: githubPath,
         encoding: "utf8",
       }).trim();
-      console.log("   Estado del repo:", status || "Limpio");
+      console.log("   Repo status:", status || "Clean");
     } catch (error) {
-      console.log("   ❌ Error verificando repo:", error.message);
+      console.log("   Error verifying repo:", error.message);
     }
   } else {
-    console.log("   ❌ Repositorio no inicializado");
+    console.log("   Repository not initialized");
   }
   console.log("");
 
-  console.log("\n🎯 Diagnóstico completado");
+  console.log("\nDiagnostic completed");
 }
 
 diagnoseBackups().catch(console.error);

@@ -1,47 +1,51 @@
-const express = require("express");
-const cookieParser = require("cookie-parser");
-const customCors = require("./src/middleware/cors.middleware");
-const {
+import express, {
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
+import cookieParser from "cookie-parser";
+import customCors from "./src/middleware/cors.middleware";
+import {
   notFoundHandler,
   errorHandler,
-} = require("./src/middleware/errorHandler.middleware");
-const { sequelize } = require("./src/models");
-const config = require("./config");
-const logger = require("./src/utils/logger");
+} from "./src/middleware/errorHandler.middleware";
+import { sequelize } from "./src/models";
+import config from "./config";
+import logger from "./src/utils/logger";
 
 // Services
-const tokenRefreshService = require("./src/services/tokenRefresh.service");
-const VipCleanupTask = require("./src/services/vipCleanup.task");
-const botMaintenanceService = require("./src/services/botMaintenance.service");
-const LeaderboardSnapshotTask = require("./src/services/leaderboardSnapshot.task");
-const backupScheduler = require("./src/services/backup.task");
-const discordBotService = require("./src/services/discordBot.service");
-const kickBotAutoSendService = require("./src/services/kickBotAutoSend.service");
-const dbCleanupTask = require("./src/services/dbCleanup.task");
+import tokenRefreshService from "./src/services/tokenRefresh.service";
+import VipCleanupTask from "./src/services/vipCleanup.task";
+import botMaintenanceService from "./src/services/botMaintenance.service";
+import LeaderboardSnapshotTask from "./src/services/leaderboardSnapshot.task";
+import backupScheduler from "./src/services/backup.task";
+import discordBotService from "./src/services/discordBot.service";
+import kickBotAutoSendService from "./src/services/kickBotAutoSend.service";
+import dbCleanupTask from "./src/services/dbCleanup.task";
 
 // Routes
-const authRoutes = require("./src/routes/auth.routes");
-const usuariosRoutes = require("./src/routes/usuarios.routes");
-const productosRoutes = require("./src/routes/productos.routes");
-const canjesRoutes = require("./src/routes/canjes.routes");
-const historialPuntosRoutes = require("./src/routes/historialPuntos.routes");
-const kickWebhookRoutes = require("./src/routes/kickWebhook.routes");
-const kickSubscriptionRoutes = require("./src/routes/kickSubscription.routes");
-const kickPointsConfigRoutes = require("./src/routes/kickPointsConfig.routes");
-const kickBroadcasterRoutes = require("./src/routes/kickBroadcaster.routes");
-const kickAdminRoutes = require("./src/routes/kickAdmin.routes");
-const kickBotCommandsRoutes = require("./src/routes/kickBotCommands.routes");
-const leaderboardRoutes = require("./src/routes/leaderboard.routes");
-const promocionesRoutes = require("./src/routes/promociones.routes");
-const broadcasterInfoRoutes = require("./src/routes/broadcasterInfo.routes");
-const notificacionesRoutes = require("./src/routes/notificaciones.routes");
+import authRoutes from "./src/routes/auth.routes";
+import usuariosRoutes from "./src/routes/usuarios.routes";
+import productosRoutes from "./src/routes/productos.routes";
+import canjesRoutes from "./src/routes/canjes.routes";
+import historialPuntosRoutes from "./src/routes/historialPuntos.routes";
+import kickWebhookRoutes from "./src/routes/kickWebhook.routes";
+import kickSubscriptionRoutes from "./src/routes/kickSubscription.routes";
+import kickPointsConfigRoutes from "./src/routes/kickPointsConfig.routes";
+import kickBroadcasterRoutes from "./src/routes/kickBroadcaster.routes";
+import kickAdminRoutes from "./src/routes/kickAdmin.routes";
+import kickBotCommandsRoutes from "./src/routes/kickBotCommands.routes";
+import leaderboardRoutes from "./src/routes/leaderboard.routes";
+import promocionesRoutes from "./src/routes/promociones.routes";
+import broadcasterInfoRoutes from "./src/routes/broadcasterInfo.routes";
+import notificacionesRoutes from "./src/routes/notificaciones.routes";
 
 const app = express();
 
 // Disable X-Powered-By header to avoid revealing framework info
 app.disable("x-powered-by");
 
-app.get("/", (req, res) => {
+app.get("/", (_req: Request, res: Response) => {
   res.json({ service: "luisardito-shop-backend", status: "ok" });
 });
 
@@ -54,16 +58,19 @@ app.use(express.json());
 app.use("/assets", express.static("assets"));
 
 // Webhook-specific middleware with optimized logging
-app.use("/api/kick-webhook", (req, res, next) => {
-  const hasKickHeaders = Object.keys(req.headers).some((key) =>
-    key.toLowerCase().startsWith("kick-event")
-  );
+app.use(
+  "/api/kick-webhook",
+  (req: Request, _res: Response, next: NextFunction) => {
+    const hasKickHeaders = Object.keys(req.headers).some((key) =>
+      key.toLowerCase().startsWith("kick-event")
+    );
 
-  if (hasKickHeaders) {
-    logger.info("[WEBHOOK] New Kick request:", req.method, req.originalUrl);
+    if (hasKickHeaders) {
+      logger.info("[WEBHOOK] New Kick request:", req.method, req.originalUrl);
+    }
+    next();
   }
-  next();
-});
+);
 
 // Main routes
 app.use("/api/auth", authRoutes);
@@ -83,7 +90,7 @@ app.use("/api/broadcaster", broadcasterInfoRoutes); // Public route for broadcas
 app.use("/api/notificaciones", notificacionesRoutes); // Notifications route
 
 // Health endpoint for liveness/readiness checks
-app.get("/health", (req, res) => {
+app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({ status: "ok" });
 });
 
@@ -92,7 +99,7 @@ app.use(notFoundHandler); // catches unmatched routes
 app.use(errorHandler); // last middleware, 4-arg error handler
 
 // Sync models and start server with DB connection retries
-const start = async () => {
+const start = async (): Promise<void> => {
   const retries = Number(process.env.DB_CONNECT_RETRIES || 30);
   const delayMs = Number(process.env.DB_CONNECT_RETRY_DELAY_MS || 2000);
 
@@ -102,8 +109,11 @@ const start = async () => {
       await sequelize.authenticate();
       connected = true;
       break;
-    } catch (err) {
-      const code = err?.parent?.code || err?.name || "UNKNOWN_ERROR";
+    } catch (err: unknown) {
+      const code =
+        (err as { parent?: { code?: string }; name?: string })?.parent?.code ||
+        (err as { name?: string })?.name ||
+        "UNKNOWN_ERROR";
       logger.error(
         `DB connection failed (attempt ${attempt}/${retries}) [${code}]. Retrying in ${delayMs}ms...`
       );
@@ -163,14 +173,14 @@ const start = async () => {
         logger.info(`Server listening on http://localhost:${config.port}`);
       }
     });
-  } catch (err) {
+  } catch (err: unknown) {
     logger.error("Error synchronizing models:", err);
     process.exit(1);
   }
 };
 
 if (require.main === module) {
-  start();
+  void start();
 }
 
-module.exports = app;
+export = app;

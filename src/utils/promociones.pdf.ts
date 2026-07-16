@@ -1,15 +1,28 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import PDFDocument from "pdfkit";
 import logger from "./logger";
 
+interface PromocionEstadistica {
+  id: number;
+  codigo: string | null;
+  nombre: string;
+  titulo: string;
+  descripcion: string | null;
+  tipo: string;
+  tipo_descuento: string;
+  valor_descuento: number;
+  estado: string;
+  total_usos: string | number;
+  puntos_descontados: string | number;
+}
+
 /**
  * Generate PDF with promotions report
- * @param {Array} promociones - Array of promotions with aggregated data
- * @returns {Promise<Buffer>} - Buffer of the generated PDF
+ * @param promociones - Array of promotions with aggregated data
+ * @returns Buffer of the generated PDF
  */
-async function generarPDFPromociones(promociones: any) {
+async function generatePromotionsPDF(
+  promociones: PromocionEstadistica[]
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
       logger.info(
@@ -22,7 +35,7 @@ async function generarPDFPromociones(promociones: any) {
         bufferPages: false, // Disabled to avoid pagination issues
       });
 
-      const buffers: any[] = [];
+      const buffers: Buffer[] = [];
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => {
         const pdfData = Buffer.concat(buffers);
@@ -65,21 +78,22 @@ async function generarPDFPromociones(promociones: any) {
 
       const totalPromociones = promociones.length;
       const promocionesActivas = promociones.filter(
-        (p: any) => p.estado === "activo"
+        (p) => p.estado === "activo"
       ).length;
       const promocionesProgramadas = promociones.filter(
-        (p: any) => p.estado === "programado"
+        (p) => p.estado === "programado"
       ).length;
       const promocionesExpiradas = promociones.filter(
-        (p: any) => p.estado === "expirado"
+        (p) => p.estado === "expirado"
       ).length;
 
       let totalUsos = 0;
       let totalPuntosDescontados = 0;
 
-      promociones.forEach((promo: any) => {
-        const usos = Number.parseInt(promo.total_usos) || 0;
-        const puntos = Number.parseInt(promo.puntos_descontados) || 0;
+      promociones.forEach((promo) => {
+        const usos = Number.parseInt(String(promo.total_usos), 10) || 0;
+        const puntos =
+          Number.parseInt(String(promo.puntos_descontados), 10) || 0;
         totalUsos += usos;
         totalPuntosDescontados += puntos;
       });
@@ -151,7 +165,7 @@ async function generarPDFPromociones(promociones: any) {
         logger.debug(
           `[PDF Generator] Iterating over ${promociones.length} promotions`
         );
-        promociones.forEach((promo: any, index: number) => {
+        promociones.forEach((promo, index) => {
           logger.debug(
             `[PDF Generator] Processing promotion ${index + 1}: ${promo.titulo || promo.nombre}`
           );
@@ -182,8 +196,9 @@ async function generarPDFPromociones(promociones: any) {
           const estado = promo.estado || "N/A";
           const tipoDesc = promo.tipo_descuento || "N/A";
           const valorDesc = promo.valor_descuento || 0;
-          const usos = Number.parseInt(promo.total_usos) || 0;
-          const puntosDesc = Number.parseInt(promo.puntos_descontados) || 0;
+          const usos = Number.parseInt(String(promo.total_usos), 10) || 0;
+          const puntosDesc =
+            Number.parseInt(String(promo.puntos_descontados), 10) || 0;
 
           // Determine color based on status
           let estadoColor = "#000000";
@@ -239,7 +254,7 @@ async function generarPDFPromociones(promociones: any) {
 
       doc.fontSize(8).font("Helvetica-Oblique").fillColor("#999999");
 
-      doc.text("Luisardito Shop - Sistema de Promociones", 50, footerY, {
+      doc.text("Luisardito Shop - Promotions System", 50, footerY, {
         align: "center",
         width: 495,
         continued: false,
@@ -248,10 +263,10 @@ async function generarPDFPromociones(promociones: any) {
       logger.info("[PDF Generator] PDF completed successfully");
       // End document
       doc.end();
-    } catch (error: any) {
+    } catch (error) {
       reject(error);
     }
   });
 }
 
-export = generarPDFPromociones;
+export = generatePromotionsPDF;

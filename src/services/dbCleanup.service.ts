@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// TEMPORARY eslint override — to be removed in the typing pass
-
 import { Op } from "sequelize";
 import logger from "../utils/logger";
 import KickWebhookEvent from "../models/kickWebhookEvent.model";
@@ -43,16 +40,18 @@ class DbCleanupService {
   // historial_puntos - clean JSON data and old chat records
   static async cleanHistorialPuntos() {
     // 1. Nullify kick_event_data in records > 30 days
-    const [, nullifiedMeta]: any = await sequelize.query(
+    const [, nullifiedMeta] = await sequelize.query(
       "UPDATE historial_puntos SET kick_event_data = NULL WHERE kick_event_data IS NOT NULL AND fecha < DATE_SUB(NOW(), INTERVAL 30 DAY)"
     );
-    const nullified = nullifiedMeta?.affectedRows || 0;
+    const nullified =
+      (nullifiedMeta as { affectedRows?: number })?.affectedRows || 0;
     // 2. Delete chat-type records > 90 days (the most numerous)
     //    Subs, follows, redemptions, rewards records are kept
-    const [, deletedMeta]: any = await sequelize.query(
+    const [, deletedMeta] = await sequelize.query(
       "DELETE FROM historial_puntos WHERE concepto LIKE 'Mensaje en chat%' AND fecha < DATE_SUB(NOW(), INTERVAL 90 DAY) LIMIT 50000"
     );
-    const deletedChat = deletedMeta?.affectedRows || 0;
+    const deletedChat =
+      (deletedMeta as { affectedRows?: number })?.affectedRows || 0;
     return { nullified_json: nullified, deleted_chat_records: deletedChat };
   }
   // notificaciones - read > 60 days, unread > 120 days
@@ -89,7 +88,10 @@ class DbCleanupService {
   }
   // Run ALL cleanups
   static async runAll() {
-    const results: any = {};
+    const results: Record<
+      string,
+      { error?: string } & Record<string, number>
+    > & { error?: string } = {};
     try {
       logger.info("[DB-CLEANUP] Starting database cleanup...");
       results.webhookEvents = await this.cleanKickWebhookEvents();
@@ -123,9 +125,10 @@ class DbCleanupService {
           " revoked/expired deleted"
       );
       logger.info("[DB-CLEANUP] Database cleanup completed");
-    } catch (error: any) {
-      logger.error("[DB-CLEANUP] Error during cleanup:", error);
-      results.error = error.message;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("[DB-CLEANUP] Error during cleanup:", msg);
+      results.error = msg;
     }
     return results;
   }
