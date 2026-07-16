@@ -44,7 +44,11 @@ const registerLocal = asyncHandler(async (req: any, res: any) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const user: any = await Usuario.create({ nickname, email, password_hash: hash });
+    const user: any = await Usuario.create({
+      nickname,
+      email,
+      password_hash: hash,
+    });
     res.status(201).json({ message: "User created", userId: user.id });
   } catch (err: any) {
     if (err instanceof AppError) throw err;

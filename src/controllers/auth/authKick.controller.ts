@@ -209,18 +209,19 @@ async function persistBroadcasterToken(
   }
 
   // Save or update token
-  const [broadcasterToken, created]: any = await KickBroadcasterToken.findOrCreate({
-    where: { kick_user_id: kickUserId },
-    defaults: {
-      kick_user_id: kickUserId,
-      kick_username: kickUser.name,
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_expires_at: tokenExpiresAt,
-      is_active: true,
-      auto_subscribed: false,
-    },
-  });
+  const [broadcasterToken, created]: any =
+    await KickBroadcasterToken.findOrCreate({
+      where: { kick_user_id: kickUserId },
+      defaults: {
+        kick_user_id: kickUserId,
+        kick_username: kickUser.name,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        token_expires_at: tokenExpiresAt,
+        is_active: true,
+        auto_subscribed: false,
+      },
+    });
 
   if (!created) {
     await broadcasterToken.update({
