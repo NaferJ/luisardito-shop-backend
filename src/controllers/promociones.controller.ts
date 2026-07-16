@@ -270,6 +270,8 @@ function buildUpdatePayload(
     codigo: campos.codigo ? campos.codigo.toUpperCase() : promocion.codigo,
     nombre: campos.nombre || promocion.nombre,
     titulo: campos.titulo || promocion.titulo,
+    // descripcion is nullable in the model (allowNull: true); null is a valid
+    // value for clearing it, so we keep the !== undefined check instead of ??.
     descripcion:
       campos.descripcion !== undefined
         ? campos.descripcion
@@ -278,37 +280,20 @@ function buildUpdatePayload(
       "producto" | "categoria" | "global" | "por_cantidad",
     tipo_descuento: (campos.tipo_descuento || promocion.tipo_descuento) as
       "porcentaje" | "fijo" | "2x1" | "3x2",
-    valor_descuento:
-      campos.valor_descuento !== undefined
-        ? campos.valor_descuento
-        : promocion.valor_descuento,
-    descuento_maximo:
-      campos.descuento_maximo !== undefined
-        ? campos.descuento_maximo
-        : promocion.descuento_maximo,
+    valor_descuento: campos.valor_descuento ?? promocion.valor_descuento,
+    descuento_maximo: campos.descuento_maximo ?? promocion.descuento_maximo,
     fecha_inicio: new Date(nuevaFechaInicio),
     fecha_fin: new Date(nuevaFechaFin),
     cantidad_usos_maximos:
-      campos.cantidad_usos_maximos !== undefined
-        ? campos.cantidad_usos_maximos
-        : promocion.cantidad_usos_maximos,
+      campos.cantidad_usos_maximos ?? promocion.cantidad_usos_maximos,
     usos_por_usuario: campos.usos_por_usuario || promocion.usos_por_usuario,
-    minimo_puntos:
-      campos.minimo_puntos !== undefined
-        ? campos.minimo_puntos
-        : promocion.minimo_puntos,
-    requiere_codigo:
-      campos.requiere_codigo !== undefined
-        ? campos.requiere_codigo
-        : promocion.requiere_codigo,
-    prioridad:
-      campos.prioridad !== undefined ? campos.prioridad : promocion.prioridad,
+    minimo_puntos: campos.minimo_puntos ?? promocion.minimo_puntos,
+    requiere_codigo: campos.requiere_codigo ?? promocion.requiere_codigo,
+    prioridad: campos.prioridad ?? promocion.prioridad,
     estado: (campos.estado || promocion.estado) as
       "activo" | "programado" | "expirado" | "inactivo" | "pausado",
     aplica_acumulacion:
-      campos.aplica_acumulacion !== undefined
-        ? campos.aplica_acumulacion
-        : promocion.aplica_acumulacion,
+      campos.aplica_acumulacion ?? promocion.aplica_acumulacion,
     metadata_visual: (campos.metadata_visual ||
       promocion.metadata_visual) as Record<string, unknown> | null,
     reglas_aplicacion: (campos.reglas_aplicacion ||

@@ -97,10 +97,13 @@ const callbackKickBot = async (req: Request, res: Response) => {
       throw new Error("Could not fetch bot data from Kick");
     }
 
+    const botUserId = String(botUser.id);
+    const botUsername = String(botUser.username || `bot-${botUser.id}`);
+
     // Save bot token
     await KickBotTokenService.saveBotToken({
-      kick_user_id: String(botUser.id),
-      kick_username: String(botUser.username || `bot-${botUser.id}`),
+      kick_user_id: botUserId,
+      kick_username: botUsername,
       access_token,
       refresh_token,
       token_expires_at: tokenExpiresAt,
@@ -121,7 +124,7 @@ const callbackKickBot = async (req: Request, res: Response) => {
         refreshToken: refresh_token,
         expiresAt: Date.now() + expires_in * 1000,
         refreshExpiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // ~1 year
-        username: String(botUser.username || `bot-${botUser.id}`),
+        username: botUsername,
       };
       await fs.writeFile(tokensFile, JSON.stringify(tokensForFile, null, 2));
       logger.info("[Kick OAuth][callbackKickBot] Tokens saved to tokens.json");

@@ -496,12 +496,9 @@ class KickBotCommandHandlerService {
     includeWatchtime: boolean = false
   ): Promise<Usuario | null> {
     // Discord-specific logic: detect mentions
-    if (
-      platform === "discord" &&
-      messageContext &&
-      lookupArg.match(/^<@!?(\d+)>$/)
-    ) {
-      const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)![1];
+    const mentionMatch = /^<@!?(\d+)>$/.exec(lookupArg);
+    if (platform === "discord" && messageContext && mentionMatch) {
+      const mentionedUserId = mentionMatch[1];
       logger.info(
         `[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`
       );
@@ -550,7 +547,7 @@ class KickBotCommandHandlerService {
    */
   buildTargetNotFoundMessage(lookupArg: string, type: string): string {
     let displayName = lookupArg.replace(/^@/, "");
-    if (lookupArg.match(/^<@!?(\d+)>/)) {
+    if (/^<@!?(\d+)>/.exec(lookupArg)) {
       displayName = "mentioned user";
     }
     return `${displayName} does not exist or has no registered ${type}.`;

@@ -50,7 +50,7 @@ class BotrixMigrationService {
 
       // Regex to detect the pattern: "@user has X points."
       const pointsRegex = /@(\w+)\s+tiene\s+(\d+)\s+puntos\./i;
-      const match = content.match(pointsRegex);
+      const match = pointsRegex.exec(content);
 
       if (!match) {
         return { processed: false, reason: "Pattern not matched" };
@@ -251,7 +251,7 @@ class BotrixMigrationService {
         `@(\\w+)\\s+ha\\s+pasado\\s+((?:${timeUnit.source})+)viendo\\s+(?:este\\s+canal|el\\s+stream)`,
         "i"
       );
-      const match = content.match(watchtimeRegex);
+      const match = watchtimeRegex.exec(content);
 
       if (!match) {
         return { processed: false, reason: "Pattern not matched" };
@@ -358,8 +358,13 @@ class BotrixMigrationService {
     usuario: Usuario,
     totalWatchtimeMinutes: number,
     kickUsername: string,
-    breakdown: WatchtimeBreakdown = { days: 0, hours: 0, minutes: 0 }
+    breakdown: WatchtimeBreakdown | null = null
   ) {
+    const resolvedBreakdown: WatchtimeBreakdown = breakdown ?? {
+      days: 0,
+      hours: 0,
+      minutes: 0,
+    };
     const transaction = await sequelize.transaction();
 
     try {
@@ -404,7 +409,7 @@ class BotrixMigrationService {
         nickname: usuario.nickname,
         kick_username: kickUsername,
         watchtime_minutes_migrated: totalWatchtimeMinutes,
-        watchtime_breakdown: breakdown,
+        watchtime_breakdown: resolvedBreakdown,
         total_watchtime_after_migration: userWatchtime.total_watchtime_minutes,
         migrated_at: new Date(),
       };

@@ -20,7 +20,8 @@ const CANJES_COUNT_ATTRIBUTES: {
 };
 
 function parseSortOrder(sortParam: unknown): Array<[string, string]> {
-  switch ((sortParam || "").toString().toLowerCase()) {
+  const sort = typeof sortParam === "string" ? sortParam.toLowerCase() : "";
+  switch (sort) {
     case "price_asc":
     case "precio_asc":
       return [["precio", "ASC"]];

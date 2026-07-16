@@ -136,6 +136,44 @@ async function upsertSubscription(
 }
 
 /**
+ * Process the subscription response from Kick, upserting each valid
+ * subscription to the database and collecting errors.
+ * @param subscriptionsData - Subscription entries returned by Kick
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Created subscriptions and errors
+ */
+async function processAppSubscriptions(
+  subscriptionsData: KickSubscriptionData[],
+  broadcasterUserId: string
+): Promise<{
+  createdSubscriptions: KickEventSubscription[];
+  errors: { event: string; error: string }[];
+}> {
+  const createdSubscriptions: KickEventSubscription[] = [];
+  const errors: { event: string; error: string }[] = [];
+
+  for (const sub of subscriptionsData) {
+    if (!sub.subscription_id || sub.error) {
+      if (sub.error) {
+        errors.push({ event: sub.name, error: sub.error });
+        logger.error(`[App Webhook] ${sub.name}:`, sub.error);
+      }
+      continue;
+    }
+    try {
+      const localSub = await upsertSubscription(sub, broadcasterUserId);
+      createdSubscriptions.push(localSub);
+    } catch (dbError) {
+      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
+      errors.push({ event: sub.name, error: msg });
+    }
+  }
+
+  return { createdSubscriptions, errors };
+}
+
+/**
  * Subscribe to all events using App Access Token
  * @param broadcasterUserId - Broadcaster ID
  * @returns Subscription result
@@ -199,27 +237,10 @@ async function subscribeToEventsWithAppToken(
 
     // 4. Process response and save subscriptions
     const subscriptionsData = response.data.data || [];
-    const createdSubscriptions: KickEventSubscription[] = [];
-    const errors: { event: string; error: string }[] = [];
-
-    for (const sub of subscriptionsData) {
-      if (!sub.subscription_id || sub.error) {
-        if (sub.error) {
-          errors.push({ event: sub.name, error: sub.error });
-          logger.error(`[App Webhook] ${sub.name}:`, sub.error);
-        }
-        continue;
-      }
-      try {
-        const localSub = await upsertSubscription(sub, broadcasterUserId);
-        createdSubscriptions.push(localSub);
-      } catch (dbError) {
-        const msg =
-          dbError instanceof Error ? dbError.message : String(dbError);
-        logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
-        errors.push({ event: sub.name, error: msg });
-      }
-    }
+    const { createdSubscriptions, errors } = await processAppSubscriptions(
+      subscriptionsData,
+      broadcasterUserId
+    );
 
     const result: SubscribeResult = {
       success: createdSubscriptions.length > 0,

@@ -144,22 +144,7 @@ class DiscordBotService {
 
       // If we have a context message, reply in that channel
       if (message) {
-        if (typeof content === "string") {
-          await message.reply(content);
-        } else if (content && typeof content === "object") {
-          // Check if it is an object with embeds (multiple embeds)
-          if (content.embeds) {
-            await message.reply({ embeds: content.embeds as never[] });
-          }
-          // Check if it is an individual embed (backwards compatibility)
-          else if (content.data) {
-            await message.reply({ embeds: [content as never] });
-          } else {
-            await message.reply(String(content));
-          }
-        } else {
-          await message.reply(String(content));
-        }
+        await this._replyWithContent(message, content);
         logger.info(`[Discord Bot] Message sent as reply`);
         return { ok: true };
       }
@@ -170,8 +155,38 @@ class DiscordBotService {
       return { ok: false, error: "No message context" };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[Discord Bot] Error sending message:", error);
+      logger.error("[Discord Bot] Error sending message:", msg);
       return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * Send content as a reply to a Discord message, handling both string and
+   * embed object payloads (multiple embeds, single embed, or plain object).
+   * @param message - Discord message to reply to
+   * @param content - Message content (string or embed object)
+   */
+  private async _replyWithContent(
+    message: Message,
+    content: string | EmbedContent
+  ): Promise<void> {
+    if (typeof content === "string") {
+      await message.reply(content);
+      return;
+    }
+    if (content && typeof content === "object") {
+      // Check if it is an object with embeds (multiple embeds)
+      if (content.embeds) {
+        await message.reply({ embeds: content.embeds as never[] });
+      }
+      // Check if it is an individual embed (backwards compatibility)
+      else if (content.data) {
+        await message.reply({ embeds: [content as never] });
+      } else {
+        await message.reply(JSON.stringify(content));
+      }
+    } else {
+      await message.reply(JSON.stringify(content));
     }
   }
 
@@ -190,35 +205,50 @@ class DiscordBotService {
       }
 
       const channel = await this.client.channels.fetch(channelId);
-      if (channel?.isTextBased()) {
-        const textChannel = channel as TextChannel;
-        if (typeof content === "string") {
-          await textChannel.send(content);
-        } else if (content && typeof content === "object") {
-          // Check if it is an object with embeds (multiple embeds)
-          if ((content as EmbedContent).embeds) {
-            await textChannel.send({
-              embeds: (content as EmbedContent).embeds as never[],
-            });
-          }
-          // Check if it is an individual embed (backwards compatibility)
-          else if ((content as EmbedContent).data) {
-            await textChannel.send({ embeds: [content as never] });
-          } else {
-            await textChannel.send(String(content));
-          }
-        } else {
-          await textChannel.send(String(content));
-        }
-        logger.info(`[Discord Bot] Message sent to channel ${channelId}`);
-        return { ok: true };
-      } else {
+      if (!channel?.isTextBased()) {
         return { ok: false, error: "Invalid channel" };
       }
+
+      const textChannel = channel as TextChannel;
+      await this._sendContentToChannel(textChannel, content);
+      logger.info(`[Discord Bot] Message sent to channel ${channelId}`);
+      return { ok: true };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[Discord Bot] Error sending message to channel:", error);
+      logger.error("[Discord Bot] Error sending message to channel:", msg);
       return { ok: false, error: msg };
+    }
+  }
+
+  /**
+   * Send content to a text channel, handling both string and embed object
+   * payloads (multiple embeds, single embed, or plain object).
+   * @param textChannel - Discord text channel
+   * @param content - Message content (string or embed object)
+   */
+  private async _sendContentToChannel(
+    textChannel: TextChannel,
+    content: string | EmbedContent
+  ): Promise<void> {
+    if (typeof content === "string") {
+      await textChannel.send(content);
+      return;
+    }
+    if (content && typeof content === "object") {
+      // Check if it is an object with embeds (multiple embeds)
+      if ((content as EmbedContent).embeds) {
+        await textChannel.send({
+          embeds: (content as EmbedContent).embeds as never[],
+        });
+      }
+      // Check if it is an individual embed (backwards compatibility)
+      else if ((content as EmbedContent).data) {
+        await textChannel.send({ embeds: [content as never] });
+      } else {
+        await textChannel.send(JSON.stringify(content));
+      }
+    } else {
+      await textChannel.send(JSON.stringify(content));
     }
   }
 

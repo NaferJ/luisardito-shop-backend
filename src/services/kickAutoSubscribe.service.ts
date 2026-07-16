@@ -73,51 +73,77 @@ async function processSubscriptionResults(
   );
 
   for (const sub of subscriptionsData) {
-    if (sub.subscription_id && !sub.error) {
-      try {
-        let localSub = await KickEventSubscription.findOne({
-          where: { subscription_id: sub.subscription_id },
-        });
-
-        if (localSub) {
-          await localSub.update({
-            broadcaster_user_id: Number.parseInt(broadcasterUserId),
-            event_type: sub.name,
-            event_version: sub.version,
-            method: "webhook",
-            status: "active",
-          });
-          logger.info(
-            `[Auto Subscribe] ${sub.name} updated (ID: ${localSub.id})`
-          );
-        } else {
-          localSub = await KickEventSubscription.create({
-            subscription_id: sub.subscription_id,
-            broadcaster_user_id: Number.parseInt(broadcasterUserId),
-            event_type: sub.name,
-            event_version: sub.version,
-            method: "webhook",
-            status: "active",
-          });
-          logger.info(
-            `[Auto Subscribe] ${sub.name} created (ID: ${localSub.id})`
-          );
-        }
-
-        createdSubscriptions.push(localSub);
-      } catch (dbError: unknown) {
-        const msg =
-          dbError instanceof Error ? dbError.message : String(dbError);
-        logger.error(`[Auto Subscribe] DB error ${sub.name}:`, msg);
-        errors.push({ event: sub.name, error: msg });
-      }
-    } else if (sub.error) {
-      errors.push({ event: sub.name, error: sub.error });
-      logger.error(`[Auto Subscribe] ${sub.name}:`, sub.error);
+    const result = await processSingleSubscription(sub, broadcasterUserId);
+    if (result.subscription) {
+      createdSubscriptions.push(result.subscription);
+    }
+    if (result.error) {
+      errors.push(result.error);
     }
   }
 
   return { createdSubscriptions, errors };
+}
+
+/**
+ * Process a single subscription entry from Kick: upsert it to the database
+ * or record an error if Kick reported one or the DB write failed.
+ * @param sub - Subscription entry returned by Kick
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns The created/updated subscription and/or an error entry
+ */
+async function processSingleSubscription(
+  sub: KickSubscriptionData,
+  broadcasterUserId: string
+): Promise<{
+  subscription: KickEventSubscription | null;
+  error: { event: string; error: string } | null;
+}> {
+  if (sub.subscription_id && !sub.error) {
+    try {
+      let localSub = await KickEventSubscription.findOne({
+        where: { subscription_id: sub.subscription_id },
+      });
+
+      if (localSub) {
+        await localSub.update({
+          broadcaster_user_id: Number.parseInt(broadcasterUserId),
+          event_type: sub.name,
+          event_version: sub.version,
+          method: "webhook",
+          status: "active",
+        });
+        logger.info(
+          `[Auto Subscribe] ${sub.name} updated (ID: ${localSub.id})`
+        );
+      } else {
+        localSub = await KickEventSubscription.create({
+          subscription_id: sub.subscription_id,
+          broadcaster_user_id: Number.parseInt(broadcasterUserId),
+          event_type: sub.name,
+          event_version: sub.version,
+          method: "webhook",
+          status: "active",
+        });
+        logger.info(
+          `[Auto Subscribe] ${sub.name} created (ID: ${localSub.id})`
+        );
+      }
+
+      return { subscription: localSub, error: null };
+    } catch (dbError: unknown) {
+      const msg = dbError instanceof Error ? dbError.message : String(dbError);
+      logger.error(`[Auto Subscribe] DB error ${sub.name}:`, msg);
+      return { subscription: null, error: { event: sub.name, error: msg } };
+    }
+  }
+
+  if (sub.error) {
+    logger.error(`[Auto Subscribe] ${sub.name}:`, sub.error);
+    return { subscription: null, error: { event: sub.name, error: sub.error } };
+  }
+
+  return { subscription: null, error: null };
 }
 
 async function autoSubscribeToEvents(
@@ -318,33 +344,48 @@ async function performBroadcasterRefresh(
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("[Token Refresh] Error renewing token:", msg);
-    if (error && typeof error === "object" && "response" in error) {
-      const axiosError = error as {
-        response: { status: number; data: unknown };
-      };
-      logger.error(
-        "[Token Refresh] API Error:",
-        axiosError.response.status,
-        axiosError.response.data
-      );
-
-      if (
-        axiosError.response.status === 400 ||
-        axiosError.response.status === 401
-      ) {
-        try {
-          await broadcasterToken.update({
-            is_active: false,
-            subscription_error: "Token expired and could not be refreshed",
-          });
-        } catch (dbError: unknown) {
-          const dbMsg =
-            dbError instanceof Error ? dbError.message : String(dbError);
-          logger.error("[Token Refresh] Error deactivating token:", dbMsg);
-        }
-      }
-    }
+    await handleRefreshError(error, broadcasterToken);
     return false;
+  }
+}
+
+/**
+ * Handle a token refresh error: log the API error details and deactivate
+ * the broadcaster token when Kick returns 400 or 401 (expired/invalid token).
+ * @param error - The caught error from the refresh attempt
+ * @param broadcasterToken - Broadcaster token instance
+ */
+async function handleRefreshError(
+  error: unknown,
+  broadcasterToken: KickBroadcasterToken
+): Promise<void> {
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return;
+  }
+
+  const axiosError = error as {
+    response: { status: number; data: unknown };
+  };
+  logger.error(
+    "[Token Refresh] API Error:",
+    axiosError.response.status,
+    axiosError.response.data
+  );
+
+  if (
+    axiosError.response.status === 400 ||
+    axiosError.response.status === 401
+  ) {
+    try {
+      await broadcasterToken.update({
+        is_active: false,
+        subscription_error: "Token expired and could not be refreshed",
+      });
+    } catch (dbError: unknown) {
+      const dbMsg =
+        dbError instanceof Error ? dbError.message : String(dbError);
+      logger.error("[Token Refresh] Error deactivating token:", dbMsg);
+    }
   }
 }
 

@@ -160,6 +160,31 @@ const updateConfig = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Updates a single config entry by key, returning the updated config or null.
+ */
+async function updateSingleConfig(configData: {
+  config_key?: string;
+  config_value?: number;
+  enabled?: boolean;
+}): Promise<KickPointsConfig | null> {
+  const { config_key, config_value, enabled } = configData;
+  if (!config_key) return null;
+
+  const config = await KickPointsConfig.findOne({
+    where: { config_key },
+  });
+
+  if (!config) return null;
+
+  const updateData: { config_value?: number; enabled?: boolean } = {};
+  if (config_value !== undefined) updateData.config_value = config_value;
+  if (enabled !== undefined) updateData.enabled = enabled;
+
+  await config.update(updateData);
+  return config;
+}
+
+/**
  * Updates multiple configurations at once
  */
 const updateMultipleConfigs = asyncHandler(
@@ -171,26 +196,11 @@ const updateMultipleConfigs = asyncHandler(
         throw new AppError("configs must be an array", 400);
       }
 
-      const updated = [];
+      const updated: KickPointsConfig[] = [];
 
       for (const configData of configs) {
-        const { config_key, config_value, enabled } = configData;
-
-        if (!config_key) continue;
-
-        const config = await KickPointsConfig.findOne({
-          where: { config_key },
-        });
-
-        if (config) {
-          const updateData: { config_value?: number; enabled?: boolean } = {};
-          if (config_value !== undefined)
-            updateData.config_value = config_value;
-          if (enabled !== undefined) updateData.enabled = enabled;
-
-          await config.update(updateData);
-          updated.push(config);
-        }
+        const config = await updateSingleConfig(configData);
+        if (config) updated.push(config);
       }
 
       return res.json({

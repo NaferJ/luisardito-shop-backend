@@ -326,6 +326,37 @@ const listarUsuarios = asyncHandler(async (req: Request, res: Response) => {
 // ============================================================================
 
 /**
+ * Resolves subscriber info for a user from KickUserTracking.
+ */
+async function resolveSubscriberInfo(userIdExt: string | null): Promise<{
+  is_subscriber: boolean;
+  is_active: boolean;
+  expires_at: Date | null;
+}> {
+  if (!userIdExt) {
+    return { is_subscriber: false, is_active: false, expires_at: null };
+  }
+
+  const userTracking = await KickUserTracking.findOne({
+    where: { kick_user_id: userIdExt },
+  });
+
+  if (!userTracking?.is_subscribed) {
+    return { is_subscriber: false, is_active: false, expires_at: null };
+  }
+
+  const now = new Date();
+  const expiresAt = userTracking.subscription_expires_at
+    ? new Date(userTracking.subscription_expires_at)
+    : null;
+  return {
+    is_subscriber: true,
+    is_active: !expiresAt || expiresAt > now,
+    expires_at: expiresAt,
+  };
+}
+
+/**
  * DEBUG: Get complete info for a specific user
  */
 const debugUsuario = asyncHandler(async (req: Request, res: Response) => {
@@ -362,29 +393,7 @@ const debugUsuario = asyncHandler(async (req: Request, res: Response) => {
     const userInstance = Usuario.build(usuario.toJSON());
 
     // Calculate subscriber info
-    let subscriberInfo = {
-      is_subscriber: false,
-      is_active: false,
-      expires_at: null,
-    };
-
-    if (usuario.user_id_ext) {
-      const userTracking = await KickUserTracking.findOne({
-        where: { kick_user_id: usuario.user_id_ext },
-      });
-
-      if (userTracking?.is_subscribed) {
-        const now = new Date();
-        const expiresAt = userTracking.subscription_expires_at
-          ? new Date(userTracking.subscription_expires_at)
-          : null;
-        subscriberInfo = {
-          is_subscriber: true,
-          is_active: !expiresAt || expiresAt > now,
-          expires_at: expiresAt,
-        };
-      }
-    }
+    const subscriberInfo = await resolveSubscriberInfo(usuario.user_id_ext);
 
     res.json({
       usuario: {
@@ -488,6 +497,44 @@ const hotfixActualizarRol = asyncHandler(
   }
 );
 
+/**
+ * Fetches updated Kick user data by external ID.
+ * Throws an AppError if the fetch fails or the user is not found.
+ */
+async function fetchKickUserData(
+  userIdExt: string
+): Promise<NonNullable<Awaited<ReturnType<typeof getKickUserData>>>> {
+  let kickUserData: Awaited<ReturnType<typeof getKickUserData>>;
+  try {
+    kickUserData = await getKickUserData(userIdExt);
+    logger.info(`[Sync Kick Info] Data fetched from Kick:`, {
+      name: kickUserData?.name,
+      user_id: kickUserData?.user_id,
+      profile_picture: kickUserData?.profile_picture ? "present" : "absent",
+    });
+  } catch (kickError) {
+    logger.error(
+      "[Sync Kick Info] Error fetching Kick data:",
+      kickError instanceof Error ? kickError.message : String(kickError)
+    );
+    throw new AppError(
+      "Could not fetch updated Kick data",
+      500,
+      kickError instanceof Error ? kickError.message : String(kickError)
+    );
+  }
+
+  if (!kickUserData) {
+    throw new AppError(
+      "User not found on Kick",
+      404,
+      "The user may have been deleted or is not public"
+    );
+  }
+
+  return kickUserData;
+}
+
 // Sync Kick info (avatar, username, etc.)
 const syncKickInfo = asyncHandler(async (req: Request, res: Response) => {
   try {
@@ -506,34 +553,7 @@ const syncKickInfo = asyncHandler(async (req: Request, res: Response) => {
       `[Sync Kick Info] Syncing data for user ${user.nickname} (ID: ${userId})`
     );
 
-    // Get updated Kick data using the external ID
-    let kickUserData: Awaited<ReturnType<typeof getKickUserData>>;
-    try {
-      kickUserData = await getKickUserData(user.user_id_ext);
-      logger.info(`[Sync Kick Info] Data fetched from Kick:`, {
-        name: kickUserData?.name,
-        user_id: kickUserData?.user_id,
-        profile_picture: kickUserData?.profile_picture ? "present" : "absent",
-      });
-    } catch (kickError) {
-      logger.error(
-        "[Sync Kick Info] Error fetching Kick data:",
-        kickError instanceof Error ? kickError.message : String(kickError)
-      );
-      throw new AppError(
-        "Could not fetch updated Kick data",
-        500,
-        kickError instanceof Error ? kickError.message : String(kickError)
-      );
-    }
-
-    if (!kickUserData) {
-      throw new AppError(
-        "User not found on Kick",
-        404,
-        "The user may have been deleted or is not public"
-      );
-    }
+    const kickUserData = await fetchKickUserData(user.user_id_ext);
 
     // Get Kick avatar
     const kickAvatarUrl = extractAvatarUrl(

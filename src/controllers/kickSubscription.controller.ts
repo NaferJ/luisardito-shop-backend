@@ -57,13 +57,76 @@ const getSubscriptions = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
+ * Subscription methods allowed by the Kick API
+ */
+const ALLOWED_METHODS = ["webhook", "websocket"];
+
+/**
+ * Validates the request body for createSubscriptions.
+ * Returns an AppError if validation fails, otherwise null.
+ */
+function validateCreateSubscriptionsBody(body: {
+  broadcaster_user_id?: unknown;
+  events?: unknown;
+  method?: string;
+}): AppError | null {
+  if (
+    !body.broadcaster_user_id ||
+    !body.events ||
+    !Array.isArray(body.events)
+  ) {
+    return new AppError(
+      "broadcaster_user_id and events (array) are required",
+      400
+    );
+  }
+  return null;
+}
+
+/**
+ * Stores successful subscriptions in the local database.
+ * Skips entries that have no subscription_id or an error.
+ */
+async function storeSubscriptionsLocally(
+  subscriptionsData: Array<{
+    subscription_id?: string;
+    name?: string;
+    version?: string | number;
+    error?: unknown;
+  }>,
+  broadcaster_user_id: string | number,
+  sanitizedMethod: string
+): Promise<KickEventSubscription[]> {
+  const createdSubscriptions: KickEventSubscription[] = [];
+
+  for (const sub of subscriptionsData) {
+    if (!sub.subscription_id || sub.error) continue;
+    try {
+      const localSub = await KickEventSubscription.create({
+        subscription_id: sub.subscription_id,
+        broadcaster_user_id: Number(broadcaster_user_id),
+        event_type: sub.name,
+        event_version: Number(sub.version),
+        method: sanitizedMethod,
+        status: "active",
+      });
+      createdSubscriptions.push(localSub);
+    } catch (dbError) {
+      logger.error(
+        "[Kick Subscription] Error saving subscription locally:",
+        dbError instanceof Error ? dbError.message : String(dbError)
+      );
+    }
+  }
+
+  return createdSubscriptions;
+}
+
+/**
  * Creates new Kick event subscriptions
  */
 const createSubscriptions = asyncHandler(
   async (req: Request, res: Response) => {
-    // Subscription methods allowed by the Kick API
-    const ALLOWED_METHODS = ["webhook", "websocket"];
-
     try {
       const { authorization } = req.headers;
       const { broadcaster_user_id, events, method = "webhook" } = req.body;
@@ -72,12 +135,8 @@ const createSubscriptions = asyncHandler(
         throw new AppError("Authorization token required", 401);
       }
 
-      if (!broadcaster_user_id || !events || !Array.isArray(events)) {
-        throw new AppError(
-          "broadcaster_user_id and events (array) are required",
-          400
-        );
-      }
+      const validationError = validateCreateSubscriptionsBody(req.body);
+      if (validationError) throw validationError;
 
       // Validate that method is an allowed value (prevent SSRF / injection)
       const sanitizedMethod = ALLOWED_METHODS.includes(method)
@@ -102,28 +161,11 @@ const createSubscriptions = asyncHandler(
 
       // Store successful subscriptions in the local database
       const subscriptionsData = response.data.data || [];
-      const createdSubscriptions = [];
-
-      for (const sub of subscriptionsData) {
-        if (sub.subscription_id && !sub.error) {
-          try {
-            const localSub = await KickEventSubscription.create({
-              subscription_id: sub.subscription_id,
-              broadcaster_user_id,
-              event_type: sub.name,
-              event_version: sub.version,
-              method: sanitizedMethod,
-              status: "active",
-            });
-            createdSubscriptions.push(localSub);
-          } catch (dbError) {
-            logger.error(
-              "[Kick Subscription] Error saving subscription locally:",
-              dbError instanceof Error ? dbError.message : String(dbError)
-            );
-          }
-        }
-      }
+      const createdSubscriptions = await storeSubscriptionsLocally(
+        subscriptionsData,
+        broadcaster_user_id,
+        sanitizedMethod
+      );
 
       return res.status(200).json({
         kick_response: response.data,

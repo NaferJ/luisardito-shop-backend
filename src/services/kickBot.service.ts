@@ -603,50 +603,61 @@ class KickBotService {
       }
 
       for (const record of records) {
-        const now = new Date();
-        const expiresAt = new Date(record.token_expires_at);
-        const expiresIn = expiresAt.getTime() - now.getTime();
-        const fortyFiveMinutes = 45 * 60 * 1000;
-
-        if (expiresIn < fortyFiveMinutes) {
-          const minutesLeft = Math.round(expiresIn / 1000 / 60);
-          logger.info(
-            `[KickBot] Token for ${record.kick_username} expires in ${minutesLeft} min, renewing...`
-          );
-
-          try {
-            await this.refreshToken(record);
-            logger.info(
-              `[KickBot] Token auto-renewed successfully for ${record.kick_username}`
-            );
-          } catch (error: unknown) {
-            const msg = error instanceof Error ? error.message : String(error);
-            logger.error(
-              `[KickBot] Error auto-renewing token for ${record.kick_username}:`,
-              msg
-            );
-
-            // If the refresh token expired, alert
-            const refreshErr = error as RefreshTokenError;
-            if (refreshErr.code === "REFRESH_TOKEN_EXPIRED") {
-              logger.error(
-                `[KickBot] ALERT: Refresh token expired for ${record.kick_username}. Re-authentication required.`
-              );
-              logger.error(
-                `[KickBot] Re-authenticate at: https://luisardito.shop/api/auth/kick-bot`
-              );
-            }
-          }
-        } else {
-          const minutesLeft = Math.round(expiresIn / 1000 / 60);
-          logger.info(
-            `[KickBot] Token for ${record.kick_username} still valid (${minutesLeft} min remaining)`
-          );
-        }
+        await this._autoRefreshRecord(record);
       }
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("[KickBot] Error in performAutoRefresh:", msg);
+    }
+  }
+
+  /**
+   * Checks a single token record and renews it if it is about to expire
+   * or already expired. Logs the result and alerts when the refresh token
+   * itself has expired (requires manual re-authorization).
+   * @param record - KickBotToken model instance
+   */
+  async _autoRefreshRecord(record: KickBotToken): Promise<void> {
+    const now = new Date();
+    const expiresAt = new Date(record.token_expires_at);
+    const expiresIn = expiresAt.getTime() - now.getTime();
+    const fortyFiveMinutes = 45 * 60 * 1000;
+
+    if (expiresIn >= fortyFiveMinutes) {
+      const minutesLeft = Math.round(expiresIn / 1000 / 60);
+      logger.info(
+        `[KickBot] Token for ${record.kick_username} still valid (${minutesLeft} min remaining)`
+      );
+      return;
+    }
+
+    const minutesLeft = Math.round(expiresIn / 1000 / 60);
+    logger.info(
+      `[KickBot] Token for ${record.kick_username} expires in ${minutesLeft} min, renewing...`
+    );
+
+    try {
+      await this.refreshToken(record);
+      logger.info(
+        `[KickBot] Token auto-renewed successfully for ${record.kick_username}`
+      );
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error(
+        `[KickBot] Error auto-renewing token for ${record.kick_username}:`,
+        msg
+      );
+
+      // If the refresh token expired, alert
+      const refreshErr = error as RefreshTokenError;
+      if (refreshErr.code === "REFRESH_TOKEN_EXPIRED") {
+        logger.error(
+          `[KickBot] ALERT: Refresh token expired for ${record.kick_username}. Re-authentication required.`
+        );
+        logger.error(
+          `[KickBot] Re-authenticate at: https://luisardito.shop/api/auth/kick-bot`
+        );
+      }
     }
   }
 

@@ -50,6 +50,50 @@ async function notifyUnregisteredReward(
 }
 
 /**
+ * Evaluate status-based early-return guard clauses for a reward redemption.
+ * Returns true when processing should stop (pending, rejected, or unknown status).
+ * Side effects (chat notification, logging) are preserved exactly as inline code.
+ */
+async function shouldSkipRedemptionByStatus(
+  status: string,
+  usuario: Usuario | null,
+  kickUsername: string,
+  localReward: KickReward
+): Promise<boolean> {
+  // If pending and user doesn't exist, send message
+  if (status === "pending" && !usuario) {
+    logger.warn(
+      `[Reward Redemption] User ${kickUsername} not registered in store`
+    );
+
+    await notifyUnregisteredReward(kickUsername, localReward);
+    return true;
+  }
+
+  // If pending and user DOES exist, just wait
+  if (status === "pending") {
+    logger.info(
+      `[Reward Redemption] User registered. Redemption pending approval - waiting...`
+    );
+    return true;
+  }
+
+  if (status === "rejected") {
+    logger.info(
+      `[Reward Redemption] Redemption rejected - no points processed`
+    );
+    return true;
+  }
+
+  if (status !== "accepted") {
+    logger.warn(`[Reward Redemption] Unknown status: ${status}`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handle channel reward redemptions
  */
 async function handleRewardRedemption(
@@ -83,33 +127,15 @@ async function handleRewardRedemption(
       where: { user_id_ext: kickUserId },
     });
 
-    // If pending and user doesn't exist, send message
-    if (status === "pending" && !usuario) {
-      logger.warn(
-        `[Reward Redemption] User ${kickUsername} not registered in store`
-      );
-
-      await notifyUnregisteredReward(kickUsername, localReward);
-      return;
-    }
-
-    // If pending and user DOES exist, just wait
-    if (status === "pending") {
-      logger.info(
-        `[Reward Redemption] User registered. Redemption pending approval - waiting...`
-      );
-      return;
-    }
-
-    if (status === "rejected") {
-      logger.info(
-        `[Reward Redemption] Redemption rejected - no points processed`
-      );
-      return;
-    }
-
-    if (status !== "accepted") {
-      logger.warn(`[Reward Redemption] Unknown status: ${status}`);
+    // Handle status-based early returns (pending, rejected, unknown status)
+    if (
+      await shouldSkipRedemptionByStatus(
+        status,
+        usuario,
+        kickUsername,
+        localReward
+      )
+    ) {
       return;
     }
 

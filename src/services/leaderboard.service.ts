@@ -577,9 +577,7 @@ class LeaderboardService {
 
       // Add current position if there is no recent snapshot
       const lastSnapshotDate =
-        history.length > 0
-          ? new Date(history[history.length - 1].snapshot_date)
-          : null;
+        history.length > 0 ? new Date(history.at(-1)!.snapshot_date) : null;
       const hoursSinceLastSnapshot = lastSnapshotDate
         ? (Date.now() - lastSnapshotDate.getTime()) / (1000 * 60 * 60)
         : Infinity;
