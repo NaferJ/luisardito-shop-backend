@@ -1,18 +1,21 @@
-const axios = require("axios");
-const config = require("../../config");
-const logger = require("./logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import axios from "axios";
+import config from "../../config";
+import logger from "./logger";
 
 /**
  * Validates a Kick access token using the introspection endpoint
  * @param {string} accessToken - Access token to validate
  * @returns {Promise<Object>} - Token information
  */
-async function validateKickToken(accessToken) {
+async function validateKickToken(accessToken: any) {
   try {
     const introspectUrl = `${config.kick.apiBaseUrl}/public/v1/token/introspect`;
     logger.info("[Kick API] Validating token via introspection...");
 
-    const response = await axios.post(
+    const response: any = await axios.post(
       introspectUrl,
       {},
       {
@@ -38,7 +41,7 @@ async function validateKickToken(accessToken) {
     }
 
     return response.data.data;
-  } catch (error) {
+  } catch (error: any) {
     logger.error("[Kick API] Error validating token:", {
       status: error.response?.status,
       data: error.response?.data,
@@ -53,7 +56,7 @@ async function validateKickToken(accessToken) {
  * @param {string} userIdOrToken - User ID or access token
  * @returns {Promise<Object>} - Kick user data
  */
-async function getKickUserData(userIdOrToken) {
+async function getKickUserData(userIdOrToken: any) {
   try {
     logger.info("[Kick API] Fetching user data. Type:", typeof userIdOrToken);
     logger.info(
@@ -80,7 +83,7 @@ async function getKickUserData(userIdOrToken) {
       logger.info("[Kick API] Users API URL:", userUrl);
 
       try {
-        const response = await axios.get(userUrl, {
+        const response: any = await axios.get(userUrl, {
           headers: {
             Authorization: `Bearer ${userIdOrToken}`,
             "User-Agent":
@@ -131,7 +134,7 @@ async function getKickUserData(userIdOrToken) {
         });
 
         return normalizedData;
-      } catch (error) {
+      } catch (error: any) {
         logger.error("[Kick API] Error in token request:", {
           message: error.message,
           response: {
@@ -154,7 +157,7 @@ async function getKickUserData(userIdOrToken) {
 
     try {
       const publicUserUrl = `https://kick.com/api/v1/users/${encodeURIComponent(userIdStr)}`;
-      const response = await axios.get(publicUserUrl, {
+      const response: any = await axios.get(publicUserUrl, {
         headers: {
           "User-Agent":
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -165,7 +168,7 @@ async function getKickUserData(userIdOrToken) {
 
       logger.info("[Kick API] Data fetched by ID:", response.data?.name);
       return response.data;
-    } catch (publicApiError) {
+    } catch (publicApiError: any) {
       logger.warn("[Kick API] Public endpoint not available:", {
         message: publicApiError.message,
         status: publicApiError.response?.status,
@@ -175,7 +178,7 @@ async function getKickUserData(userIdOrToken) {
         cause: publicApiError,
       });
     }
-  } catch (error) {
+  } catch (error: any) {
     logger.error("[Kick API] Error fetching data:", {
       message: error.message,
       stack: error.stack,
@@ -190,7 +193,7 @@ async function getKickUserData(userIdOrToken) {
  * @param {Object} kickUserData - Kick user data
  * @returns {string|null} - Avatar URL or null if not present
  */
-function extractAvatarUrl(kickUserData) {
+function extractAvatarUrl(kickUserData: any) {
   // Different possible avatar locations in the Kick response
   return (
     kickUserData?.profile_picture ||
@@ -201,7 +204,4 @@ function extractAvatarUrl(kickUserData) {
   );
 }
 
-module.exports = {
-  getKickUserData,
-  extractAvatarUrl,
-};
+export { getKickUserData, extractAvatarUrl };

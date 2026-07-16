@@ -1,7 +1,11 @@
-const logger = require("../utils/logger");
-let cloudinary;
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import logger from "../utils/logger";
+let cloudinary: any;
 
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   cloudinary = require("cloudinary").v2;
 
   cloudinary.config({
@@ -11,9 +15,9 @@ try {
   });
 
   logger.info("[Cloudinary] Configured successfully");
-} catch (error) {
+} catch (error: any) {
   logger.warn("[Cloudinary] Not available:", error.message);
   cloudinary = null;
 }
 
-module.exports = cloudinary;
+export = cloudinary;

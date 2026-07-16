@@ -1,7 +1,10 @@
-const Redis = require("ioredis");
-const logger = require("../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
 
-let redisClient = null;
+import Redis from "ioredis";
+import logger from "../utils/logger";
+
+let redisClient: any = null;
 
 function getRedisClient() {
   if (!redisClient) {
@@ -10,20 +13,20 @@ function getRedisClient() {
       port: process.env.REDIS_PORT || 6379,
       password: process.env.REDIS_PASSWORD || undefined,
       db: process.env.REDIS_DB || 0,
-      retryStrategy: (times) => {
+      retryStrategy: (times: any) => {
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: false,
-    });
+    } as any);
 
     redisClient.on("connect", () => {
       logger.info("[Redis] Connected successfully");
     });
 
-    redisClient.on("error", (err) => {
+    redisClient.on("error", (err: any) => {
       logger.error("[Redis] Connection error:", err.message);
     });
 
@@ -35,4 +38,4 @@ function getRedisClient() {
   return redisClient;
 }
 
-module.exports = { getRedisClient };
+export { getRedisClient };

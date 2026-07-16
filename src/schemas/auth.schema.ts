@@ -1,4 +1,4 @@
-const { z } = require("zod");
+import { z } from "zod";
 
 const registerSchema = z.object({
   nickname: z
@@ -36,9 +36,4 @@ const logoutSchema = z.object({
     .min(1, { message: "refreshToken is required" }),
 });
 
-module.exports = {
-  registerSchema,
-  loginSchema,
-  refreshSchema,
-  logoutSchema,
-};
+export { registerSchema, loginSchema, refreshSchema, logoutSchema };
