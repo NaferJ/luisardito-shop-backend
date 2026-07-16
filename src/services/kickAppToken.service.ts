@@ -66,6 +66,37 @@ async function getAppAccessToken() {
 }
 
 /**
+ * Upsert a single Kick event subscription (update if exists, create otherwise)
+ */
+async function upsertSubscription(sub: any, broadcasterUserId: any) {
+  const existing = await KickEventSubscription.findOne({
+    where: { subscription_id: sub.subscription_id },
+  });
+
+  const data = {
+    broadcaster_user_id: Number.parseInt(broadcasterUserId),
+    event_type: sub.name,
+    event_version: sub.version,
+    method: "webhook",
+    status: "active",
+    app_id: "APP_TOKEN",
+  };
+
+  if (existing) {
+    await existing.update(data);
+    logger.info(`[App Webhook] ${sub.name} updated (App Token)`);
+    return existing;
+  }
+
+  const created = await KickEventSubscription.create({
+    subscription_id: sub.subscription_id,
+    ...data,
+  });
+  logger.info(`[App Webhook] ${sub.name} created (App Token)`);
+  return created;
+}
+
+/**
  * Subscribe to all events using App Access Token
  * @param {string} broadcasterUserId - Broadcaster ID
  * @returns {Promise<Object>} Subscription result
@@ -127,46 +158,19 @@ async function subscribeToEventsWithAppToken(broadcasterUserId: any) {
     const errors = [];
 
     for (const sub of subscriptionsData) {
-      if (sub.subscription_id && !sub.error) {
-        try {
-          // Check if it already exists
-          let localSub = await KickEventSubscription.findOne({
-            where: { subscription_id: sub.subscription_id },
-          });
-
-          if (localSub) {
-            // Update existing
-            await localSub.update({
-              broadcaster_user_id: Number.parseInt(broadcasterUserId),
-              event_type: sub.name,
-              event_version: sub.version,
-              method: "webhook",
-              status: "active",
-              app_id: "APP_TOKEN", // Mark as App Token
-            });
-            logger.info(`[App Webhook] ${sub.name} updated (App Token)`);
-          } else {
-            // Create new
-            localSub = await KickEventSubscription.create({
-              subscription_id: sub.subscription_id,
-              broadcaster_user_id: Number.parseInt(broadcasterUserId),
-              event_type: sub.name,
-              event_version: sub.version,
-              method: "webhook",
-              status: "active",
-              app_id: "APP_TOKEN", // Mark as App Token
-            });
-            logger.info(`[App Webhook] ${sub.name} created (App Token)`);
-          }
-
-          createdSubscriptions.push(localSub);
-        } catch (dbError: any) {
-          logger.error(`[App Webhook] DB error ${sub.name}:`, dbError.message);
-          errors.push({ event: sub.name, error: dbError.message });
+      if (!sub.subscription_id || sub.error) {
+        if (sub.error) {
+          errors.push({ event: sub.name, error: sub.error });
+          logger.error(`[App Webhook] ${sub.name}:`, sub.error);
         }
-      } else if (sub.error) {
-        errors.push({ event: sub.name, error: sub.error });
-        logger.error(`[App Webhook] ${sub.name}:`, sub.error);
+        continue;
+      }
+      try {
+        const localSub = await upsertSubscription(sub, broadcasterUserId);
+        createdSubscriptions.push(localSub);
+      } catch (dbError: any) {
+        logger.error(`[App Webhook] DB error ${sub.name}:`, dbError.message);
+        errors.push({ event: sub.name, error: dbError.message });
       }
     }
 

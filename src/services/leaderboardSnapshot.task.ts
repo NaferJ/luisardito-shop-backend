@@ -6,22 +6,14 @@ import { Op } from "sequelize";
 import LeaderboardSnapshot from "../models/leaderboardSnapshot.model";
 
 class LeaderboardSnapshotTask {
-  intervalId: any;
-  isRunning: boolean;
-  intervalHours: number;
-  cleanupDays: number;
-  _lastCleanupDate: any;
-
-  constructor() {
-    this.intervalId = null;
-    this.isRunning = false;
-    // Configuration: run every 6 hours by default
-    this.intervalHours =
-      Number.parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS as any) ||
-      6;
-    this.cleanupDays =
-      Number.parseInt(process.env.LEADERBOARD_CLEANUP_DAYS as any) || 30;
-  }
+  intervalId: any = null;
+  isRunning: boolean = false;
+  intervalHours: number =
+    Number.parseInt(process.env.LEADERBOARD_SNAPSHOT_INTERVAL_HOURS as any) ||
+    6;
+  cleanupDays: number =
+    Number.parseInt(process.env.LEADERBOARD_CLEANUP_DAYS as any) || 30;
+  _lastCleanupDate: any = null;
 
   /**
    * Starts the scheduled snapshot task

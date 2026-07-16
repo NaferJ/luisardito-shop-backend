@@ -61,7 +61,11 @@ class VipService {
           puntos: 0, // No points awarded, only the event is logged
           tipo: "ajuste", // Use 'ajuste' which is valid in the ENUM
           concepto: "VIP granted",
-          motivo: `VIP granted by redemption #${canjeId}${vipExpiresAt ? ` (expires: ${vipExpiresAt.toLocaleDateString()})` : " (permanent)"}`,
+          motivo: `VIP granted by redemption #${canjeId}${
+            vipExpiresAt
+              ? ` (expires: ${vipExpiresAt.toLocaleDateString()})`
+              : " (permanent)"
+          }`,
           kick_event_data: {
             event_type: "vip_granted",
             canje_id: canjeId,

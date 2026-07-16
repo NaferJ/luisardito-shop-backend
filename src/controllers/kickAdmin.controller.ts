@@ -235,6 +235,38 @@ const updateMigrationConfig = async (req: any, res: any) => {
 };
 
 /**
+ * Parse a boolean field that may come as string or boolean
+ * Returns { value } on success or { error } on failure
+ */
+function parseBooleanField(
+  value: any,
+  fieldName: string
+): { value?: boolean; error?: string } {
+  if (typeof value === "boolean") return { value };
+  if (typeof value === "string") {
+    const lower = value.toLowerCase();
+    if (lower === "true") return { value: true };
+    if (lower === "false") return { value: false };
+  }
+  return { error: `${fieldName} must be a boolean` };
+}
+
+/**
+ * Parse and validate a non-negative number field
+ * Returns { value } on success or { error } on failure
+ */
+function parseNonNegativeNumber(
+  value: any,
+  fieldName: string
+): { value?: number; error?: string } {
+  const num = Number(value);
+  if (Number.isNaN(num) || num < 0) {
+    return { error: `${fieldName} must be a non-negative number` };
+  }
+  return { value: num };
+}
+
+/**
  * Update VIP points configuration
  */
 const updateVipConfig = async (req: any, res: any) => {
@@ -261,59 +293,29 @@ const updateVipConfig = async (req: any, res: any) => {
 
     // Validate and convert vip_points_enabled
     if (vip_points_enabled !== undefined) {
-      if (typeof vip_points_enabled === "boolean") {
-        updateData.vip_points_enabled = vip_points_enabled;
-      } else if (typeof vip_points_enabled === "string") {
-        if (vip_points_enabled.toLowerCase() === "true") {
-          updateData.vip_points_enabled = true;
-        } else if (vip_points_enabled.toLowerCase() === "false") {
-          updateData.vip_points_enabled = false;
-        } else {
-          return res.status(400).json({
-            success: false,
-            error: "vip_points_enabled must be a boolean",
-          });
-        }
-      } else {
-        return res.status(400).json({
-          success: false,
-          error: "vip_points_enabled must be a boolean",
-        });
+      const result = parseBooleanField(
+        vip_points_enabled,
+        "vip_points_enabled"
+      );
+      if (result.error) {
+        return res.status(400).json({ success: false, error: result.error });
       }
+      updateData.vip_points_enabled = result.value;
     }
 
     // Validate and convert numbers
-    if (vip_chat_points !== undefined) {
-      const num = Number(vip_chat_points);
-      if (Number.isNaN(num) || num < 0) {
-        return res.status(400).json({
-          success: false,
-          error: "vip_chat_points must be a non-negative number",
-        });
+    const numberFields: Array<[string, any]> = [
+      ["vip_chat_points", vip_chat_points],
+      ["vip_follow_points", vip_follow_points],
+      ["vip_sub_points", vip_sub_points],
+    ];
+    for (const [fieldName, fieldValue] of numberFields) {
+      if (fieldValue === undefined) continue;
+      const result = parseNonNegativeNumber(fieldValue, fieldName);
+      if (result.error) {
+        return res.status(400).json({ success: false, error: result.error });
       }
-      updateData.vip_chat_points = num;
-    }
-
-    if (vip_follow_points !== undefined) {
-      const num = Number(vip_follow_points);
-      if (Number.isNaN(num) || num < 0) {
-        return res.status(400).json({
-          success: false,
-          error: "vip_follow_points must be a non-negative number",
-        });
-      }
-      updateData.vip_follow_points = num;
-    }
-
-    if (vip_sub_points !== undefined) {
-      const num = Number(vip_sub_points);
-      if (Number.isNaN(num) || num < 0) {
-        return res.status(400).json({
-          success: false,
-          error: "vip_sub_points must be a non-negative number",
-        });
-      }
-      updateData.vip_sub_points = num;
+      updateData[fieldName] = result.value;
     }
 
     if (Object.keys(updateData).length === 0) {
@@ -904,13 +906,13 @@ const getBotTokensStatus = async (req: any, res: any) => {
       is_active: token.is_active,
       token_expires_at: token.token_expires_at,
       has_refresh_token: !!token.refresh_token,
-      status: token.is_active
-        ? new Date(token.token_expires_at) <= now
-          ? "expired"
-          : new Date(token.token_expires_at) <= fiveMinutesFromNow
-            ? "expiring_soon"
-            : "active"
-        : "inactive",
+      status: (() => {
+        if (!token.is_active) return "inactive";
+        if (new Date(token.token_expires_at) <= now) return "expired";
+        if (new Date(token.token_expires_at) <= fiveMinutesFromNow)
+          return "expiring_soon";
+        return "active";
+      })(),
       expires_in_minutes: Math.round(
         ((new Date(token.token_expires_at) as any) - (now as any)) / 1000 / 60
       ),

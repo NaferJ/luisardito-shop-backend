@@ -225,8 +225,11 @@ class BotrixMigrationService {
 
       // Regex to detect watchtime messages from Kick chat (Spanish format: "@user has spent [X days] [Y hours] [Z min] watching [this channel|the stream]")
       // Safe pattern: captures the time part as a sequence of "number + unit"
-      const watchtimeRegex =
-        /@(\w+)\s+ha\s+pasado\s+((?:\d+\s+(?:d[íi]as?|horas?|h|min)\s*)+)viendo\s+(?:este\s+canal|el\s+stream)/i;
+      const timeUnit = /\d+\s+(?:d[íi]as?|horas?|h|min)\s*/i;
+      const watchtimeRegex = new RegExp(
+        `@(\\w+)\\s+ha\\s+pasado\\s+((?:${timeUnit.source})+)viendo\\s+(?:este\\s+canal|el\\s+stream)`,
+        "i"
+      );
       const match = content.match(watchtimeRegex);
 
       if (!match) {

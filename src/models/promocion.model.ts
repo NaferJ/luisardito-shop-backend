@@ -232,7 +232,6 @@ Promocion.prototype.calcularDescuento = function (precioOriginal: number) {
     case "2x1":
     case "3x2":
       // Para estos tipos, el descuento se calcula en el carrito
-      descuento = 0;
       break;
   }
 

@@ -210,6 +210,106 @@ async function syncUsernameIfNeeded(
  * @param {string} [kickProfilePicture] - Profile picture URL from the webhook (optional)
  * @returns {Promise<{updated: boolean, reason: string, usernameChanged: boolean, avatarChanged: boolean}>}
  */
+function detectProfileChanges(
+  usuario: any,
+  kickUsername: string,
+  kickUserId: string,
+  kickProfilePicture: string | null
+): {
+  usernameChanged: boolean;
+  avatarChanged: boolean;
+  needsUpdate: boolean;
+  newAvatarUrl: string | null;
+} {
+  let usernameChanged = false;
+  let avatarChanged = false;
+  let needsUpdate = false;
+
+  if (usuario.nickname !== kickUsername) {
+    logger.info(
+      `[Profile Sync] Username change detected: "${usuario.nickname}" -> "${kickUsername}" (ID: ${kickUserId})`
+    );
+    usernameChanged = true;
+    needsUpdate = true;
+  }
+
+  const newAvatarUrl = kickProfilePicture || null;
+  const currentAvatarUrl = usuario.kick_data?.avatar_url;
+
+  if (newAvatarUrl && currentAvatarUrl !== newAvatarUrl) {
+    logger.info(`[Profile Sync] Avatar change detected for ${kickUsername}`);
+    logger.info(`[Profile Sync] Previous: ${currentAvatarUrl || "no avatar"}`);
+    logger.info(`[Profile Sync] New: ${newAvatarUrl}`);
+    avatarChanged = true;
+    needsUpdate = true;
+  }
+
+  return { usernameChanged, avatarChanged, needsUpdate, newAvatarUrl };
+}
+
+async function getProfileThrottle(
+  forceSync: boolean,
+  kickUserId: string
+): Promise<any> {
+  if (forceSync) {
+    return null;
+  }
+  return await checkThrottle(
+    "profile_sync",
+    kickUserId,
+    "Profile Sync",
+    "DEBUG SYNC PROFILE"
+  );
+}
+
+async function checkProfileCollision(
+  usuario: any,
+  kickUsername: string,
+  usernameChanged: boolean
+): Promise<any> {
+  if (!usernameChanged) {
+    return null;
+  }
+  return await hasNicknameCollision(usuario, kickUsername);
+}
+
+function buildProfileUpdateData(
+  usuario: any,
+  kickUsername: string,
+  usernameChanged: boolean,
+  avatarChanged: boolean,
+  newAvatarUrl: string | null
+): any {
+  const updateData: any = {
+    kick_data: {
+      ...usuario.kick_data,
+      username: kickUsername,
+      last_sync: new Date().toISOString(),
+    },
+  };
+
+  if (usernameChanged) {
+    updateData.nickname = kickUsername;
+  }
+
+  if (avatarChanged && newAvatarUrl) {
+    updateData.kick_data.avatar_url = newAvatarUrl;
+  }
+
+  return updateData;
+}
+
+async function applyProfileUpdate(usuario: any, updateData: any): Promise<any> {
+  try {
+    await usuario.update(updateData);
+    return null;
+  } catch (updateError: any) {
+    logger.debug(`[DEBUG SYNC PROFILE] Update error: ${updateError.message}`);
+    logger.error(`[Profile Sync] Error updating user:`, updateError.message);
+    return updateError;
+  }
+}
+
 async function syncUserProfileIfNeeded(
   usuario: any,
   kickUsername: string,
@@ -227,30 +327,13 @@ async function syncUserProfileIfNeeded(
       return { updated: false, reason: "Invalid parameters" };
     }
 
-    let usernameChanged = false;
-    let avatarChanged = false;
-    let needsUpdate = false;
-
-    if (usuario.nickname !== kickUsername) {
-      logger.info(
-        `[Profile Sync] Username change detected: "${usuario.nickname}" -> "${kickUsername}" (ID: ${kickUserId})`
+    const { usernameChanged, avatarChanged, needsUpdate, newAvatarUrl } =
+      detectProfileChanges(
+        usuario,
+        kickUsername,
+        kickUserId,
+        kickProfilePicture
       );
-      usernameChanged = true;
-      needsUpdate = true;
-    }
-
-    const newAvatarUrl = kickProfilePicture || null;
-    const currentAvatarUrl = usuario.kick_data?.avatar_url;
-
-    if (newAvatarUrl && currentAvatarUrl !== newAvatarUrl) {
-      logger.info(`[Profile Sync] Avatar change detected for ${kickUsername}`);
-      logger.info(
-        `[Profile Sync] Previous: ${currentAvatarUrl || "no avatar"}`
-      );
-      logger.info(`[Profile Sync] New: ${newAvatarUrl}`);
-      avatarChanged = true;
-      needsUpdate = true;
-    }
 
     if (!needsUpdate) {
       logger.debug(`[DEBUG SYNC PROFILE] Return: Profile unchanged`);
@@ -262,66 +345,49 @@ async function syncUserProfileIfNeeded(
       };
     }
 
-    if (!forceSync) {
-      const throttle = await checkThrottle(
-        "profile_sync",
-        kickUserId,
-        "Profile Sync",
-        "DEBUG SYNC PROFILE"
+    const throttle = await getProfileThrottle(forceSync, kickUserId);
+    if (throttle) {
+      return {
+        updated: false,
+        reason: `Throttling: last sync ${throttle.hoursSinceSync.toFixed(1)}h ago`,
+        usernameChanged: false,
+        avatarChanged: false,
+      };
+    }
+
+    const colision = await checkProfileCollision(
+      usuario,
+      kickUsername,
+      usernameChanged
+    );
+    if (colision) {
+      logger.warn(
+        `[Profile Sync] COLLISION: "${kickUsername}" already exists (user ID: ${colision.id})`
       );
-      if (throttle) {
-        return {
-          updated: false,
-          reason: `Throttling: last sync ${throttle.hoursSinceSync.toFixed(1)}h ago`,
-          usernameChanged: false,
-          avatarChanged: false,
-        };
-      }
+      logger.debug(
+        `[DEBUG SYNC PROFILE] Return: Collision with user ${colision.id}`
+      );
+      return {
+        updated: false,
+        reason: `Collision: name already used by user ID ${colision.id}`,
+        usernameChanged: false,
+        avatarChanged: false,
+      };
     }
 
-    if (usernameChanged) {
-      const colision = await hasNicknameCollision(usuario, kickUsername);
-
-      if (colision) {
-        logger.warn(
-          `[Profile Sync] COLLISION: "${kickUsername}" already exists (user ID: ${colision.id})`
-        );
-        logger.debug(
-          `[DEBUG SYNC PROFILE] Return: Collision with user ${colision.id}`
-        );
-        return {
-          updated: false,
-          reason: `Collision: name already used by user ID ${colision.id}`,
-          usernameChanged: false,
-          avatarChanged: false,
-        };
-      }
-    }
-
-    const updateData: any = {
-      kick_data: {
-        ...usuario.kick_data,
-        username: kickUsername,
-        last_sync: new Date().toISOString(),
-      },
-    };
-
-    if (usernameChanged) {
-      updateData.nickname = kickUsername;
-    }
-
-    if (avatarChanged && newAvatarUrl) {
-      updateData.kick_data.avatar_url = newAvatarUrl;
-    }
+    const updateData = buildProfileUpdateData(
+      usuario,
+      kickUsername,
+      usernameChanged,
+      avatarChanged,
+      newAvatarUrl
+    );
 
     const oldNickname = usuario.nickname;
     const oldAvatarUrl = usuario.kick_data?.avatar_url;
 
-    try {
-      await usuario.update(updateData);
-    } catch (updateError: any) {
-      logger.debug(`[DEBUG SYNC PROFILE] Update error: ${updateError.message}`);
-      logger.error(`[Profile Sync] Error updating user:`, updateError.message);
+    const updateError = await applyProfileUpdate(usuario, updateData);
+    if (updateError) {
       return {
         updated: false,
         reason: `DB error: ${updateError.message}`,
@@ -330,8 +396,12 @@ async function syncUserProfileIfNeeded(
       };
     }
 
+    const usernameChangeStr = usernameChanged
+      ? `"${oldNickname}" -> "${kickUsername}"`
+      : "username unchanged";
+    const avatarChangeStr = avatarChanged ? ", avatar updated" : "";
     logger.info(
-      `[Profile Sync] User ID ${usuario.id} updated: ${usernameChanged ? `"${oldNickname}" -> "${kickUsername}"` : "username unchanged"}${avatarChanged ? ", avatar updated" : ""}`
+      `[Profile Sync] User ID ${usuario.id} updated: ${usernameChangeStr}${avatarChangeStr}`
     );
     logger.debug(
       `[DEBUG SYNC PROFILE] Update successful: username=${usernameChanged}, avatar=${avatarChanged}`

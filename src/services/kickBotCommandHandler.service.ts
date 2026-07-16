@@ -18,7 +18,7 @@ let EmbedBuilder: any;
 try {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   EmbedBuilder = require("discord.js").EmbedBuilder;
-} catch (_error: any) {
+} catch {
   // discord.js is not available (e.g. in Kick environment)
   EmbedBuilder = null;
 }
@@ -38,10 +38,7 @@ class KickBotCommandHandlerService {
    * @param {string} username - User who sent the message
    * @param {string} channelName - Channel name
    * @param {object} bot - Bot service instance
-   * @param {object} messageContext - Message context (for Discord)
-   * @param {string} platform - Platform: 'kick' or 'discord'
-   * @param {string} discordUserId - Discord user ID (Discord only)
-   * @param {string} displayName - User display name on Kick
+   * @param {object} ctx - Context object with messageContext, platform, discordUserId, displayName
    * @returns {Promise<boolean>} - True if a command was processed, false otherwise
    */
   async processMessage(
@@ -49,11 +46,15 @@ class KickBotCommandHandlerService {
     username: any,
     channelName: any,
     bot: any,
-    messageContext: any = null,
-    platform: any = "kick",
-    discordUserId: any = null,
-    displayName: any = null
+    ctx: any = {}
   ) {
+    const {
+      messageContext = null,
+      platform = "kick",
+      discordUserId = null,
+      displayName = null,
+    } = ctx || {};
+
     try {
       const content = String(message || "").trim();
 
@@ -67,17 +68,7 @@ class KickBotCommandHandlerService {
 
       if (!command) {
         // Special !discord command for Discord - generate embed directly
-        if (platform === "discord" && content.trim() === "!discord") {
-          logger.info(
-            `[BOT-COMMAND] Special !discord command detected in Discord (not in DB), generating embed`
-          );
-          const embedResult = await this.createDiscordEmbed();
-          await bot.sendMessage(embedResult, messageContext);
-          return true;
-        }
-
-        // Not a registered command
-        return false;
+        return await this.handleUnregisteredCommand(content, bot, ctx);
       }
 
       logger.info(
@@ -85,26 +76,7 @@ class KickBotCommandHandlerService {
       );
 
       // Find the user in the database
-      let usuario = null;
-      if (platform === "discord" && discordUserId) {
-        // For Discord, look up by link
-        const link: any = await DiscordUserLink.findOne({
-          where: { discord_user_id: discordUserId },
-          include: [{ model: Usuario, as: "usuario" }],
-        });
-        usuario = link?.usuario;
-        logger.info(
-          `[BOT-COMMAND] User found by Discord ID:`,
-          usuario ? usuario.nickname : "not found"
-        );
-      } else {
-        // For Kick, look up by user_id_ext
-        usuario = await Usuario.findOne({ where: { user_id_ext: username } });
-        logger.info(
-          `[BOT-COMMAND] User found by Kick ID:`,
-          usuario ? usuario.nickname : "not found"
-        );
-      }
+      const usuario = await this.findUser(platform, discordUserId, username);
 
       // Check cooldown
       if (!(await this.checkCooldown(command, username))) {
@@ -115,18 +87,22 @@ class KickBotCommandHandlerService {
       }
 
       // Execute the command based on its type
+      const dynamicCtx = {
+        username,
+        channelName,
+        usuario,
+        messageContext,
+        platform,
+        discordUserId,
+        displayName,
+      };
+
       let response;
       if (command.command_type === "dynamic") {
         response = await this.executeDynamicCommand(
           command,
           content,
-          username,
-          channelName,
-          usuario,
-          platform,
-          discordUserId,
-          messageContext,
-          displayName
+          dynamicCtx
         );
       } else {
         response = await this.executeSimpleCommand(
@@ -158,6 +134,57 @@ class KickBotCommandHandlerService {
   }
 
   /**
+   * Handles an unregistered command (e.g. special !discord embed for Discord)
+   * @returns {Promise<boolean>} - True if the command was handled, false otherwise
+   */
+  async handleUnregisteredCommand(content: any, bot: any, ctx: any) {
+    const { messageContext = null, platform = "kick" } = ctx || {};
+
+    // Special !discord command for Discord - generate embed directly
+    if (platform === "discord" && content.trim() === "!discord") {
+      logger.info(
+        `[BOT-COMMAND] Special !discord command detected in Discord (not in DB), generating embed`
+      );
+      const embedResult = await this.createDiscordEmbed();
+      await bot.sendMessage(embedResult, messageContext);
+      return true;
+    }
+
+    // Not a registered command
+    return false;
+  }
+
+  /**
+   * Finds the user in the database based on platform
+   * @returns {Promise<object>} - The user object or null
+   */
+  async findUser(platform: any, discordUserId: any, username: any) {
+    if (platform === "discord" && discordUserId) {
+      // For Discord, look up by link
+      const link: any = await DiscordUserLink.findOne({
+        where: { discord_user_id: discordUserId },
+        include: [{ model: Usuario, as: "usuario" }],
+      });
+      const usuario = link?.usuario;
+      logger.info(
+        `[BOT-COMMAND] User found by Discord ID:`,
+        usuario ? usuario.nickname : "not found"
+      );
+      return usuario;
+    }
+
+    // For Kick, look up by user_id_ext
+    const usuario = await Usuario.findOne({
+      where: { user_id_ext: username },
+    });
+    logger.info(
+      `[BOT-COMMAND] User found by Kick ID:`,
+      usuario ? usuario.nickname : "not found"
+    );
+    return usuario;
+  }
+
+  /**
    * Executes a simple command (static response with variables)
    */
   async executeSimpleCommand(
@@ -180,28 +207,19 @@ class KickBotCommandHandlerService {
 
     // Replace variables in the message
     const response = command.response_message
-      .replace(/{username}/g, username)
-      .replace(/{channel}/g, channelName)
-      .replace(/{args}/g, args.join(" "))
-      .replace(/{points}/g, usuario ? usuario.puntos.toString() : "0");
+      .replaceAll("{username}", username)
+      .replaceAll("{channel}", channelName)
+      .replaceAll("{args}", args.join(" "))
+      .replaceAll("{points}", usuario ? usuario.puntos.toString() : "0");
 
     return response;
   }
 
   /**
    * Executes a dynamic command (with special logic)
+   * @param {object} ctx - Context object with username, channelName, usuario, platform, discordUserId, messageContext, displayName
    */
-  async executeDynamicCommand(
-    command: any,
-    content: any,
-    username: any,
-    channelName: any,
-    usuario: any = null,
-    platform: any = "kick",
-    discordUserId: any = null,
-    messageContext: any = null,
-    displayName: any = null
-  ) {
+  async executeDynamicCommand(command: any, content: any, ctx: any) {
     const handler = command.dynamic_handler;
 
     if (!handler) {
@@ -214,30 +232,10 @@ class KickBotCommandHandlerService {
     // Execute the corresponding handler
     switch (handler) {
       case "puntos_handler":
-        return await this.puntosHandler(
-          command,
-          content,
-          username,
-          channelName,
-          usuario,
-          platform,
-          discordUserId,
-          messageContext,
-          displayName
-        );
+        return await this.puntosHandler(command, content, ctx);
 
       case "watchtime_handler":
-        return await this.watchtimeHandler(
-          command,
-          content,
-          username,
-          channelName,
-          usuario,
-          platform,
-          discordUserId,
-          messageContext,
-          displayName
-        );
+        return await this.watchtimeHandler(command, content, ctx);
 
       // More handlers can be added here as needed
       // case 'custom_handler':
@@ -252,116 +250,19 @@ class KickBotCommandHandlerService {
   /**
    * Special handler for the !puntos command
    * Looks up a user's points in the database
+   * @param {object} ctx - Context object with username, channelName, usuario, platform, discordUserId, messageContext, displayName
    */
-  async puntosHandler(
-    command: any,
-    content: any,
-    username: any,
-    channelName: any,
-    usuario: any = null,
-    platform: any = "kick",
-    _discordUserId: any = null,
-    messageContext: any = null,
-    displayName: any = null
-  ) {
+  async puntosHandler(command: any, content: any, ctx: any) {
     try {
       const args = this.extractArgs(content);
 
       // If there are arguments, look up the specified user
       if (args.length > 0) {
-        const lookupArg = args[0];
-
-        let targetUser = null;
-
-        // Discord-specific logic: detect mentions
-        if (
-          platform === "discord" &&
-          messageContext &&
-          lookupArg.match(/^<@!?(\d+)>$/)
-        ) {
-          const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
-          logger.info(
-            `[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`
-          );
-
-          // Look up in DiscordUserLink
-          const discordLink: any = await DiscordUserLink.findOne({
-            where: { discord_user_id: mentionedUserId },
-            include: [{ model: Usuario, as: "usuario" }],
-          });
-
-          targetUser = discordLink?.usuario;
-          logger.info(
-            `[BOT-COMMAND] User found by Discord ID:`,
-            targetUser ? targetUser.nickname : "not found"
-          );
-        } else {
-          // Logic for Kick and Discord (lookup by nickname)
-          const lookupName = lookupArg.replace(/^@/, "");
-          logger.info(
-            `[BOT-COMMAND] Looking up user by nickname: ${lookupName}`
-          );
-
-          // For MySQL, use LOWER() for case insensitive
-          targetUser = await Usuario.findOne({
-            where: sequelize.where(
-              sequelize.fn("LOWER", sequelize.col("nickname")),
-              sequelize.fn("LOWER", lookupName)
-            ),
-          });
-
-          logger.info(
-            `[BOT-COMMAND] User found by nickname:`,
-            targetUser ? targetUser.nickname : "not found"
-          );
-        }
-
-        const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
-
-        let response;
-        if (puntos !== null) {
-          // User found - use command template
-          const displayName = targetUser.nickname;
-          response = command.response_message
-            .replace(/{username}/g, username)
-            .replace(/{channel}/g, channelName)
-            .replace(/{target_user}/g, displayName)
-            .replace(/{points}/g, puntos.toString());
-        } else {
-          // User not found - default response
-          let displayName = lookupArg.replace(/^@/, "");
-          if (lookupArg.match(/^<@!?(\d+)>/)) {
-            displayName = "mentioned user";
-          }
-          response = `${displayName} does not exist or has no registered points.`;
-        }
-
-        return response;
-      } else {
-        // No arguments, show current user's points
-        if (!usuario) {
-          if (platform === "discord") {
-            return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use points commands.`;
-          } else {
-            if (displayName) {
-              return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use points commands.`;
-            } else {
-              return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use points commands.`;
-            }
-          }
-        }
-
-        const puntos = Number(usuario.puntos || 0);
-
-        // Use command template
-        const response = command.response_message
-          .replace(/{username}/g, username)
-          .replace(/{channel}/g, channelName)
-          .replace(/{target_user}/g, usuario.nickname)
-          .replace(/{points}/g, puntos.toString());
-
-        return response;
+        return await this.handlePuntosLookup(command, ctx, args);
       }
+
+      // No arguments, show current user's points
+      return this.handleSelfPuntos(command, ctx);
     } catch (error: any) {
       logger.error("[BOT-COMMAND] Error in puntosHandler:", error);
       return `An error occurred while checking points.`;
@@ -369,135 +270,235 @@ class KickBotCommandHandlerService {
   }
 
   /**
+   * Handles the !puntos command when a target user is specified via arguments
+   */
+  async handlePuntosLookup(command: any, ctx: any, args: any) {
+    const lookupArg = args[0];
+    const { username, channelName, platform, messageContext } = ctx;
+
+    const targetUser = await this.lookupTargetUser(
+      lookupArg,
+      platform,
+      messageContext
+    );
+
+    const puntos = targetUser ? Number(targetUser.puntos || 0) : null;
+
+    if (puntos !== null) {
+      // User found - use command template
+      const displayName = targetUser.nickname;
+      return command.response_message
+        .replaceAll("{username}", username)
+        .replaceAll("{channel}", channelName)
+        .replaceAll("{target_user}", displayName)
+        .replaceAll("{points}", puntos.toString());
+    }
+
+    // User not found - default response
+    return this.buildTargetNotFoundMessage(lookupArg, "points");
+  }
+
+  /**
+   * Handles the !puntos command when no arguments are provided (current user)
+   */
+  handleSelfPuntos(command: any, ctx: any) {
+    const { username, channelName, usuario, platform, displayName } = ctx;
+
+    if (!usuario) {
+      return this.buildUserNotFoundMessage(
+        username,
+        platform,
+        displayName,
+        "points"
+      );
+    }
+
+    const puntos = Number(usuario.puntos || 0);
+
+    // Use command template
+    return command.response_message
+      .replaceAll("{username}", username)
+      .replaceAll("{channel}", channelName)
+      .replaceAll("{target_user}", usuario.nickname)
+      .replaceAll("{points}", puntos.toString());
+  }
+
+  /**
    * Special handler for the !watchtime command
    * Looks up a user's watchtime in the database
+   * @param {object} ctx - Context object with username, channelName, usuario, platform, discordUserId, messageContext, displayName
    */
-  async watchtimeHandler(
-    command: any,
-    content: any,
-    username: any,
-    channelName: any,
-    usuario: any = null,
-    platform: any = "kick",
-    _discordUserId: any = null,
-    messageContext: any = null,
-    displayName: any = null
-  ) {
+  async watchtimeHandler(command: any, content: any, ctx: any) {
     try {
       const args = this.extractArgs(content);
 
       // If there are arguments, look up the specified user
       if (args.length > 0) {
-        const lookupArg = args[0];
-
-        let targetUser = null;
-
-        // Discord-specific logic: detect mentions
-        if (
-          platform === "discord" &&
-          messageContext &&
-          lookupArg.match(/^<@!?(\d+)>$/)
-        ) {
-          const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
-          logger.info(
-            `[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`
-          );
-
-          // Look up in DiscordUserLink
-          const discordLink: any = await DiscordUserLink.findOne({
-            where: { discord_user_id: mentionedUserId },
-            include: [{ model: Usuario, as: "usuario" }],
-          });
-
-          targetUser = discordLink?.usuario;
-          logger.info(
-            `[BOT-COMMAND] User found by Discord ID:`,
-            targetUser ? targetUser.nickname : "not found"
-          );
-        } else {
-          // Logic for Kick and Discord (lookup by nickname)
-          const lookupName = lookupArg.replace(/^@/, "");
-          logger.info(
-            `[BOT-COMMAND] Looking up user by nickname: ${lookupName}`
-          );
-
-          // For MySQL, use LOWER() for case insensitive
-          targetUser = await Usuario.findOne({
-            where: sequelize.where(
-              sequelize.fn("LOWER", sequelize.col("nickname")),
-              sequelize.fn("LOWER", lookupName)
-            ),
-            include: [{ model: UserWatchtime, required: false }],
-          });
-
-          logger.info(
-            `[BOT-COMMAND] User found by nickname:`,
-            targetUser ? targetUser.nickname : "not found"
-          );
-        }
-
-        let response;
-        if (targetUser) {
-          // Get user watchtime
-          const userWatchtime = targetUser.UserWatchtime;
-          const watchtimeMinutes = userWatchtime
-            ? userWatchtime.total_watchtime_minutes
-            : 0;
-          const formattedWatchtime = formatWatchtime(watchtimeMinutes);
-
-          // User found - use command template
-          const displayNameTarget = targetUser.nickname;
-          response = command.response_message
-            .replace(/{username}/g, username)
-            .replace(/{channel}/g, channelName)
-            .replace(/{target_user}/g, displayNameTarget)
-            .replace(/{watchtime}/g, formattedWatchtime);
-        } else {
-          // User not found - default response
-          let displayNameLookup = lookupArg.replace(/^@/, "");
-          if (lookupArg.match(/^<@!?(\d+)>/)) {
-            displayNameLookup = "mentioned user";
-          }
-          response = `${displayNameLookup} does not exist or has no registered watchtime.`;
-        }
-
-        return response;
-      } else {
-        // No arguments, show current user's watchtime
-        if (!usuario) {
-          if (platform === "discord") {
-            return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use watchtime commands.`;
-          } else {
-            if (displayName) {
-              return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use watchtime commands.`;
-            } else {
-              return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use watchtime commands.`;
-            }
-          }
-        }
-
-        // Get user watchtime
-        const userWatchtime: any = await UserWatchtime.findOne({
-          where: { usuario_id: usuario.id },
-        });
-        const watchtimeMinutes = userWatchtime
-          ? userWatchtime.total_watchtime_minutes
-          : 0;
-        const formattedWatchtime = formatWatchtime(watchtimeMinutes);
-
-        // Use command template
-        const response = command.response_message
-          .replace(/{username}/g, username)
-          .replace(/{channel}/g, channelName)
-          .replace(/{target_user}/g, usuario.nickname)
-          .replace(/{watchtime}/g, formattedWatchtime);
-
-        return response;
+        return await this.handleWatchtimeLookup(command, ctx, args);
       }
+
+      // No arguments, show current user's watchtime
+      return await this.handleSelfWatchtime(command, ctx);
     } catch (error: any) {
       logger.error("[BOT-COMMAND] Error in watchtimeHandler:", error);
       return `An error occurred while checking watchtime.`;
     }
+  }
+
+  /**
+   * Handles the !watchtime command when a target user is specified via arguments
+   */
+  async handleWatchtimeLookup(command: any, ctx: any, args: any) {
+    const lookupArg = args[0];
+    const { username, channelName, platform, messageContext } = ctx;
+
+    const targetUser = await this.lookupTargetUser(
+      lookupArg,
+      platform,
+      messageContext,
+      true
+    );
+
+    if (targetUser) {
+      // Get user watchtime
+      const userWatchtime = targetUser.UserWatchtime;
+      const watchtimeMinutes = userWatchtime
+        ? userWatchtime.total_watchtime_minutes
+        : 0;
+      const formattedWatchtime = formatWatchtime(watchtimeMinutes);
+
+      // User found - use command template
+      const displayNameTarget = targetUser.nickname;
+      return command.response_message
+        .replaceAll("{username}", username)
+        .replaceAll("{channel}", channelName)
+        .replaceAll("{target_user}", displayNameTarget)
+        .replaceAll("{watchtime}", formattedWatchtime);
+    }
+
+    // User not found - default response
+    return this.buildTargetNotFoundMessage(lookupArg, "watchtime");
+  }
+
+  /**
+   * Handles the !watchtime command when no arguments are provided (current user)
+   */
+  async handleSelfWatchtime(command: any, ctx: any) {
+    const { username, channelName, usuario, platform, displayName } = ctx;
+
+    if (!usuario) {
+      return this.buildUserNotFoundMessage(
+        username,
+        platform,
+        displayName,
+        "watchtime"
+      );
+    }
+
+    // Get user watchtime
+    const userWatchtime: any = await UserWatchtime.findOne({
+      where: { usuario_id: usuario.id },
+    });
+    const watchtimeMinutes = userWatchtime
+      ? userWatchtime.total_watchtime_minutes
+      : 0;
+    const formattedWatchtime = formatWatchtime(watchtimeMinutes);
+
+    // Use command template
+    return command.response_message
+      .replace(/{username}/g, username)
+      .replace(/{channel}/g, channelName)
+      .replace(/{target_user}/g, usuario.nickname)
+      .replace(/{watchtime}/g, formattedWatchtime);
+  }
+
+  /**
+   * Looks up a target user by argument (Discord mention or nickname)
+   * @param {boolean} includeWatchtime - Whether to include the UserWatchtime association
+   * @returns {Promise<object>} - The target user object or null
+   */
+  async lookupTargetUser(
+    lookupArg: any,
+    platform: any,
+    messageContext: any,
+    includeWatchtime: any = false
+  ) {
+    // Discord-specific logic: detect mentions
+    if (
+      platform === "discord" &&
+      messageContext &&
+      lookupArg.match(/^<@!?(\d+)>$/)
+    ) {
+      const mentionedUserId = lookupArg.match(/^<@!?(\d+)>$/)[1];
+      logger.info(
+        `[BOT-COMMAND] Looking up user by Discord mention: ${mentionedUserId}`
+      );
+
+      // Look up in DiscordUserLink
+      const discordLink: any = await DiscordUserLink.findOne({
+        where: { discord_user_id: mentionedUserId },
+        include: [{ model: Usuario, as: "usuario" }],
+      });
+
+      const targetUser = discordLink?.usuario;
+      logger.info(
+        `[BOT-COMMAND] User found by Discord ID:`,
+        targetUser ? targetUser.nickname : "not found"
+      );
+      return targetUser;
+    }
+
+    // Logic for Kick and Discord (lookup by nickname)
+    const lookupName = lookupArg.replace(/^@/, "");
+    logger.info(`[BOT-COMMAND] Looking up user by nickname: ${lookupName}`);
+
+    // For MySQL, use LOWER() for case insensitive
+    const queryOptions: any = {
+      where: sequelize.where(
+        sequelize.fn("LOWER", sequelize.col("nickname")),
+        sequelize.fn("LOWER", lookupName)
+      ),
+    };
+
+    if (includeWatchtime) {
+      queryOptions.include = [{ model: UserWatchtime, required: false }];
+    }
+
+    const targetUser = await Usuario.findOne(queryOptions);
+
+    logger.info(
+      `[BOT-COMMAND] User found by nickname:`,
+      targetUser ? targetUser.nickname : "not found"
+    );
+    return targetUser;
+  }
+
+  /**
+   * Builds the response message when a target user is not found
+   */
+  buildTargetNotFoundMessage(lookupArg: any, type: any) {
+    let displayName = lookupArg.replace(/^@/, "");
+    if (lookupArg.match(/^<@!?(\d+)>/)) {
+      displayName = "mentioned user";
+    }
+    return `${displayName} does not exist or has no registered ${type}.`;
+  }
+
+  /**
+   * Builds the response message when the current user's info cannot be found
+   */
+  buildUserNotFoundMessage(
+    username: any,
+    platform: any,
+    displayName: any,
+    type: any
+  ) {
+    if (platform === "discord") {
+      return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use ${type} commands.`;
+    } else if (displayName) {
+      return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use ${type} commands.`;
+    }
+    return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use ${type} commands.`;
   }
 
   /**
@@ -514,14 +515,9 @@ class KickBotCommandHandlerService {
    * (Currently returns true, but permission logic can be implemented here)
    */
   async checkPermission(command: any, _username: any) {
-    if (!command.requires_permission) {
-      return true;
-    }
-
-    // TODO: Implement permission logic according to your system
-    // For example, check if the user is a moderator, VIP, etc.
-
-    return true;
+    // Permission logic is not yet implemented — all commands are allowed.
+    // When implementing, check if the user is a moderator, VIP, etc.
+    return !command.requires_permission || true;
   }
 
   /**
@@ -668,4 +664,4 @@ class KickBotCommandHandlerService {
 }
 
 const kickBotCommandHandlerService = new KickBotCommandHandlerService();
-export default kickBotCommandHandlerService;
+export = kickBotCommandHandlerService;

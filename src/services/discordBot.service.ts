@@ -10,15 +10,9 @@ import KickBotCommandHandlerService from "./kickBotCommandHandler.service";
  * Uses the same command logic as the Kick bot
  */
 class DiscordBotService {
-  client: any;
-  commandHandler: any;
-  isReady: boolean;
-
-  constructor() {
-    this.client = null;
-    this.commandHandler = KickBotCommandHandlerService;
-    this.isReady = false;
-  }
+  client: any = null;
+  commandHandler: any = KickBotCommandHandlerService;
+  isReady: boolean = false;
 
   /**
    * Initialize and connect the Discord bot
@@ -100,9 +94,11 @@ class DiscordBotService {
           username,
           channelName,
           this, // Pass this as bot service
-          message, // Pass the message as context
-          "discord", // Indicate it comes from Discord
-          message.author.id // Pass the Discord user ID
+          {
+            messageContext: message, // Pass the message as context
+            platform: "discord", // Indicate it comes from Discord
+            discordUserId: message.author.id, // Pass the Discord user ID
+          }
         );
 
         if (commandProcessed) {
@@ -170,7 +166,7 @@ class DiscordBotService {
       }
 
       const channel = await this.client.channels.fetch(channelId);
-      if (channel && channel.isTextBased()) {
+      if (channel?.isTextBased()) {
         if (typeof content === "string") {
           await channel.send(content);
         } else if (content && typeof content === "object") {

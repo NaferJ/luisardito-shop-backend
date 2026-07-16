@@ -143,11 +143,11 @@ class KickBotAutoSendService {
       } else {
         // Simple command: replace variables with default values
         response = command.response_message
-          .replace(/{username}/g, "System")
-          .replace(/{channel}/g, "luisardito")
-          .replace(/{args}/g, "")
-          .replace(/{target_user}/g, "everyone")
-          .replace(/{points}/g, "0");
+          .replaceAll("{username}", "System")
+          .replaceAll("{channel}", "luisardito")
+          .replaceAll("{args}", "")
+          .replaceAll("{target_user}", "everyone")
+          .replaceAll("{points}", "0");
       }
 
       if (response) {

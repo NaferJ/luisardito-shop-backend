@@ -6,10 +6,7 @@ import backupService from "./backup.service";
 import logger from "../utils/logger";
 
 class BackupScheduler {
-  scheduledTask: any;
-  constructor() {
-    this.scheduledTask = null;
-  }
+  scheduledTask: any = null;
 
   /**
    * Starts the automatic backup scheduler

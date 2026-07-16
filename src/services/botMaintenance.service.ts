@@ -10,17 +10,11 @@ import logger from "../utils/logger";
  * Runs every hour to keep tokens active
  */
 class BotMaintenanceService {
-  intervalId: any;
-  isRunning: boolean;
-  intervalMinutes: number;
-
-  constructor() {
-    this.intervalId = null;
-    this.isRunning = false;
-    this.intervalMinutes = Number.parseInt(
-      process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60"
-    ); // Default every 60 minutes
-  }
+  intervalId: any = null;
+  isRunning: boolean = false;
+  intervalMinutes: number = Number.parseInt(
+    process.env.BOT_MAINTENANCE_INTERVAL_MINUTES || "60"
+  ); // Default every 60 minutes
 
   /**
    * Starts automatic maintenance

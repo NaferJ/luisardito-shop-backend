@@ -20,7 +20,7 @@ import { Op } from "sequelize";
  */
 
 // List of protected commands that CANNOT be deleted
-const PROTECTED_COMMANDS = [
+const PROTECTED_COMMANDS = new Set([
   "comandos",
   "puntos",
   "top",
@@ -29,7 +29,7 @@ const PROTECTED_COMMANDS = [
   "leaderboard",
   "rank",
   "ranking",
-];
+]);
 
 /**
  * Checks if the user has moderator or broadcaster permissions
@@ -394,7 +394,7 @@ async function handleEditCommand(name: any, flags: any, sender: any) {
 async function handleDeleteCommand(name: any, sender: any, broadcaster: any) {
   try {
     // Check if the command is protected
-    if (PROTECTED_COMMANDS.includes(name)) {
+    if (PROTECTED_COMMANDS.has(name)) {
       return {
         success: false,
         processed: true,

@@ -17,7 +17,7 @@ const handleWebhook = async (req: any, res: any) => {
 
   try {
     // If it's a simple test request, respond immediately
-    if (req.body && req.body.test === true) {
+    if (req.body?.test === true) {
       return res.status(200).json({
         status: "success",
         message: "Test webhook received",

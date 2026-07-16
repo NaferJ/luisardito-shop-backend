@@ -122,10 +122,12 @@ async function processBotCommands(
       kickUserId,
       payload.channel?.username || "luisardito",
       bot,
-      null,
-      "kick",
-      null,
-      kickUsername
+      {
+        messageContext: null,
+        platform: "kick",
+        discordUserId: null,
+        displayName: kickUsername,
+      }
     );
 
     if (commandProcessed) {

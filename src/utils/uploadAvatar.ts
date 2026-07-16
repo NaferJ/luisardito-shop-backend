@@ -83,8 +83,7 @@ async function uploadKickAvatarToCloudinary(
 
     // If it is specifically a 403 error from Kick, it is likely a protected image
     if (
-      error.response &&
-      error.response.status === 403 &&
+      error.response?.status === 403 &&
       error.config?.url?.includes("kick.com")
     ) {
       logger.warn(
@@ -98,7 +97,7 @@ async function uploadKickAvatarToCloudinary(
     if (error.http_code) {
       logger.error("[Upload Avatar] HTTP Code:", error.http_code);
     }
-    if (error.error && error.error.message) {
+    if (error.error?.message) {
       logger.error("[Upload Avatar] Cloudinary Error:", error.error.message);
     }
     logger.warn("[Upload Avatar] Using original Kick URL as fallback");

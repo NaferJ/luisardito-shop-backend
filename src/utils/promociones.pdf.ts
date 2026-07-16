@@ -203,12 +203,11 @@ async function generarPDFPromociones(promociones: any) {
           doc.fillColor(estadoColor).text(estado, col2, currentY);
 
           doc.fillColor("#000000");
-          const descuentoTexto =
-            tipoDesc === "porcentaje"
-              ? `${valorDesc}%`
-              : tipoDesc === "fijo"
-                ? `${valorDesc} pts`
-                : tipoDesc;
+          const descuentoTexto = (() => {
+            if (tipoDesc === "porcentaje") return `${valorDesc}%`;
+            if (tipoDesc === "fijo") return `${valorDesc} pts`;
+            return tipoDesc;
+          })();
           doc.text(descuentoTexto, col3, currentY);
 
           doc.text(usos.toString(), col4, currentY);

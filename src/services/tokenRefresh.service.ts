@@ -6,14 +6,9 @@ import { KickBroadcasterToken } from "../models";
 import logger from "../utils/logger";
 
 class TokenRefreshService {
-  isRunning: boolean;
-  intervalId: any;
-  intervalMs: number;
-  constructor() {
-    this.isRunning = false;
-    this.intervalId = null;
-    this.intervalMs = 30 * 60 * 1000; // 30 minutes in milliseconds
-  }
+  isRunning: boolean = false;
+  intervalId: any = null;
+  intervalMs: number = 30 * 60 * 1000; // 30 minutes in milliseconds
 
   /**
    * Starts the automatic token refresh service

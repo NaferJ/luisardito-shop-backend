@@ -30,7 +30,7 @@ const KickBotCommand: any = sequelize.define(
         if (typeof rawValue === "string") {
           try {
             return JSON.parse(rawValue);
-          } catch (_e) {
+          } catch {
             return [];
           }
         }

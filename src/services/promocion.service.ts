@@ -435,7 +435,8 @@ class PromocionService {
         usos_maximos: promocion.cantidad_usos_maximos,
         puntos_descontados_total:
           Number.parseInt(estadisticas.puntos_descontados_total) || 0,
-        descuento_promedio: parseFloat(estadisticas.descuento_promedio) || 0,
+        descuento_promedio:
+          Number.parseFloat(estadisticas.descuento_promedio) || 0,
         usuarios_unicos: Number.parseInt(estadisticas.usuarios_unicos) || 0,
         productos_aplicables: promocion.productos.length,
       },

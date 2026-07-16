@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TEMPORARY eslint override — to be removed in the typing pass
 
-import crypto from "crypto";
+import crypto from "node:crypto";
 import logger from "./logger";
 
 function base64url(input: any) {

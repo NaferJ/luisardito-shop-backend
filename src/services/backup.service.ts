@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 // TEMPORARY eslint override — to be removed in the typing pass
-import { exec } from "child_process";
-import { promisify } from "util";
-import crypto from "crypto";
-import { promises as fs, createReadStream, createWriteStream } from "fs";
-import path from "path";
-import zlib from "zlib";
-import { pipeline } from "stream/promises";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+import crypto from "node:crypto";
+import { promises as fs, createReadStream, createWriteStream } from "node:fs";
+import path from "node:path";
+import zlib from "node:zlib";
+import { pipeline } from "node:stream/promises";
 import logger from "../utils/logger";
 
 const execAsync = promisify(exec);
@@ -247,7 +247,7 @@ class BackupService {
       try {
         await execAsync(`cd "${repoPath}" && git pull origin main --no-edit`);
         await execAsync(`cd "${repoPath}" && git push origin main`);
-      } catch (_syncError: any) {
+      } catch {
         // If there are conflicts, force push (backups don't need to preserve history)
         logger.warn("[Backup] Conflict detected, forcing push...");
         await execAsync(`cd "${repoPath}" && git push --force origin main`);
@@ -316,7 +316,7 @@ class BackupService {
         // Try to clone first (if the repo has content)
         await execAsync(`git clone "${authUrl}" "${repoPath}"`);
         logger.info("Repository cloned successfully");
-      } catch (_cloneError: any) {
+      } catch {
         // If clone fails, initialize a new repo
         logger.info("Empty repository, initializing new repo...");
 
@@ -333,7 +333,7 @@ class BackupService {
           await execAsync(
             `cd "${repoPath}" && git remote add origin "${authUrl}"`
           );
-        } catch (_remoteError: any) {
+        } catch {
           // Remote already exists, update it
           await execAsync(
             `cd "${repoPath}" && git remote set-url origin "${authUrl}"`
@@ -399,7 +399,7 @@ class BackupService {
           );
           await execAsync(`cd "${repoPath}" && git push origin main`);
           logger.info("Git LFS configured and .gitattributes committed");
-        } catch (_commitError: any) {
+        } catch {
           // If commit fails, probably because there are no changes or the repo is empty
           logger.info("Git LFS configured locally");
         }

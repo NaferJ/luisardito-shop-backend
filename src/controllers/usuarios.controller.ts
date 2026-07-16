@@ -140,12 +140,12 @@ const me = asyncHandler(async (req: any, res: any) => {
 const updateMe = asyncHandler(async (req: any, res: any) => {
   try {
     const updates = req.body;
-    const allowedFields = ["discord_username", "password"];
+    const allowedFields = new Set(["discord_username", "password"]);
 
     // Filter only allowed fields
     const filteredUpdates: any = {};
     Object.keys(updates).forEach((key) => {
-      if (allowedFields.includes(key) || key === "password") {
+      if (allowedFields.has(key) || key === "password") {
         filteredUpdates[key] = updates[key];
       }
     });
@@ -456,7 +456,7 @@ const syncKickInfo = asyncHandler(async (req: any, res: any) => {
     const userId = req.user.id;
     const user: any = await Usuario.findByPk(userId);
 
-    if (!user || !user.user_id_ext) {
+    if (!user?.user_id_ext) {
       throw new AppError(
         "User not connected to Kick",
         400,
@@ -595,7 +595,11 @@ const actualizarPuntos = asyncHandler(async (req: any, res: any) => {
         usuario_id: usuario.id,
         puntos: cambio, // La cantidad del cambio (positivo o negativo)
         cambio, // Campo legacy para compatibilidad
-        tipo: cambio > 0 ? "ganado" : cambio < 0 ? "gastado" : "ajuste",
+        tipo: (() => {
+          if (cambio > 0) return "ganado";
+          if (cambio < 0) return "gastado";
+          return "ajuste";
+        })(),
         concepto: `Points adjustment: ${motivo}`,
         motivo: motivo, // Campo legacy para compatibilidad
       },

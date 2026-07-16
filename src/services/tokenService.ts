@@ -2,7 +2,7 @@
 // TEMPORARY eslint override — to be removed in the typing pass
 
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
+import crypto from "node:crypto";
 import config from "../../config";
 import { RefreshToken } from "../models";
 import { Op } from "sequelize";
@@ -183,7 +183,7 @@ async function cleanupExpiredTokens() {
 function verifyAccessToken(token: any) {
   try {
     return jwt.verify(token, config.jwtSecret);
-  } catch (_error) {
+  } catch {
     return null;
   }
 }

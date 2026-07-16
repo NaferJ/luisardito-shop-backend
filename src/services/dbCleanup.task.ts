@@ -15,10 +15,7 @@ import logger from "../utils/logger";
  *  - refresh_tokens revoked and expired > 7 days
  */
 class DbCleanupTask {
-  scheduledTask: any;
-  constructor() {
-    this.scheduledTask = null;
-  }
+  scheduledTask: any = null;
   /**
    * Starts the scheduled cleanup task
    */
