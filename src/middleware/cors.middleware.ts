@@ -1,13 +1,16 @@
-const cors = require("cors");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
 
-// CORS optimizado para producción
-const corsHandler = (req, res, next) => {
-  // Detectar webhooks para permitir acceso completo
+import cors from "cors";
+
+// CORS optimized for production
+const corsHandler = (req: any, res: any, next: any) => {
+  // Detect webhooks to allow full access
   const isWebhook =
     req.originalUrl && req.originalUrl.includes("/api/kick-webhook");
 
   if (isWebhook) {
-    // Webhooks: permitir TODO
+    // Webhooks: allow everything
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "*");
     res.header("Access-Control-Allow-Headers", "*");
@@ -20,9 +23,9 @@ const corsHandler = (req, res, next) => {
     return next();
   }
 
-  // Para todo lo demás: CORS específico
+  // For everything else: specific CORS
   return cors({
-    origin: function (origin, callback) {
+    origin: function (origin: any, callback: any) {
       const allowedOrigins = [
         "https://luisardito.com",
         "https://shop.luisardito.com",
@@ -45,7 +48,7 @@ const corsHandler = (req, res, next) => {
       ) {
         callback(null, true);
       } else {
-        callback(new Error("No permitido por CORS"));
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
@@ -71,4 +74,4 @@ const corsHandler = (req, res, next) => {
   })(req, res, next);
 };
 
-module.exports = corsHandler;
+export = corsHandler;

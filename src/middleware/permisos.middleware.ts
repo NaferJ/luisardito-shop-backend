@@ -1,5 +1,8 @@
-const { Permiso, RolPermiso } = require("../models");
-const logger = require("../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import { Permiso, RolPermiso } from "../models";
+import logger from "../utils/logger";
 
 /**
  * Permission verification middleware
@@ -13,8 +16,8 @@ const logger = require("../utils/logger");
  * @param {string} verboPermiso - Name of the required permission
  * @returns {Function} Middleware function
  */
-module.exports = function (verboPermiso) {
-  return async (req, res, next) => {
+export = function (verboPermiso: any) {
+  return async (req: any, res: any, next: any) => {
     try {
       // Additional defense: Validate that req.user exists
       // This should NOT happen if authRequired is used before, but it is good practice
@@ -38,7 +41,7 @@ module.exports = function (verboPermiso) {
       });
 
       // Extract permission names
-      const nombresPermisos = permisos.map((p) => p.nombre);
+      const nombresPermisos = permisos.map((p: any) => p.nombre);
 
       // User has the permission -> Continue
       if (nombresPermisos.includes(verboPermiso)) {

@@ -1,10 +1,13 @@
-const logger = require("../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import logger from "../utils/logger";
 
 /**
  * Responds with a 404 JSON body for any unmatched route.
  * Must be registered after all route mounts.
  */
-const notFoundHandler = (req, res, _next) => {
+const notFoundHandler = (req: any, res: any, _next: any) => {
   res.status(404).json({ error: "Not found" });
 };
 
@@ -15,7 +18,7 @@ const notFoundHandler = (req, res, _next) => {
  * already handled by controllers. Does not change any existing
  * controller behavior or response shapes.
  */
-const errorHandler = (err, req, res, next) => {
+const errorHandler = (err: any, req: any, res: any, next: any) => {
   // Guard against double-send
   if (res.headersSent) {
     return next(err);
@@ -27,7 +30,7 @@ const errorHandler = (err, req, res, next) => {
   const isProduction = process.env.NODE_ENV === "production";
 
   if (isProduction) {
-    const body = {
+    const body: any = {
       error: status >= 500 ? "Internal server error" : err.message || "Error",
     };
     if (err.details) {
@@ -37,7 +40,7 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Non-production: include stack and details for local debugging
-  const body = {
+  const body: any = {
     error: err.message || "Internal server error",
   };
   if (err.stack) {
@@ -49,4 +52,4 @@ const errorHandler = (err, req, res, next) => {
   return res.status(status).json(body);
 };
 
-module.exports = { notFoundHandler, errorHandler };
+export { notFoundHandler, errorHandler };

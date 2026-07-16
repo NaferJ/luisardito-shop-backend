@@ -1,16 +1,19 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
 /**
  * Webhook middleware - Optimized for production
  */
 
-const logWebhookRequest = (req, res, next) => {
+const logWebhookRequest = (req: any, _res: any, next: any) => {
   // Only log for real Kick webhooks
-  const hasKickHeaders = Object.keys(req.headers).some((key) =>
+  const hasKickHeaders = Object.keys(req.headers).some((key: string) =>
     key.toLowerCase().startsWith("kick-event")
   );
 
   if (hasKickHeaders || req.body?.test) {
-    const kickHeaders = {};
-    Object.keys(req.headers).forEach((key) => {
+    const kickHeaders: any = {};
+    Object.keys(req.headers).forEach((key: string) => {
       if (key.toLowerCase().startsWith("kick-event")) {
         kickHeaders[key] = req.headers[key];
       }
@@ -28,7 +31,7 @@ const logWebhookRequest = (req, res, next) => {
   next();
 };
 
-const webhookCors = (req, res, next) => {
+const webhookCors = (req: any, res: any, next: any) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "*");
   res.header("Access-Control-Allow-Headers", "*");
@@ -40,7 +43,4 @@ const webhookCors = (req, res, next) => {
   next();
 };
 
-module.exports = {
-  webhookCors,
-  logWebhookRequest,
-};
+export { webhookCors, logWebhookRequest };

@@ -1,4 +1,7 @@
-const AppError = require("../utils/AppError");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import AppError from "../utils/AppError";
 
 /**
  * Factory that returns an Express middleware which validates req[source]
@@ -13,8 +16,8 @@ const AppError = require("../utils/AppError");
  * @param {"body"|"query"|"params"} [source="body"] - request property to validate
  * @returns {import("express").RequestHandler}
  */
-function validate(schema, source = "body") {
-  return (req, _res, next) => {
+function validate(schema: any, source: any = "body") {
+  return (req: any, _res: any, next: any) => {
     const result = schema.safeParse(req[source]);
 
     if (result.success) {
@@ -22,9 +25,9 @@ function validate(schema, source = "body") {
       return next();
     }
 
-    const message = result.error.issues.map((i) => i.message).join(" ");
+    const message = result.error.issues.map((i: any) => i.message).join(" ");
     return next(new AppError(message, 400, { issues: result.error.issues }));
   };
 }
 
-module.exports = validate;
+export = validate;
