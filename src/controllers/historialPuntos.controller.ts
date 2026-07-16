@@ -1,0 +1,80 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+import { HistorialPunto } from "../models";
+import { Op } from "sequelize";
+import { sequelize } from "../models/database";
+import asyncHandler from "../utils/asyncHandler";
+import AppError from "../utils/AppError";
+
+const listar = asyncHandler(async (req: any, res: any) => {
+  const { usuarioId } = req.params;
+
+  // Regular users only see their own history
+  // Roles 1-2 (user, subscriber) can only see their own history
+  // Roles 3+ (streamer, developer, moderator) can see any history
+  if (req.user.rol_id <= 2 && req.user.id !== +usuarioId) {
+    throw new AppError("No permission to view this history", 403);
+  }
+
+  const { include_all = "false" } = req.query;
+  const isAdmin = req.user.rol_id >= 3;
+  const showAllEvents = include_all === "true" && isAdmin;
+
+  let whereClause: any = { usuario_id: usuarioId };
+
+  // If not admin or not requesting all, filter events
+  if (!showAllEvents) {
+    // Simplified filter: show everything except automatic chat messages
+    whereClause = {
+      usuario_id: usuarioId,
+      [Op.or]: [
+        // Show all events without kick_event_data (redemptions, manual adjustments, etc.)
+        { kick_event_data: null },
+        // Show important events, exclude automatic chat
+        {
+          [Op.and]: [
+            { kick_event_data: { [Op.ne]: null } },
+            {
+              [Op.or]: [
+                // MySQL JSON syntax to exclude chat messages
+                sequelize.literal(
+                  `JSON_EXTRACT(kick_event_data, '$.event_type') != 'chat.message.sent'`
+                ),
+                // If it has no event_type, show it
+                sequelize.literal(
+                  `JSON_EXTRACT(kick_event_data, '$.event_type') IS NULL`
+                ),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  const registros = await HistorialPunto.findAll({
+    where: whereClause,
+    order: [["fecha", "DESC"]],
+  });
+
+  res.json(registros);
+});
+
+/**
+ * List full history (including chat events) - Admins only
+ */
+const listarCompleto = asyncHandler(async (req: any, res: any) => {
+  const { usuarioId } = req.params;
+
+  // The permission middleware already validates the 'editar_puntos' permission
+  // No additional validation needed here
+
+  const registros = await HistorialPunto.findAll({
+    where: { usuario_id: usuarioId },
+    order: [["fecha", "DESC"]],
+  });
+
+  res.json(registros);
+});
+
+export = { listar, listarCompleto };
