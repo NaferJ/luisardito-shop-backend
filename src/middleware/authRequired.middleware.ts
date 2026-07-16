@@ -1,7 +1,10 @@
-const jwt = require("jsonwebtoken");
-const config = require("../../config");
-const { Usuario, Rol } = require("../models");
-const logger = require("../utils/logger");
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// TEMPORARY eslint override — to be removed in the typing pass
+
+import jwt from "jsonwebtoken";
+import config from "../../config";
+import { Usuario, Rol } from "../models";
+import logger from "../utils/logger";
 
 /**
  * Strict authentication middleware
@@ -18,7 +21,7 @@ const logger = require("../utils/logger");
  *
  * @returns {Function} Middleware function
  */
-module.exports = async (req, res, next) => {
+export = async (req: any, res: any, next: any) => {
   try {
     // 1. Check token in COOKIES first
     let token = req.cookies?.auth_token;
@@ -38,10 +41,10 @@ module.exports = async (req, res, next) => {
     }
 
     // Verify token
-    const payload = jwt.verify(token, config.jwtSecret);
+    const payload: any = jwt.verify(token, config.jwtSecret);
 
     // Get user from the database
-    const user = await Usuario.findByPk(payload.userId, { include: Rol });
+    const user: any = await Usuario.findByPk(payload.userId, { include: Rol });
 
     // User not found -> BLOCK
     if (!user) {
