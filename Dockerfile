@@ -6,8 +6,10 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files and install ALL dependencies (incl. dev for build)
+# --ignore-scripts prevents dependency lifecycle scripts (postinstall, prepare,
+# etc.) from running during install, mitigating supply-chain attacks.
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source files needed for compilation
 COPY app.ts config.ts ./
@@ -26,8 +28,10 @@ ENV NODE_ENV=production
 RUN apk add --no-cache docker-cli git git-lfs mariadb-client
 
 # Install production dependencies only
+# npm ci strictly uses package-lock.json (no version drift).
+# --omit=dev skips devDependencies; --ignore-scripts blocks lifecycle scripts.
 COPY package.json package-lock.json ./
-RUN npm install --production
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
