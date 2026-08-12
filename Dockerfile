@@ -28,9 +28,10 @@ ENV NODE_ENV=production
 RUN apk add --no-cache docker-cli git git-lfs mariadb-client
 
 # Install production dependencies only
-# --ignore-scripts: same supply-chain mitigation as the builder stage.
+# npm ci strictly uses package-lock.json (no version drift).
+# --omit=dev skips devDependencies; --ignore-scripts blocks lifecycle scripts.
 COPY package.json package-lock.json ./
-RUN npm install --production --ignore-scripts
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy compiled output from builder
 COPY --from=builder /app/dist ./dist
