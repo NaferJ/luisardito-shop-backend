@@ -1,5 +1,13 @@
 import type { Request, Response } from "express";
-import { Producto, Promocion, PromocionProducto, sequelize } from "../models";
+import {
+  Producto,
+  Promocion,
+  PromocionProducto,
+  Canje,
+  Usuario,
+  DiscordUserLink,
+  sequelize,
+} from "../models";
 import { Op, WhereOptions } from "sequelize";
 import promocionService from "../services/promocion.service";
 import logger from "../utils/logger";
@@ -19,6 +27,115 @@ const CANJES_COUNT_ATTRIBUTES: {
   ],
 };
 
+interface UltimoCanjeKickData {
+  avatar_url: string | null;
+  username: string | null;
+}
+
+interface UltimoCanje {
+  usuario_id: number;
+  nickname: string;
+  display_name: string;
+  avatar: string | null;
+  kick_data: UltimoCanjeKickData | null;
+  fecha: Date;
+}
+
+/** Canje with its Usuario association eagerly loaded. */
+type CanjeWithUsuario = Canje & { Usuario?: Usuario | null };
+
+interface DiscordLinkRow {
+  tienda_user_id: number;
+  discord_username: string | null;
+  discord_discriminator: string | null;
+  discord_avatar: string | null;
+}
+
+/**
+ * Fetches the most recent non-returned/non-cancelled redemption for each of the
+ * given product IDs, in two queries (one for canjes + usuarios, one for the
+ * redeemers' Discord links). Returns a map of producto_id -> ultimo_canje.
+ *
+ * Products with no redemptions are absent from the map; callers should default
+ * to null.
+ */
+async function getLastRedeemersByProduct(
+  productIds: number[]
+): Promise<Map<number, UltimoCanje>> {
+  const result = new Map<number, UltimoCanje>();
+  if (productIds.length === 0) return result;
+
+  const canjes = (await Canje.findAll({
+    where: {
+      producto_id: { [Op.in]: productIds },
+      estado: { [Op.in]: ["pendiente", "entregado"] },
+    },
+    include: [{ model: Usuario, attributes: ["id", "nickname", "kick_data"] }],
+    order: [["fecha", "DESC"]],
+  })) as unknown as CanjeWithUsuario[];
+
+  // canjes are ordered by fecha DESC; keep the first canje per product.
+  const firstCanjeByProduct = new Map<number, CanjeWithUsuario>();
+  const redeemerIds = new Set<number>();
+  for (const canje of canjes) {
+    if (firstCanjeByProduct.has(canje.producto_id)) continue;
+    firstCanjeByProduct.set(canje.producto_id, canje);
+    if (canje.Usuario) redeemerIds.add(canje.Usuario.id);
+  }
+
+  if (redeemerIds.size === 0) return result;
+
+  const discordLinks = await DiscordUserLink.findAll({
+    where: { tienda_user_id: { [Op.in]: [...redeemerIds] } },
+    attributes: [
+      "tienda_user_id",
+      "discord_username",
+      "discord_discriminator",
+      "discord_avatar",
+    ],
+    raw: true,
+  });
+  const discordByUser = new Map<number, DiscordLinkRow>();
+  for (const link of discordLinks) {
+    discordByUser.set(link.tienda_user_id, link);
+  }
+
+  for (const [productoId, canje] of firstCanjeByProduct) {
+    const usuario = canje.Usuario;
+    if (!usuario) continue;
+
+    const discord = discordByUser.get(usuario.id);
+    const kickData = usuario.kick_data as {
+      avatar_url?: string;
+      username?: string;
+    } | null;
+    const kickAvatar = kickData?.avatar_url ?? null;
+    const kickUsername = kickData?.username ?? null;
+
+    const displayName = discord
+      ? discord.discord_discriminator && discord.discord_discriminator !== "0"
+        ? `${discord.discord_username}#${discord.discord_discriminator}`
+        : (discord.discord_username as string)
+      : usuario.nickname;
+
+    const avatar = discord?.discord_avatar || kickAvatar;
+
+    result.set(productoId, {
+      usuario_id: usuario.id,
+      nickname: usuario.nickname,
+      display_name: displayName,
+      avatar,
+      kick_data: {
+        avatar_url: kickAvatar,
+        username: kickUsername,
+      },
+      fecha: canje.fecha,
+    });
+  }
+
+  return result;
+}
+
 function parseSortOrder(sortParam: unknown): Array<[string, string]> {
   const sort = typeof sortParam === "string" ? sortParam.toLowerCase() : "";
   switch (sort) {
@@ -34,7 +151,8 @@ function parseSortOrder(sortParam: unknown): Array<[string, string]> {
 
 async function enrichProductoWithDiscounts(
   producto: Producto,
-  usuarioId: number | null
+  usuarioId: number | null,
+  ultimoCanje: UltimoCanje | null = null
 ) {
   const infoDescuento = await promocionService.calcularMejorDescuento(
     producto.id,
@@ -59,12 +177,14 @@ async function enrichProductoWithDiscounts(
       valor_descuento: p.valor_descuento,
     })),
     promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null,
+    ultimo_canje: ultimoCanje,
   };
 }
 
 async function buildProductoDetailResponse(
   producto: Producto,
-  usuarioId: number | null
+  usuarioId: number | null,
+  ultimoCanje: UltimoCanje | null = null
 ) {
   const infoDescuento = await promocionService.calcularMejorDescuento(
     producto.id,
@@ -93,6 +213,7 @@ async function buildProductoDetailResponse(
       requiere_codigo: p.requiere_codigo,
     })),
     promocion_id: infoDescuento.promocion ? infoDescuento.promocion.id : null,
+    ultimo_canje: ultimoCanje,
   };
 }
 
@@ -113,11 +234,18 @@ const listar = asyncHandler(async (req: Request, res: Response) => {
     attributes: CANJES_COUNT_ATTRIBUTES,
   });
 
-  // Add discount info to each product
+  // Add discount info and last redeemer to each product
   const usuarioId = req.user ? req.user.id : null;
+  const lastRedeemers = await getLastRedeemersByProduct(
+    productos.map((p) => p.id)
+  );
   const productosConDescuentos = await Promise.all(
     productos.map((producto) =>
-      enrichProductoWithDiscounts(producto, usuarioId)
+      enrichProductoWithDiscounts(
+        producto,
+        usuarioId,
+        lastRedeemers.get(producto.id) ?? null
+      )
     )
   );
 
@@ -131,7 +259,14 @@ const obtener = asyncHandler(async (req: Request, res: Response) => {
   if (!producto) throw new AppError("Not found", 404);
 
   const usuarioId = req.user ? req.user.id : null;
-  res.json(await buildProductoDetailResponse(producto, usuarioId));
+  const lastRedeemers = await getLastRedeemersByProduct([producto.id]);
+  res.json(
+    await buildProductoDetailResponse(
+      producto,
+      usuarioId,
+      lastRedeemers.get(producto.id) ?? null
+    )
+  );
 });
 
 const obtenerPorSlug = asyncHandler(async (req: Request, res: Response) => {
@@ -152,11 +287,21 @@ const obtenerPorSlug = asyncHandler(async (req: Request, res: Response) => {
   if (!producto) throw new AppError("Product not found", 404);
 
   const usuarioId = req.user ? req.user.id : null;
-  res.json(await buildProductoDetailResponse(producto, usuarioId));
+  const lastRedeemers = await getLastRedeemersByProduct([producto.id]);
+  res.json(
+    await buildProductoDetailResponse(
+      producto,
+      usuarioId,
+      lastRedeemers.get(producto.id) ?? null
+    )
+  );
 });
 
 const crear = asyncHandler(async (req: Request, res: Response) => {
   try {
+    // imagen_width / imagen_height are accepted from the request body.
+    // The frontend (which uploads to Cloudinary) is responsible for
+    // sending the real dimensions from the upload response.
     const producto = await Producto.create(req.body);
     res.status(201).json(producto);
   } catch (err) {
@@ -168,7 +313,19 @@ const editar = asyncHandler(async (req: Request, res: Response) => {
   const producto = await Producto.findByPk(req.params.id as string);
   if (!producto) throw new AppError("Not found", 404);
   try {
-    await producto.update(req.body);
+    const body = { ...req.body };
+
+    // If the image is cleared, reset dimensions too so stale values
+    // don't linger. When a new image_url is provided, the frontend
+    // is expected to also send imagen_width / imagen_height.
+    if (Object.prototype.hasOwnProperty.call(body, "imagen_url")) {
+      if (!body.imagen_url) {
+        body.imagen_width = null;
+        body.imagen_height = null;
+      }
+    }
+
+    await producto.update(body);
     res.json(producto);
   } catch (err) {
     throw new AppError(err instanceof Error ? err.message : String(err), 400);
@@ -274,10 +431,19 @@ const listarAdmin = asyncHandler(async (req: Request, res: Response) => {
     attributes: CANJES_COUNT_ATTRIBUTES,
   });
 
-  // Add discount info to each product
+  // Add discount info and last redeemer to each product
   // ADMIN: Do not filter by user - show all product promotions
+  const lastRedeemers = await getLastRedeemersByProduct(
+    productos.map((p) => p.id)
+  );
   const productosConDescuentos = await Promise.all(
-    productos.map((producto) => enrichProductoWithDiscounts(producto, null))
+    productos.map((producto) =>
+      enrichProductoWithDiscounts(
+        producto,
+        null,
+        lastRedeemers.get(producto.id) ?? null
+      )
+    )
   );
 
   res.json(productosConDescuentos);
