@@ -11,7 +11,7 @@ jest.mock("../../src/models", () => ({
   Usuario: {},
   HistorialPunto: {},
   KickUserTracking: { findOne: jest.fn() },
-  DiscordUserLink: { findOne: jest.fn() },
+  DiscordUserLink: { findOne: jest.fn(), findAll: jest.fn() },
   Promocion: {},
   PromocionProducto: {},
   sequelize: {
@@ -130,6 +130,10 @@ describe("enrichment characterization", () => {
     promocionService.obtenerPromocionesActivasProducto.mockResolvedValue([
       PROMO_SENTINEL,
     ]);
+    // Default: no redemptions. Product tests rely on ultimo_canje being null.
+    // Canje-heavy tests override Canje.findAll per test.
+    Canje.findAll.mockResolvedValue([]);
+    DiscordUserLink.findAll.mockResolvedValue([]);
   });
 
   describe("canjes enrichment - includeDiscord split", () => {
@@ -218,6 +222,7 @@ describe("enrichment characterization", () => {
       await productosCtrl.listar(req, res, next);
 
       expect(res.statusCode).toBe(200);
+      expect(res.body[0].ultimo_canje).toBeNull();
       const promo = res.body[0].promociones_activas[0];
       expect(promo).toEqual({
         id: "PROMO_ID_1",
@@ -242,6 +247,7 @@ describe("enrichment characterization", () => {
       await productosCtrl.listarAdmin(req, res, next);
 
       expect(res.statusCode).toBe(200);
+      expect(res.body[0].ultimo_canje).toBeNull();
       const promo = res.body[0].promociones_activas[0];
       expect(promo).toEqual({
         id: "PROMO_ID_1",
@@ -266,6 +272,7 @@ describe("enrichment characterization", () => {
       await productosCtrl.obtener(req, res, next);
 
       expect(res.statusCode).toBe(200);
+      expect(res.body.ultimo_canje).toBeNull();
       const promo = res.body.promociones_activas[0];
       expect(promo).toEqual({
         id: "PROMO_ID_1",
@@ -290,6 +297,7 @@ describe("enrichment characterization", () => {
       await productosCtrl.obtenerPorSlug(req, res, next);
 
       expect(res.statusCode).toBe(200);
+      expect(res.body.ultimo_canje).toBeNull();
       const promo = res.body.promociones_activas[0];
       expect(promo).toEqual({
         id: "PROMO_ID_1",

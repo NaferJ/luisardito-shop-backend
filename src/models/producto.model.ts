@@ -33,6 +33,8 @@ class Producto extends Model<
   declare stock: number | null;
   declare estado: CreationOptional<ProductoEstado>;
   declare imagen_url: string | null;
+  declare imagen_width: CreationOptional<number | null>;
+  declare imagen_height: CreationOptional<number | null>;
   declare slug: string | null;
   declare creado: CreationOptional<Date>;
   declare actualizado: CreationOptional<Date>;
@@ -68,6 +70,20 @@ Producto.init(
     imagen_url: {
       type: DataTypes.STRING,
       allowNull: true,
+    },
+    imagen_width: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+      comment:
+        "Original pixel width of the product image. NULL until populated.",
+    },
+    imagen_height: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: null,
+      comment:
+        "Original pixel height of the product image. NULL until populated.",
     },
     slug: {
       type: DataTypes.STRING,
