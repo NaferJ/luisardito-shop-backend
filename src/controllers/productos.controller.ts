@@ -52,6 +52,20 @@ interface DiscordLinkRow {
 }
 
 /**
+ * Resolves the display name for a redeemer, preferring Discord info when linked.
+ */
+function resolveRedeemerDisplayName(
+  discord: DiscordLinkRow | undefined,
+  nickname: string
+): string {
+  if (!discord) return nickname;
+  if (discord.discord_discriminator && discord.discord_discriminator !== "0") {
+    return `${discord.discord_username}#${discord.discord_discriminator}`;
+  }
+  return discord.discord_username as string;
+}
+
+/**
  * Fetches the most recent non-returned/non-cancelled redemption for each of the
  * given product IDs, in two queries (one for canjes + usuarios, one for the
  * redeemers' Discord links). Returns a map of producto_id -> ultimo_canje.
@@ -112,12 +126,7 @@ async function getLastRedeemersByProduct(
     const kickAvatar = kickData?.avatar_url ?? null;
     const kickUsername = kickData?.username ?? null;
 
-    const displayName = discord
-      ? discord.discord_discriminator && discord.discord_discriminator !== "0"
-        ? `${discord.discord_username}#${discord.discord_discriminator}`
-        : (discord.discord_username as string)
-      : usuario.nickname;
-
+    const displayName = resolveRedeemerDisplayName(discord, usuario.nickname);
     const avatar = discord?.discord_avatar || kickAvatar;
 
     result.set(productoId, {
@@ -318,7 +327,7 @@ const editar = asyncHandler(async (req: Request, res: Response) => {
     // If the image is cleared, reset dimensions too so stale values
     // don't linger. When a new image_url is provided, the frontend
     // is expected to also send imagen_width / imagen_height.
-    if (Object.prototype.hasOwnProperty.call(body, "imagen_url")) {
+    if (Object.hasOwn(body, "imagen_url")) {
       if (!body.imagen_url) {
         body.imagen_width = null;
         body.imagen_height = null;
