@@ -40,6 +40,6 @@ docs: add commit message guidelines
 Provides a clear structure for writing commit messages in Conventional Commits format. Ensures consistency and clarity across all repository contributions.  
   
 Correct example:  
-feat(celebrities): Pause autoplay on hover  
+feat(leaderboard): expose subscription duration in response  
   
-Adds pause/resume to the celebrity carousel when hovering over controls or areas. Reset timer in manual navigation to avoid immediate transitions.
+Adds subscription_duration_months to the leaderboard entry shape by reading the existing KickUserTracking column. Lets the frontend render subscriber tier badges without an extra request.
