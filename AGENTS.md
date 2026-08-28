@@ -29,6 +29,7 @@ See `.github/copilot-instructions.md` for full code conventions and rules.
 CI runs on `ubuntu-latest`. Some dependencies have platform-specific optional dependencies. **`npm install` on Windows silently drops the Linux-only optional dependency entries from `package-lock.json`**, which then breaks `npm ci` in CI with `Missing: ... from lock file` errors.
 
 Rules to avoid this:
+
 1. **Never run plain `npm install` on Windows** after the lock file is correct — it rewrites the lock and strips Linux entries. Use `npm ci` for routine local installs instead; it only reads the lock, never rewrites it.
 2. **When adding/updating a dependency**, regenerate the lock file in a Linux container so both platforms' optional deps are recorded:
    ```powershell
@@ -67,7 +68,7 @@ Development overrides live in `docker-compose.override.yml` (hot reload, publish
 
 ## CI/CD
 
-- **CI (`ci.yml`)** — Triggers on pushes to `dev` and PRs to `dev` or `main`. Runs `npm ci`, `npm test`, and a `docker build`. It does **not** run ESLint — run `npm run lint` locally before pushing.
+- **CI (`ci.yml`)** — Triggers on pushes to `dev` and PRs to `dev` or `main`. Runs `npm ci`, `npm test`, and a `docker build`. It does **not** run ESLint or Prettier — run `npm run format:check` and `npm run lint` locally before pushing.
 - **Production CD (`prod-cd.yml`)** — Triggers on pushes to `main`. Writes the production `.env` on the VPS from GitHub secrets and deploys the stack with `docker compose`.
 
 ## Project Board
@@ -106,12 +107,14 @@ Common operations for working with the board:
 Apply labels to every issue to categorize work. The repo has 13 labels total:
 
 **Custom labels (apply to every issue):**
+
 - `feature` — New feature or API endpoint
 - `ops` — Operations, infra, CI/CD, deployment
 - `content` — Content, copy, or asset task (no code changes)
 - `tooling` — Developer tooling, workflow, config, monitoring
 
 **GitHub default labels (use when applicable):**
+
 - `bug` — Something isn't working
 - `documentation` — Improvements or additions to documentation
 - `enhancement` — New feature or request (use `feature` instead for API work)
@@ -134,6 +137,7 @@ Milestones group issues and PRs toward a **release version** (e.g. "v1.1.0"). Th
 ### Card movement rule
 
 When working on an issue, the AI must:
+
 1. Move the card to **In Progress** when starting work (and tell the user)
 2. Move the card to **In Review** when a PR is opened (and tell the user)
 3. The card moves to **Done** automatically when the PR with `Closes #NN` merges
@@ -149,6 +153,7 @@ Always tell the user when moving a card between statuses.
 Status updates are high-level project health reports (not task-level updates). Add one via the project board UI (side panel -> Add update).
 
 **When to add a status update:**
+
 - A sprint starts ("Sprint 1 started, target Sep 14")
 - A sprint ends ("Sprint 1 complete, 5/6 items done")
 - The project is at risk ("Blocked on Kick API change, sprint delayed")

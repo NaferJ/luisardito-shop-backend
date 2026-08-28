@@ -43,6 +43,7 @@
 - [ ] Endpoint / service implemented
 - [ ] Response shape matches the contract (document the fields)
 - [ ] Migration added (if schema changes) and runs up/down cleanly
+- [ ] `npm run format:check` passes
 - [ ] `npm run lint` passes
 - [ ] `npm run typecheck` passes
 - [ ] `npm run build` passes
@@ -52,6 +53,7 @@
 ## Verification (local gates — all must be green)
 
 - `npm ci`
+- `npm run format:check`
 - `npm run lint`
 - `npm run typecheck`
 - `npm run build`

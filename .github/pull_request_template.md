@@ -2,6 +2,7 @@
 
 <!-- Link the issue this PR closes. This auto-closes the issue on merge
      and moves the project board card to Done. -->
+
 Closes #
 
 ## What
@@ -31,6 +32,7 @@ Closes #
 ## Verification (local gates — all must be green)
 
 - `npm ci`
+- `npm run format:check`
 - `npm run lint`
 - `npm run typecheck`
 - `npm run build`

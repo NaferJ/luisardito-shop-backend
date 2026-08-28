@@ -80,7 +80,7 @@ changes here are consumer-visible and must be coordinated with the frontend.
 - Tests run on **Jest** (`npm test`, `npm run test:watch`). Tests live in
   `tests/`. When adding/changing behavior, add or update tests.
 - Before a PR, all available gates must pass:
-  `npm run lint` · `npm run typecheck` · `npm run build` · `npm test`.
+  `npm run format:check` · `npm run lint` · `npm run typecheck` · `npm run build` · `npm test`.
 - **Do NOT run `npm run dev`** — the user runs the dev server themselves.
 - **Do NOT commit or push** — only the user does that. Make the change, run the
   verification gates, and report the diff plus command output without committing.
