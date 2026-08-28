@@ -33,6 +33,7 @@ interface LeaderboardEntry {
   previous_points?: number | null;
   is_vip: boolean;
   is_subscriber: boolean;
+  subscription_duration_months: number | null;
   kick_data: Record<string, unknown> | null;
   discord_info: DiscordInfo | null;
 }
@@ -101,28 +102,46 @@ interface StatsResult {
   };
 }
 
+interface SubscriberInfo {
+  is_subscriber: boolean;
+  subscription_duration_months: number | null;
+}
+
 /**
- * Resolves whether a user is an active subscriber based on KickUserTracking
+ * Resolves subscriber status and duration from KickUserTracking
  * @param userIdExt - Kick user ID
- * @returns true if actively subscribed
+ * @returns is_subscriber flag and subscription_duration_months (null if not subscribed)
  */
 async function resolveSubscriberStatus(
   userIdExt: string | null
-): Promise<boolean> {
-  if (!userIdExt) return false;
+): Promise<SubscriberInfo> {
+  if (!userIdExt)
+    return { is_subscriber: false, subscription_duration_months: null };
 
   const userTracking = await KickUserTracking.findOne({
     where: { kick_user_id: userIdExt },
-    attributes: ["is_subscribed", "subscription_expires_at"],
+    attributes: [
+      "is_subscribed",
+      "subscription_expires_at",
+      "subscription_duration_months",
+    ],
     raw: true,
   });
 
-  if (!userTracking?.is_subscribed) return false;
+  if (!userTracking?.is_subscribed)
+    return { is_subscriber: false, subscription_duration_months: null };
 
   const expiresAt = userTracking.subscription_expires_at
     ? new Date(userTracking.subscription_expires_at)
     : null;
-  return !expiresAt || expiresAt > new Date();
+  const isActive = !expiresAt || expiresAt > new Date();
+
+  return {
+    is_subscriber: isActive,
+    subscription_duration_months: isActive
+      ? (userTracking.subscription_duration_months ?? null)
+      : null,
+  };
 }
 
 /**
@@ -150,7 +169,7 @@ async function buildUserPositionOutsideRanking(
 
   const position = currentRanking.findIndex((u) => u.usuario_id === userId) + 1;
 
-  const isSubscriber = await resolveSubscriberStatus(usuario.user_id_ext);
+  const subscriberInfo = await resolveSubscriberStatus(usuario.user_id_ext);
 
   const { discord_info, display_name } =
     await enrichUserWithDiscordInfo(usuario);
@@ -167,7 +186,8 @@ async function buildUserPositionOutsideRanking(
     position_change: 0,
     change_indicator: "neutral",
     is_vip: usuario.is_vip && usuario.isVipActive(),
-    is_subscriber: isSubscriber,
+    is_subscriber: subscriberInfo.is_subscriber,
+    subscription_duration_months: subscriberInfo.subscription_duration_months,
     kick_data: usuario.kick_data,
     discord_info,
   };
@@ -326,7 +346,9 @@ class LeaderboardService {
             new Date(usuario.vip_expires_at) > new Date());
 
         // Get subscriber status
-        const isSubscriber = await resolveSubscriberStatus(usuario.user_id_ext);
+        const subscriberInfo = await resolveSubscriberStatus(
+          usuario.user_id_ext
+        );
 
         // Enrich with Discord info
         const { discord_info, display_name } = await enrichUserWithDiscordInfo({
@@ -350,7 +372,9 @@ class LeaderboardService {
             ] as number) || 0,
           position: index + 1,
           is_vip: isVipActive,
-          is_subscriber: isSubscriber,
+          is_subscriber: subscriberInfo.is_subscriber,
+          subscription_duration_months:
+            subscriberInfo.subscription_duration_months,
           kick_data: usuario.kick_data,
           discord_info,
         };
