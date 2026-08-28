@@ -1,0 +1,25 @@
+name: Project Auto Add
+
+on:
+  issues:
+    types: [opened]
+
+# The default GITHUB_TOKEN does not have project:write scope for user-owned
+# projects. If this workflow fails with a permissions error, create a PAT with
+# the `project` scope (classic) or `Projects` read/write (fine-grained) and
+# store it as a repo secret named PROJECT_PAT, then replace
+# ${{ secrets.GITHUB_TOKEN }} with ${{ secrets.PROJECT_PAT }} below.
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue to project board
+        uses: actions/add-to-project@v2.0.0
+        with:
+          project-url: https://github.com/users/NaferJ/projects/13
+          github-token: ${{ secrets.GITHUB_TOKEN }}
