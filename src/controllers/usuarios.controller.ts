@@ -3,7 +3,6 @@ import {
   Usuario,
   HistorialPunto,
   sequelize,
-  KickUserTracking,
   DiscordUserLink,
   Rol,
   Permiso,
@@ -11,6 +10,7 @@ import {
 } from "../models";
 import { Op, WhereOptions, Transaction } from "sequelize";
 import { extractAvatarUrl, getKickUserData } from "../utils/kickApi";
+import { resolveSubscriberStatus } from "../utils/subscriberStatus.util";
 import logger from "../utils/logger";
 import asyncHandler from "../utils/asyncHandler";
 import AppError from "../utils/AppError";
@@ -100,33 +100,11 @@ const me = asyncHandler(async (req: Request, res: Response) => {
     actualizado,
   } = user;
 
-  // Calculate subscriber info
-  let subscriberStatus = {
-    is_active: false,
-    expires_soon: false,
-  };
-
   // Get linked Discord info
   const { discord_info, display_name } = await enrichUserWithDiscordInfo(user);
 
-  if (user.user_id_ext) {
-    const userTracking = await KickUserTracking.findOne({
-      where: { kick_user_id: user.user_id_ext },
-    });
-
-    if (userTracking?.is_subscribed) {
-      const now = new Date();
-      const expiresAt = userTracking.subscription_expires_at
-        ? new Date(userTracking.subscription_expires_at)
-        : null;
-      subscriberStatus = {
-        is_active: !expiresAt || expiresAt > now,
-        expires_soon:
-          expiresAt &&
-          expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      };
-    }
-  }
+  // Calculate subscriber info (including accumulated months for the subscriber badge)
+  const subscriberStatus = await resolveSubscriberStatus(user.user_id_ext);
 
   res.json({
     id,
@@ -266,30 +244,10 @@ const listarUsuarios = asyncHandler(async (req: Request, res: Response) => {
         const { discord_info, display_name } =
           await enrichUserWithDiscordInfo(userInstance);
 
-        // Calculate subscriber info
-        let subscriberStatus = {
-          is_active: false,
-          expires_soon: false,
-        };
-
-        if (userData.user_id_ext) {
-          const userTracking = await KickUserTracking.findOne({
-            where: { kick_user_id: userData.user_id_ext },
-          });
-
-          if (userTracking?.is_subscribed) {
-            const now = new Date();
-            const expiresAt = userTracking.subscription_expires_at
-              ? new Date(userTracking.subscription_expires_at)
-              : null;
-            subscriberStatus = {
-              is_active: !expiresAt || expiresAt > now,
-              expires_soon:
-                expiresAt &&
-                expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            };
-          }
-        }
+        // Calculate subscriber info (including accumulated months for the subscriber badge)
+        const subscriberStatus = await resolveSubscriberStatus(
+          userData.user_id_ext
+        );
 
         return {
           ...userData,
@@ -324,37 +282,6 @@ const listarUsuarios = asyncHandler(async (req: Request, res: Response) => {
 // ============================================================================
 // DEBUG ENDPOINTS
 // ============================================================================
-
-/**
- * Resolves subscriber info for a user from KickUserTracking.
- */
-async function resolveSubscriberInfo(userIdExt: string | null): Promise<{
-  is_subscriber: boolean;
-  is_active: boolean;
-  expires_at: Date | null;
-}> {
-  if (!userIdExt) {
-    return { is_subscriber: false, is_active: false, expires_at: null };
-  }
-
-  const userTracking = await KickUserTracking.findOne({
-    where: { kick_user_id: userIdExt },
-  });
-
-  if (!userTracking?.is_subscribed) {
-    return { is_subscriber: false, is_active: false, expires_at: null };
-  }
-
-  const now = new Date();
-  const expiresAt = userTracking.subscription_expires_at
-    ? new Date(userTracking.subscription_expires_at)
-    : null;
-  return {
-    is_subscriber: true,
-    is_active: !expiresAt || expiresAt > now,
-    expires_at: expiresAt,
-  };
-}
 
 /**
  * DEBUG: Get complete info for a specific user
@@ -392,8 +319,15 @@ const debugUsuario = asyncHandler(async (req: Request, res: Response) => {
 
     const userInstance = Usuario.build(usuario.toJSON());
 
-    // Calculate subscriber info
-    const subscriberInfo = await resolveSubscriberInfo(usuario.user_id_ext);
+    // Calculate subscriber info (including accumulated months for the subscriber badge)
+    const subscriberStatus = await resolveSubscriberStatus(usuario.user_id_ext);
+    const subscriberInfo = {
+      is_subscriber: subscriberStatus.is_subscriber,
+      is_active: subscriberStatus.is_active,
+      expires_at: subscriberStatus.expires_at,
+      subscription_duration_months:
+        subscriberStatus.subscription_duration_months,
+    };
 
     res.json({
       usuario: {

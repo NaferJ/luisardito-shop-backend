@@ -693,8 +693,11 @@ describe("kickAdmin.controller migration characterization", () => {
         points_migrated: 0,
       });
       expect(enriched.subscriber_status).toEqual({
+        is_subscriber: false,
         is_active: false,
         expires_soon: false,
+        expires_at: null,
+        subscription_duration_months: null,
       });
       expect(KickUserTracking.findOne).not.toHaveBeenCalled();
     });
