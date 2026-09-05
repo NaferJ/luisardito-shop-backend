@@ -1,7 +1,10 @@
 jest.mock("../../src/models", () => ({
   Canje: {
     findAll: jest.fn(),
+    findAndCountAll: jest.fn(),
     findByPk: jest.fn(),
+    count: jest.fn(),
+    sum: jest.fn(),
   },
   Producto: {
     findAll: jest.fn(),
@@ -18,6 +21,8 @@ jest.mock("../../src/models", () => ({
     literal: jest.fn(() => ({})),
   },
   Op: { iLike: Symbol("iLike"), in: Symbol("in") },
+  col: jest.fn((name) => name),
+  fn: jest.fn((name, value) => ({ name, value })),
 }));
 
 jest.mock("../../src/services/vip.service", () => ({
@@ -133,6 +138,9 @@ describe("enrichment characterization", () => {
     // Default: no redemptions. Product tests rely on ultimo_canje being null.
     // Canje-heavy tests override Canje.findAll per test.
     Canje.findAll.mockResolvedValue([]);
+    Canje.findAndCountAll.mockResolvedValue({ rows: [], count: 0 });
+    Canje.count.mockResolvedValue(0);
+    Canje.sum.mockResolvedValue(0);
     DiscordUserLink.findAll.mockResolvedValue([]);
   });
 
@@ -166,7 +174,9 @@ describe("enrichment characterization", () => {
 
     test("listarMios -> discord enrichment did NOT run", async () => {
       const canje = makeCanjeWithUsuario();
-      Canje.findAll.mockResolvedValue([canje]);
+      Canje.findAndCountAll.mockResolvedValue({ rows: [canje], count: 1 });
+      Canje.findAll.mockResolvedValue([{ estado: "pendiente", count: 1 }]);
+      Canje.sum.mockResolvedValue(80);
 
       const req = { user: { id: 10 }, query: {}, params: {} };
       const res = createRes();
@@ -175,12 +185,96 @@ describe("enrichment characterization", () => {
       await canjesCtrl.listarMios(req, res, next);
 
       expect(res.statusCode).toBe(200);
-      const user = res.body[0].Usuario;
+      const user = res.body.data[0].Usuario;
       expect(user.dataValues.vip_status).toBeDefined();
       expect(user.dataValues.subscriber_status).toBeDefined();
       expect(user.dataValues).not.toHaveProperty("discord_info");
       expect(user.dataValues).not.toHaveProperty("display_name");
+      expect(res.body.pagination).toEqual({
+        total: 1,
+        limit: 10,
+        offset: 0,
+        has_more: false,
+      });
+      expect(res.body.summary).toEqual({
+        total: 1,
+        total_points: 80,
+        by_status: {
+          pendiente: 1,
+          entregado: 0,
+          cancelado: 0,
+          devuelto: 0,
+        },
+      });
       expect(DiscordUserLink.findOne).not.toHaveBeenCalled();
+    });
+
+    test("listarMios -> paginates and summarizes the full history", async () => {
+      const canje = makeCanjeWithUsuario();
+      Canje.findAndCountAll.mockResolvedValue({ rows: [canje], count: 1 });
+      Canje.findAll.mockResolvedValue([
+        { estado: "pendiente", count: 1 },
+        { estado: "entregado", count: 2 },
+        { estado: "cancelado", count: 1 },
+      ]);
+      Canje.sum.mockResolvedValue(320);
+
+      const req = {
+        user: { id: 10 },
+        query: {
+          limit: "2",
+          offset: "2",
+          estado: "pendiente",
+          sort: "date-asc",
+        },
+        params: {},
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await canjesCtrl.listarMios(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(Canje.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { usuario_id: 10, estado: "pendiente" },
+          limit: 2,
+          offset: 2,
+          order: [["fecha", "ASC"]],
+        })
+      );
+      expect(res.body.pagination).toEqual({
+        total: 1,
+        limit: 2,
+        offset: 2,
+        has_more: false,
+      });
+      expect(res.body.summary).toEqual({
+        total: 4,
+        total_points: 320,
+        by_status: {
+          pendiente: 1,
+          entregado: 2,
+          cancelado: 1,
+          devuelto: 0,
+        },
+      });
+    });
+
+    test("listarMios -> rejects invalid pagination and filters", async () => {
+      const res = createRes();
+      const next = jest.fn();
+
+      await canjesCtrl.listarMios(
+        { user: { id: 10 }, query: { limit: "0" }, params: {} },
+        res,
+        next
+      );
+
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "limit must be between 1 and 100" })
+      );
+      expect(Canje.findAndCountAll).not.toHaveBeenCalled();
     });
 
     test("listarPorUsuario -> discord enrichment RAN", async () => {

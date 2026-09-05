@@ -36,20 +36,6 @@
 
 -
 
-## Acceptance criteria
-
-<!-- Checkboxes that must all be ticked before the issue is closed. -->
-
-- [ ] Endpoint / service implemented
-- [ ] Response shape matches the contract (document the fields)
-- [ ] Migration added (if schema changes) and runs up/down cleanly
-- [ ] `npm run format:check` passes
-- [ ] `npm run lint` passes
-- [ ] `npm run typecheck` passes
-- [ ] `npm run build` passes
-- [ ] `npm test` passes (add/updated tests if applicable)
-- [ ] Linked PR merged
-
 ## Verification (local gates — all must be green)
 
 - `npm ci`
