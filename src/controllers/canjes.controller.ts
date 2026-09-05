@@ -7,7 +7,7 @@ import {
   KickUserTracking,
   DiscordUserLink,
 } from "../models";
-import { Op, WhereOptions, Transaction } from "sequelize";
+import { Op, WhereOptions, Transaction, col, fn } from "sequelize";
 import VipService from "../services/vip.service";
 import KickBotService from "../services/kickBot.service";
 import promocionService from "../services/promocion.service";
@@ -21,6 +21,17 @@ type CanjeWithAssociations = Canje & {
   Usuario?: Usuario | null;
   Producto?: Producto | null;
 };
+
+const CANJE_ESTADOS = [
+  "pendiente",
+  "entregado",
+  "cancelado",
+  "devuelto",
+] as const;
+type CanjeEstado = (typeof CANJE_ESTADOS)[number];
+
+const DEFAULT_CANJES_LIMIT = 10;
+const MAX_CANJES_LIMIT = 100;
 
 /**
  * Helper to enrich user info with Discord data
@@ -301,13 +312,108 @@ const listar = asyncHandler(async (req: Request, res: Response) => {
   res.json(canjes);
 });
 
+function parseCanjesPagination(query: Request["query"]): {
+  limit: number;
+  offset: number;
+} {
+  const parseInteger = (
+    value: unknown,
+    name: string,
+    defaultValue: number
+  ): number => {
+    if (value === undefined) return defaultValue;
+    if (typeof value !== "string" || !/^\d+$/.test(value)) {
+      throw new AppError(`${name} must be a non-negative integer`, 400);
+    }
+
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      throw new AppError(`${name} must be a non-negative integer`, 400);
+    }
+
+    return parsed;
+  };
+
+  const limit = parseInteger(query.limit, "limit", DEFAULT_CANJES_LIMIT);
+  const offset = parseInteger(query.offset, "offset", 0);
+
+  if (limit < 1 || limit > MAX_CANJES_LIMIT) {
+    throw new AppError(`limit must be between 1 and ${MAX_CANJES_LIMIT}`, 400);
+  }
+
+  return { limit, offset };
+}
+
+function parseCanjesFilter(query: Request["query"]): CanjeEstado | undefined {
+  if (query.estado === undefined) return undefined;
+  if (typeof query.estado !== "string") {
+    throw new AppError("estado must be a valid redemption status", 400);
+  }
+
+  const estado = query.estado.trim();
+  if (!CANJE_ESTADOS.includes(estado as CanjeEstado)) {
+    throw new AppError("estado must be a valid redemption status", 400);
+  }
+
+  return estado as CanjeEstado;
+}
+
+function parseCanjesSort(query: Request["query"]): "ASC" | "DESC" {
+  if (query.sort === undefined || query.sort === "date-desc") return "DESC";
+  if (query.sort === "date-asc") return "ASC";
+  throw new AppError("sort must be date-asc or date-desc", 400);
+}
+
+async function getCanjesSummary(usuarioId: number) {
+  const baseWhere = { usuario_id: usuarioId };
+  const [totalPoints, statusRows] = await Promise.all([
+    Canje.sum("precio_al_canje", { where: baseWhere }),
+    Canje.findAll({
+      where: baseWhere,
+      attributes: ["estado", [fn("COUNT", col("id")), "count"]],
+      group: ["estado"],
+      raw: true,
+    }),
+  ]);
+
+  const byStatus = Object.fromEntries(
+    CANJE_ESTADOS.map((estado) => [estado, 0])
+  ) as Record<CanjeEstado, number>;
+
+  for (const row of statusRows as unknown as Array<{
+    estado: CanjeEstado;
+    count: number | string;
+  }>) {
+    byStatus[row.estado] = Number(row.count);
+  }
+
+  return {
+    total: Object.values(byStatus).reduce((sum, count) => sum + count, 0),
+    total_points: totalPoints || 0,
+    by_status: byStatus,
+  };
+}
+
 // List only the authenticated user's canjes (for "My Canjes")
 const listarMios = asyncHandler(async (req: Request, res: Response) => {
-  const canjes = await Canje.findAll({
-    where: { usuario_id: req.user.id },
-    include: [Usuario, Producto],
-    order: [["fecha", "DESC"]],
-  });
+  const { limit, offset } = parseCanjesPagination(req.query);
+  const estado = parseCanjesFilter(req.query);
+  const sortDirection = parseCanjesSort(req.query);
+  const where = {
+    usuario_id: req.user.id,
+    ...(estado ? { estado } : {}),
+  };
+
+  const [{ rows: canjes, count: total }, summary] = await Promise.all([
+    Canje.findAndCountAll({
+      where,
+      include: [Usuario, Producto],
+      order: [["fecha", sortDirection]],
+      limit,
+      offset,
+    }),
+    getCanjesSummary(req.user.id),
+  ]);
 
   // Add VIP and subscriber info to the user (same user, for consistency)
   const now = new Date();
@@ -318,7 +424,16 @@ const listarMios = asyncHandler(async (req: Request, res: Response) => {
     }
   }
 
-  res.json(canjes);
+  res.json({
+    data: canjes,
+    pagination: {
+      total,
+      limit,
+      offset,
+      has_more: offset + canjes.length < total,
+    },
+    summary,
+  });
 });
 
 // List canjes for a specific user (admin/management view)
