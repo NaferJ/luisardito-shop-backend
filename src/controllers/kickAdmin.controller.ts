@@ -6,12 +6,12 @@ import {
   BotrixMigrationConfig,
   KickBotToken,
   sequelize,
-  KickUserTracking,
   DiscordUserLink,
 } from "../models";
 import BotrixMigrationService from "../services/botrixMigration.service";
 import KickBotService from "../services/kickBot.service";
 import { Op, WhereOptions } from "sequelize";
+import { resolveSubscriberStatus } from "../utils/subscriberStatus.util";
 import logger from "../utils/logger";
 
 /** Type for Canje with eagerly-loaded associations. */
@@ -752,30 +752,10 @@ const getUsersWithDetails = async (req: Request, res: Response) => {
         const { discord_info, display_name } =
           await enrichUserWithDiscordInfo(user);
 
-        // Calculate subscriber info
-        let subscriberStatus = {
-          is_active: false,
-          expires_soon: false,
-        };
-
-        if (userJson.user_id_ext) {
-          const userTracking = await KickUserTracking.findOne({
-            where: { kick_user_id: userJson.user_id_ext },
-          });
-
-          if (userTracking?.is_subscribed) {
-            const now = new Date();
-            const expiresAt = userTracking.subscription_expires_at
-              ? new Date(userTracking.subscription_expires_at)
-              : null;
-            subscriberStatus = {
-              is_active: !expiresAt || expiresAt > now,
-              expires_soon:
-                expiresAt &&
-                expiresAt <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            };
-          }
-        }
+        // Calculate subscriber info (including accumulated months for the subscriber badge)
+        const subscriberStatus = await resolveSubscriberStatus(
+          userJson.user_id_ext
+        );
 
         return {
           ...userJson,
