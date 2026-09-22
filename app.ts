@@ -82,8 +82,8 @@ app.use("/api/kick-webhook", kickWebhookRoutes);
 app.use("/api/kick", kickSubscriptionRoutes);
 app.use("/api/kick", kickPointsConfigRoutes);
 app.use("/api/kick", kickBroadcasterRoutes);
-app.use("/api/kick-admin", kickAdminRoutes);
 app.use("/api/kick-admin/bot-commands", kickBotCommandsRoutes);
+app.use("/api/kick-admin", kickAdminRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/promociones", promocionesRoutes);
 app.use("/api/broadcaster", broadcasterInfoRoutes); // Public route for broadcaster info
