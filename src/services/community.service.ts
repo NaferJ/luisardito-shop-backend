@@ -180,6 +180,7 @@ function toHiddenCommentPlaceholder(node: CommentDTO): CommentDTO {
     ...node,
     body: null,
     status: "hidden",
+    pinned: false,
     like_count: 0,
     viewer_liked: false,
     author: null,
@@ -706,7 +707,8 @@ interface HideableRow {
 async function hideOwnedOrModerated(
   instance: HideableRow | null,
   user: Usuario,
-  notFoundMessage: string
+  notFoundMessage: string,
+  extraUpdates: Record<string, unknown> = {}
 ): Promise<void> {
   if (!instance || instance.status === "hidden") {
     throw new AppError(notFoundMessage, 404);
@@ -725,6 +727,7 @@ async function hideOwnedOrModerated(
     hidden_by: user.id,
     hidden_at: new Date(),
     hidden_reason: isOwner ? "deleted_by_author" : "removed_by_moderator",
+    ...extraUpdates,
   });
 }
 
@@ -760,7 +763,10 @@ async function removeComment(
   const comment = await CommunityComment.findByPk(commentId, {
     include: [AUTHOR_INCLUDE],
   });
-  await hideOwnedOrModerated(comment, user, "Comment not found");
+  // A hidden comment cannot be unpinned through the pin endpoint.
+  await hideOwnedOrModerated(comment, user, "Comment not found", {
+    pinned: false,
+  });
   return fetchCommentDTO(comment, user.id);
 }
 
@@ -841,9 +847,18 @@ async function setCommentPinned(
     // At most one pinned comment per post: unpin the previous one in the
     // same transaction before pinning this comment.
     await sequelize.transaction(async (transaction) => {
+      // Exclude this comment so re-pinning an already pinned comment is not
+      // cleared in the DB while the loaded instance still reads pinned=true.
       await CommunityComment.update(
         { pinned: false },
-        { where: { post_id: post.id, pinned: true }, transaction }
+        {
+          where: {
+            post_id: post.id,
+            pinned: true,
+            id: { [Op.ne]: comment.id },
+          },
+          transaction,
+        }
       );
       await comment.update({ pinned: true }, { transaction });
     });

@@ -52,7 +52,7 @@ const NotificacionService = require("../../src/services/notificacion.service");
 const service = require("../../src/services/community.service");
 const { sequelize } = require("../../src/models/database");
 const AppError = require("../../src/utils/AppError");
-const { UniqueConstraintError } = require("sequelize");
+const { Op, UniqueConstraintError } = require("sequelize");
 
 function makePost(overrides = {}) {
   return {
@@ -778,6 +778,20 @@ describe("community.service", () => {
       expect(comment.destroy).not.toHaveBeenCalled();
       expect(result.status).toBe("hidden");
     });
+
+    test("hiding a pinned comment clears its pin", async () => {
+      const comment = makeComment({ usuario_id: 2, pinned: true });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.removeComment(7, makeUser({ id: 2 }));
+
+      expect(comment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "hidden", pinned: false })
+      );
+      expect(result.pinned).toBe(false);
+    });
   });
 
   // ---------- setPinned ----------
@@ -853,6 +867,17 @@ describe("community.service", () => {
 
       expect(tree.map((c) => c.id)).toEqual([2, 1, 3]);
       expect(tree[1].replies.map((c) => c.id)).toEqual([4, 5]);
+    });
+
+    test("pinned hidden placeholder is not pinned or sorted first", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1 }),
+        makeDTO({ id: 2, status: "hidden", pinned: true }),
+        makeDTO({ id: 3, parent_id: 2 }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([1, 2]);
+      expect(tree[1]).toMatchObject({ status: "hidden", pinned: false });
     });
 
     test("hidden parent with a visible child becomes a placeholder", () => {
@@ -1064,12 +1089,35 @@ describe("community.service", () => {
 
       expect(CommunityComment.update).toHaveBeenCalledWith(
         { pinned: false },
-        expect.objectContaining({ where: { post_id: 1, pinned: true } })
+        expect.objectContaining({
+          where: { post_id: 1, pinned: true, id: { [Op.ne]: 7 } },
+        })
       );
       expect(comment.update).toHaveBeenCalledWith(
         { pinned: true },
         expect.objectContaining({ transaction: {} })
       );
+      expect(result.pinned).toBe(true);
+    });
+
+    test("re-pinning an already pinned comment keeps its pin", async () => {
+      mockTransaction();
+      const comment = makeComment({ pinned: true });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 2 }));
+      CommunityComment.update.mockResolvedValue([0]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.setCommentPinned(
+        7,
+        true,
+        makeUser({ id: 2 })
+      );
+
+      // The bulk unpin must never target the comment being pinned.
+      const [, options] = CommunityComment.update.mock.calls[0];
+      expect(options.where.id).toEqual({ [Op.ne]: comment.id });
       expect(result.pinned).toBe(true);
     });
 
