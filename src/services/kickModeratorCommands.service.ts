@@ -187,7 +187,7 @@ function parseModeratorCommand(content: string): ParsedCommand | null {
       command,
       name: null,
       flags: {},
-      error: "You must specify the command name",
+      error: "Debes indicar el nombre del comando",
     };
   }
 
@@ -279,7 +279,7 @@ async function processModeratorCommand(
     return {
       success: false,
       processed: true,
-      message: "Could not process the command",
+      message: "No pude procesar el comando",
     };
   }
 }
@@ -298,7 +298,7 @@ async function handleAddCommand(
       return {
         success: false,
         processed: true,
-        message: `You must specify a response for the command. Example: !addcmd ${name} Hello {username}`,
+        message: `Debes indicar una respuesta. Ejemplo: !addcmd ${name} Hola {username}`,
       };
     }
 
@@ -311,7 +311,7 @@ async function handleAddCommand(
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" already exists. Use !editcmd to modify it.`,
+        message: `El comando "!${name}" ya existe. Usa !editcmd para modificarlo.`,
       };
     }
 
@@ -330,7 +330,7 @@ async function handleAddCommand(
         return {
           success: false,
           processed: true,
-          message: `The following aliases already exist as commands: ${conflictingNames}`,
+          message: `Estos alias ya existen como comandos: ${conflictingNames}`,
         };
       }
     }
@@ -353,9 +353,9 @@ async function handleAddCommand(
     logger.info(`[MOD-CMD] Command !${name} created by ${sender.username}`);
 
     // Build confirmation message
-    let confirmMsg = `Command "!${name}" created successfully`;
+    let confirmMsg = `Comando "!${name}" creado`;
     if (flags.aliases && flags.aliases.length > 0) {
-      confirmMsg += ` (Aliases: ${flags.aliases.join(", ")})`;
+      confirmMsg += ` (alias: ${flags.aliases.join(", ")})`;
     }
 
     return {
@@ -369,7 +369,7 @@ async function handleAddCommand(
     return {
       success: false,
       processed: true,
-      message: "Could not create the command",
+      message: "No pude crear el comando",
     };
   }
 }
@@ -392,7 +392,7 @@ async function handleEditCommand(
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist. Use !addcmd to create it.`,
+        message: `El comando "!${name}" no existe. Usa !addcmd para crearlo.`,
       };
     }
 
@@ -401,7 +401,7 @@ async function handleEditCommand(
       return {
         success: false,
         processed: true,
-        message: `You must specify at least one field to update. Example: !editcmd ${name} --response New response`,
+        message: `Indica al menos un campo. Ejemplo: !editcmd ${name} --response Nueva respuesta`,
       };
     }
 
@@ -416,22 +416,22 @@ async function handleEditCommand(
 
     if (flags.response) {
       updates.response_message = flags.response;
-      changes.push("response");
+      changes.push("respuesta");
     }
 
     if (flags.aliases) {
       updates.aliases = flags.aliases;
-      changes.push(`aliases (${flags.aliases.join(", ")})`);
+      changes.push(`alias (${flags.aliases.join(", ")})`);
     }
 
     if (flags.cooldown !== undefined) {
       updates.cooldown_seconds = flags.cooldown;
-      changes.push(`cooldown (${flags.cooldown}s)`);
+      changes.push(`espera (${flags.cooldown}s)`);
     }
 
     if (flags.desc) {
       updates.description = flags.desc;
-      changes.push("description");
+      changes.push("descripción");
     }
 
     // Update
@@ -444,7 +444,7 @@ async function handleEditCommand(
     return {
       success: true,
       processed: true,
-      message: `Command "!${name}" updated: ${changes.join(", ")}`,
+      message: `Comando "!${name}" actualizado: ${changes.join(", ")}`,
       data: command,
     };
   } catch (error: unknown) {
@@ -452,7 +452,7 @@ async function handleEditCommand(
     return {
       success: false,
       processed: true,
-      message: "Could not edit the command",
+      message: "No pude editar el comando",
     };
   }
 }
@@ -471,7 +471,7 @@ async function handleDeleteCommand(
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" is protected and cannot be deleted`,
+        message: `El comando "!${name}" está protegido y no se puede eliminar`,
       };
     }
 
@@ -480,7 +480,7 @@ async function handleDeleteCommand(
       return {
         success: false,
         processed: true,
-        message: `Only @${broadcaster.username} can delete commands`,
+        message: `Solo @${broadcaster.username} puede eliminar comandos`,
       };
     }
 
@@ -493,7 +493,7 @@ async function handleDeleteCommand(
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist`,
+        message: `El comando "!${name}" no existe`,
       };
     }
 
@@ -505,14 +505,14 @@ async function handleDeleteCommand(
     return {
       success: true,
       processed: true,
-      message: `Command "!${name}" deleted successfully`,
+      message: `Comando "!${name}" eliminado`,
     };
   } catch (error: unknown) {
     logger.error("[MOD-CMD] Error in handleDeleteCommand:", error);
     return {
       success: false,
       processed: true,
-      message: "Could not delete the command",
+      message: "No pude eliminar el comando",
     };
   }
 }
@@ -531,7 +531,7 @@ async function handleCommandInfo(name: string): Promise<CommandResult> {
       return {
         success: false,
         processed: true,
-        message: `Command "!${name}" does not exist`,
+        message: `El comando "!${name}" no existe`,
       };
     }
 
@@ -539,18 +539,18 @@ async function handleCommandInfo(name: string): Promise<CommandResult> {
     const aliases =
       command.aliases && command.aliases.length > 0
         ? command.aliases.join(", ")
-        : "none";
+        : "ninguno";
 
-    const estado = command.enabled ? "Active" : "Disabled";
+    const estado = command.enabled ? "Activo" : "Desactivado";
 
     // Show the FULL response without truncation
     const message =
-      `Command info for "!${name}" | ` +
-      `Response: ${command.response_message} | ` +
-      `Aliases: ${aliases} | ` +
-      `Cooldown: ${command.cooldown_seconds}s | ` +
-      `Status: ${estado} | ` +
-      `Uses: ${command.usage_count}`;
+      `Comando "!${name}" | ` +
+      `Respuesta: ${command.response_message} | ` +
+      `Alias: ${aliases} | ` +
+      `Espera: ${command.cooldown_seconds}s | ` +
+      `Estado: ${estado} | ` +
+      `Usos: ${command.usage_count}`;
 
     return {
       success: true,
@@ -563,7 +563,7 @@ async function handleCommandInfo(name: string): Promise<CommandResult> {
     return {
       success: false,
       processed: true,
-      message: "Could not get command info",
+      message: "No pude obtener la información del comando",
     };
   }
 }

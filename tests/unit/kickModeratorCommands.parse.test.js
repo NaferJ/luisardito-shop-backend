@@ -1,6 +1,8 @@
 const {
   parseModeratorCommand,
+  processModeratorCommand,
 } = require("../../src/services/kickModeratorCommands.service");
+const commandHandler = require("../../src/services/kickBotCommandHandler.service");
 
 // Characterization test for parseModeratorCommand (pure function:
 // moderator chat command string -> { command, name, flags } | null | error object).
@@ -41,7 +43,7 @@ describe("parseModeratorCommand - characterization", () => {
           command: cmd,
           name: null,
           flags: {},
-          error: "You must specify the command name",
+          error: "Debes indicar el nombre del comando",
         });
       }
     );
@@ -51,7 +53,7 @@ describe("parseModeratorCommand - characterization", () => {
         command: "!addcmd",
         name: null,
         flags: {},
-        error: "You must specify the command name",
+        error: "Debes indicar el nombre del comando",
       });
     });
 
@@ -60,7 +62,7 @@ describe("parseModeratorCommand - characterization", () => {
         command: "!addcmd",
         name: null,
         flags: {},
-        error: "You must specify the command name",
+        error: "Debes indicar el nombre del comando",
       });
     });
   });
@@ -244,5 +246,37 @@ describe("parseModeratorCommand - characterization", () => {
       const result = parseModeratorCommand("!addcmd hi --desc");
       expect(result.flags.desc).toBe("");
     });
+  });
+});
+
+describe("user-facing bot messages", () => {
+  test("returns a concise Spanish moderator error", async () => {
+    const result = await processModeratorCommand({
+      content: "!addcmd",
+      sender: { user_id: "1", username: "owner" },
+      broadcaster: { user_id: "1", username: "owner" },
+    });
+
+    expect(result).toEqual({
+      success: false,
+      processed: true,
+      message: "Debes indicar el nombre del comando",
+    });
+  });
+
+  test("builds Spanish missing-user replies", () => {
+    expect(commandHandler.buildTargetNotFoundMessage("<@123>", "puntos")).toBe(
+      "usuario mencionado no existe o no tiene datos de puntos."
+    );
+    expect(
+      commandHandler.buildUserNotFoundMessage(
+        "viewer",
+        "discord",
+        null,
+        "puntos"
+      )
+    ).toBe(
+      "@viewer, vincula tu cuenta de Discord en https://shop.luisardito.com/perfil para consultar puntos."
+    );
   });
 });

@@ -135,7 +135,7 @@ class KickBotAutoSendService {
         const handler = command.dynamic_handler;
         if (handler === "puntos_handler") {
           // For puntos_handler, we need a user. Use a generic message
-          response = "Remember you can check your points with !puntos!";
+          response = "Recuerda que puedes consultar tus puntos con !puntos.";
         } else {
           // For other handlers, use the simple message
           response = command.response_message;
@@ -143,10 +143,10 @@ class KickBotAutoSendService {
       } else {
         // Simple command: replace variables with default values
         response = command.response_message
-          .replaceAll("{username}", "System")
+          .replaceAll("{username}", "Sistema")
           .replaceAll("{channel}", "luisardito")
           .replaceAll("{args}", "")
-          .replaceAll("{target_user}", "everyone")
+          .replaceAll("{target_user}", "todos")
           .replaceAll("{points}", "0");
       }
 

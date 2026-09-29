@@ -6,22 +6,9 @@ import {
 } from "../models";
 import sequelize from "sequelize";
 import logger from "../utils/logger";
-import toErrorMessage from "../utils/toErrorMessage";
 import formatWatchtime from "../utils/formatWatchtime";
-import axios, { type AxiosResponse } from "axios";
 import { getRedisClient } from "../config/redis.config";
-import config from "../../config";
 import type { Includeable, WhereOptions } from "sequelize";
-
-// Import EmbedBuilder only if discord.js is available
-let EmbedBuilder: typeof import("discord.js").EmbedBuilder | null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  EmbedBuilder = require("discord.js").EmbedBuilder;
-} catch {
-  // discord.js is not available (e.g. in Kick environment)
-  EmbedBuilder = null;
-}
 
 /**
  * ==========================================
@@ -32,10 +19,7 @@ try {
  */
 
 interface BotService {
-  sendMessage: (
-    message: string | { embeds: unknown[] },
-    context?: unknown
-  ) => Promise<unknown>;
+  sendMessage: (message: string, context?: unknown) => Promise<unknown>;
 }
 
 interface CommandContext {
@@ -53,18 +37,6 @@ interface DynamicContext {
   platform: string;
   discordUserId: string | null;
   displayName: string | null;
-}
-
-interface DiscordGuildData {
-  name?: string;
-  description?: string;
-  approximate_member_count?: number;
-}
-
-interface DiscordServerInfo {
-  memberCount: string;
-  name?: string;
-  description?: string;
 }
 
 type UsuarioWithWatchtime = Usuario & { UserWatchtime?: UserWatchtime };
@@ -105,8 +77,8 @@ class KickBotCommandHandlerService {
       const command = await KickBotCommand.findByCommand(content);
 
       if (!command) {
-        // Special !discord command for Discord - generate embed directly
-        return await this.handleUnregisteredCommand(content, bot, ctx);
+        // Not a registered command
+        return false;
       }
 
       logger.info(
@@ -135,7 +107,7 @@ class KickBotCommandHandlerService {
         displayName,
       };
 
-      let response: string | { embeds: unknown[] } | null;
+      let response: string | null;
       if (command.command_type === "dynamic") {
         response = await this.executeDynamicCommand(
           command,
@@ -154,10 +126,7 @@ class KickBotCommandHandlerService {
 
       // Send the response if any
       if (response) {
-        await bot.sendMessage(
-          typeof response === "string" ? response : JSON.stringify(response),
-          messageContext
-        );
+        await bot.sendMessage(response, messageContext);
 
         // Increment usage counter
         await command.incrementUsage();
@@ -172,31 +141,6 @@ class KickBotCommandHandlerService {
       logger.error("[BOT-COMMAND] Error processing command:", error);
       return false;
     }
-  }
-
-  /**
-   * Handles an unregistered command (e.g. special !discord embed for Discord)
-   * @returns True if the command was handled, false otherwise
-   */
-  async handleUnregisteredCommand(
-    content: string,
-    bot: BotService,
-    ctx: CommandContext
-  ): Promise<boolean> {
-    const { messageContext = null, platform = "kick" } = ctx || {};
-
-    // Special !discord command for Discord - generate embed directly
-    if (platform === "discord" && content.trim() === "!discord") {
-      logger.info(
-        `[BOT-COMMAND] Special !discord command detected in Discord (not in DB), generating embed`
-      );
-      const embedResult = await this.createDiscordEmbed();
-      await bot.sendMessage(embedResult, messageContext);
-      return true;
-    }
-
-    // Not a registered command
-    return false;
   }
 
   /**
@@ -241,18 +185,9 @@ class KickBotCommandHandlerService {
     content: string,
     username: string,
     channelName: string,
-    usuario: Usuario | null = null,
-    platform: string = "kick"
-  ): Promise<string | { embeds: unknown[] }> {
+    usuario: Usuario | null = null
+  ): Promise<string> {
     const args = this.extractArgs(content);
-
-    // Special !discord command with elegant embed for Discord
-    if (command.command === "discord" && platform === "discord") {
-      logger.info(
-        `[BOT-COMMAND] Generating embed for !discord from executeSimpleCommand`
-      );
-      return await this.createDiscordEmbed();
-    }
 
     // Replace variables in the message
     const response = command.response_message
@@ -322,7 +257,7 @@ class KickBotCommandHandlerService {
       return this.handleSelfPuntos(command, ctx);
     } catch (error: unknown) {
       logger.error("[BOT-COMMAND] Error in puntosHandler:", error);
-      return `An error occurred while checking points.`;
+      return `No pude consultar los puntos.`;
     }
   }
 
@@ -356,7 +291,7 @@ class KickBotCommandHandlerService {
     }
 
     // User not found - default response
-    return this.buildTargetNotFoundMessage(lookupArg, "points");
+    return this.buildTargetNotFoundMessage(lookupArg, "puntos");
   }
 
   /**
@@ -370,7 +305,7 @@ class KickBotCommandHandlerService {
         username,
         platform,
         displayName,
-        "points"
+        "puntos"
       );
     }
 
@@ -406,7 +341,7 @@ class KickBotCommandHandlerService {
       return await this.handleSelfWatchtime(command, ctx);
     } catch (error: unknown) {
       logger.error("[BOT-COMMAND] Error in watchtimeHandler:", error);
-      return `An error occurred while checking watchtime.`;
+      return `No pude consultar el tiempo en directo.`;
     }
   }
 
@@ -447,7 +382,7 @@ class KickBotCommandHandlerService {
     }
 
     // User not found - default response
-    return this.buildTargetNotFoundMessage(lookupArg, "watchtime");
+    return this.buildTargetNotFoundMessage(lookupArg, "tiempo en directo");
   }
 
   /**
@@ -464,7 +399,7 @@ class KickBotCommandHandlerService {
         username,
         platform,
         displayName,
-        "watchtime"
+        "tiempo en directo"
       );
     }
 
@@ -549,9 +484,9 @@ class KickBotCommandHandlerService {
   buildTargetNotFoundMessage(lookupArg: string, type: string): string {
     let displayName = lookupArg.replace(/^@/, "");
     if (/^<@!?(\d+)>/.exec(lookupArg)) {
-      displayName = "mentioned user";
+      displayName = "usuario mencionado";
     }
-    return `${displayName} does not exist or has no registered ${type}.`;
+    return `${displayName} no existe o no tiene datos de ${type}.`;
   }
 
   /**
@@ -564,11 +499,11 @@ class KickBotCommandHandlerService {
     type: string
   ): string {
     if (platform === "discord") {
-      return `@${username} Could not find your information. Have you linked your Discord account? Link it at https://shop.luisardito.com/perfil to use ${type} commands.`;
+      return `@${username}, vincula tu cuenta de Discord en https://shop.luisardito.com/perfil para consultar ${type}.`;
     } else if (displayName) {
-      return `@${displayName} Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use ${type} commands.`;
+      return `@${displayName}, regístrate en https://shop.luisardito.com/ para consultar ${type}.`;
     }
-    return `Could not find your information. Are you registered in the store? Register at https://shop.luisardito.com/ to use ${type} commands.`;
+    return `Regístrate en https://shop.luisardito.com/ para consultar ${type}.`;
   }
 
   /**
@@ -618,127 +553,6 @@ class KickBotCommandHandlerService {
     // Set cooldown with TTL
     await redis.setex(key, command.cooldown_seconds, Date.now().toString());
     return true;
-  }
-
-  /**
-   * Creates an elegant embed for the !discord command
-   */
-  async createDiscordEmbed(): Promise<string | { embeds: unknown[] }> {
-    if (!EmbedBuilder) {
-      // Fallback if discord.js is not available
-      return "POXY CLUB\nJoin: https://discord.gg/arsANX7aWt\n\nGaming, anime and streams community\nPlatforms: Kick, Twitch, YouTube\nMembers: > 1.2K\n\nDirect link: https://discord.gg/arsANX7aWt";
-    }
-
-    // Get the banner URL
-    const bannerUrl = this.getBannerUrl();
-
-    // EMBED 1: Just the banner (full width, top)
-    const bannerEmbed = new EmbedBuilder()
-      .setColor(0x9b59b6)
-      .setImage(bannerUrl);
-
-    // EMBED 2: The content (bottom)
-    const contentEmbed = new EmbedBuilder()
-      .setColor(0x9b59b6)
-      .setTitle("POXY CLUB")
-      .setURL("https://discord.gg/arsANX7aWt")
-      .setDescription(
-        "Greetings everyone! Join the gaming, anime and streams community on Discord.\n\n**Benefits:**"
-      )
-      .addFields(
-        { name: "Gaming", value: "Events and tournaments", inline: true },
-        { name: "Streams", value: "Live broadcasts", inline: true },
-        { name: "Content", value: "Anime and clips", inline: true }
-      )
-      .setFooter({ text: "Participant | Coach" })
-      .setTimestamp();
-
-    return { embeds: [bannerEmbed, contentEmbed] }; // Returns object with array of embeds
-  }
-
-  /**
-   * Gets dynamic Discord server info
-   */
-  async getDiscordServerInfo(): Promise<DiscordServerInfo> {
-    try {
-      // If there is no Discord configuration, return default values
-      if (!config.discord?.botToken || !config.discord?.guildId) {
-        logger.warn("[DISCORD-API] Incomplete Discord configuration:", {
-          hasToken: !!config.discord?.botToken,
-          hasGuildId: !!config.discord?.guildId,
-        });
-        return { memberCount: "> 1.2K" };
-      }
-
-      logger.info("[DISCORD-API] Querying Discord server info...");
-
-      // Make Discord API call
-      const response: AxiosResponse<DiscordGuildData> = await axios.get(
-        `https://discord.com/api/guilds/${config.discord.guildId}`,
-        {
-          headers: {
-            Authorization: `Bot ${config.discord.botToken}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const guildData = response.data;
-      logger.info("[DISCORD-API] Info retrieved:", {
-        name: guildData.name,
-        memberCount: guildData.approximate_member_count,
-      });
-
-      return {
-        memberCount: guildData.approximate_member_count
-          ? this.formatMemberCount(guildData.approximate_member_count)
-          : "> 1.2K",
-        name: guildData.name || "POXY CLUB",
-        description: guildData.description || "",
-      };
-    } catch (error: unknown) {
-      const axiosErr = error as {
-        response?: { status?: number; data?: unknown };
-      };
-      logger.error("[DISCORD-API] Error getting server info:", {
-        message: toErrorMessage(error),
-        status: axiosErr?.response?.status,
-        data: axiosErr?.response?.data,
-      });
-      // On error, return default values
-      return { memberCount: "> 1.2K" };
-    }
-  }
-
-  /**
-   * Gets the banner URL for the embed
-   */
-  getBannerUrl(): string {
-    // In production, use external URL if configured
-    if (
-      process.env.NODE_ENV === "production" &&
-      process.env.DISCORD_BANNER_URL
-    ) {
-      return process.env.DISCORD_BANNER_URL;
-    }
-
-    // Use Cloudinary URL if configured
-    if (process.env.DISCORD_BANNER_URL) {
-      return process.env.DISCORD_BANNER_URL;
-    }
-
-    // Default banner uploaded to Cloudinary
-    return "https://res.cloudinary.com/naferj/image/upload/v1765492099/discordbanner_jjgpko.jpg";
-  }
-
-  /**
-   * Formats the member count in a readable way
-   */
-  formatMemberCount(count: number): string {
-    if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K`;
-    }
-    return count.toString();
   }
 }
 

@@ -41,7 +41,7 @@ async function notifyUnregisteredReward(
 ): Promise<void> {
   try {
     const bot = (await import("../../kickBot.service")).default;
-    const message = `@${kickUsername} your reward "${localReward.title}" could not be processed because you are not registered in the shop. Register at https://shop.luisardito.com/ to receive your points!`;
+    const message = `@${kickUsername}, no pude procesar "${localReward.title}" porque no estás registrado. Regístrate en https://shop.luisardito.com/ para recibir tus puntos.`;
     await bot.sendMessage(message);
     logger.info(`[Reward Redemption] Message sent to ${kickUsername} in chat`);
   } catch (botError: unknown) {
