@@ -616,6 +616,33 @@ describe("community.service", () => {
       );
     });
 
+    test("reply to a reply is stored under the top-level comment", async () => {
+      CommunityPost.findByPk.mockResolvedValue(
+        makePost({ usuario_id: 9, title: "My post" })
+      );
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ id: 6, usuario_id: 5, parent_id: 4 })
+      );
+      CommunityComment.create.mockResolvedValue(
+        makeComment({ id: 7, usuario_id: 2, parent_id: 4 })
+      );
+
+      await service.createComment(1, makeUser({ id: 2 }), "hi", 6);
+
+      expect(CommunityComment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parent_id: 4 })
+      );
+      // The replied-to author (comment 6) is still the one notified.
+      expect(NotificacionService.crear).toHaveBeenCalledWith(
+        5,
+        "Nueva respuesta a tu comentario",
+        expect.any(String),
+        "comunidad_respuesta",
+        expect.objectContaining({ comment_id: 7, parent_comment_id: 6 }),
+        "/comunidad/1"
+      );
+    });
+
     test("missing or hidden parent comment -> 404", async () => {
       CommunityPost.findByPk.mockResolvedValue(makePost());
       CommunityComment.findByPk.mockResolvedValue(null);
@@ -837,7 +864,7 @@ describe("community.service", () => {
       };
     }
 
-    test("nests replies at unlimited depth", () => {
+    test("flattens deeper replies onto their top-level ancestor", () => {
       const tree = service.buildCommentTree([
         makeDTO({ id: 1 }),
         makeDTO({ id: 2, parent_id: 1 }),
@@ -847,9 +874,8 @@ describe("community.service", () => {
       ]);
 
       expect(tree.map((c) => c.id)).toEqual([1, 5]);
-      expect(tree[0].replies[0].id).toBe(2);
-      expect(tree[0].replies[0].replies[0].id).toBe(3);
-      expect(tree[0].replies[0].replies[0].replies[0].id).toBe(4);
+      expect(tree[0].replies.map((c) => c.id)).toEqual([2, 3, 4]);
+      expect(tree[0].replies.every((c) => c.replies.length === 0)).toBe(true);
     });
 
     test("top level is pinned first then creado ASC; replies keep input order", () => {
@@ -918,7 +944,7 @@ describe("community.service", () => {
       expect(tree.map((c) => c.id)).toEqual([1]);
     });
 
-    test("hidden chain survives when it leads to a visible descendant", () => {
+    test("hidden root with a visible deeper reply keeps only the visible reply", () => {
       const tree = service.buildCommentTree([
         makeDTO({ id: 1, status: "hidden" }),
         makeDTO({ id: 2, status: "hidden", parent_id: 1 }),
@@ -928,8 +954,7 @@ describe("community.service", () => {
       expect(tree).toHaveLength(1);
       expect(tree[0].status).toBe("hidden");
       expect(tree[0].body).toBeNull();
-      expect(tree[0].replies[0].status).toBe("hidden");
-      expect(tree[0].replies[0].replies[0].id).toBe(3);
+      expect(tree[0].replies.map((c) => c.id)).toEqual([3]);
     });
 
     test("comment whose parent is missing is treated as a root", () => {

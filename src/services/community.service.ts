@@ -187,11 +187,12 @@ function toHiddenCommentPlaceholder(node: CommentDTO): CommentDTO {
   };
 }
 
-// Builds a nested reply tree from a flat, creado-ASC comment list in O(n).
-// Hidden comments survive only while they still have a visible descendant;
-// hidden leaf subtrees are pruned. Top-level order is pinned first, then
-// creado ASC; replies keep creado ASC (the input order). A comment whose
-// parent is missing from the input is treated as a root.
+// Builds a one-level reply tree from a flat, creado-ASC comment list: every
+// reply is attached to its top-level ancestor, so `replies` never nests.
+// Hidden roots survive as placeholders only while they have a visible reply;
+// hidden replies are dropped. Top-level order is pinned first, then creado
+// ASC; replies keep creado ASC (the input order). A comment whose parent is
+// missing from the input is treated as a root.
 // Exported so the ordering/placeholder rules are unit-testable.
 function buildCommentTree(flat: CommentDTO[]): CommentDTO[] {
   const nodes = new Map<number, CommentDTO>();
@@ -199,14 +200,23 @@ function buildCommentTree(flat: CommentDTO[]): CommentDTO[] {
     nodes.set(comment.id, { ...comment, replies: [] });
   }
 
+  const parentOf = (node: CommentDTO): CommentDTO | undefined =>
+    node.parent_id === null || node.parent_id === undefined
+      ? undefined
+      : nodes.get(node.parent_id);
+
   const roots: CommentDTO[] = [];
   for (const node of nodes.values()) {
-    const parent =
-      node.parent_id === null || node.parent_id === undefined
-        ? undefined
-        : nodes.get(node.parent_id);
-    if (parent) {
-      parent.replies.push(node);
+    let root = parentOf(node);
+    // Legacy deeper rows are flattened onto their top-level ancestor; the hop
+    // limit guards against malformed parent cycles.
+    for (let hops = 0; root && hops < nodes.size; hops++) {
+      const next = parentOf(root);
+      if (!next) break;
+      root = next;
+    }
+    if (root && root !== node) {
+      root.replies.push(node);
     } else {
       roots.push(node);
     }
@@ -576,9 +586,11 @@ async function createComment(
     }
   }
 
+  // Threads are one level deep: a reply to a reply is stored under the
+  // top-level comment. Notifications still target the replied-to author.
   const comment = await CommunityComment.create({
     post_id: post.id,
-    parent_id: parent ? parent.id : null,
+    parent_id: parent ? (parent.parent_id ?? parent.id) : null,
     usuario_id: user.id,
     body,
     status: "visible",
