@@ -1,10 +1,20 @@
 import dotenv from "dotenv";
 import fs from "node:fs";
 
+// Real environment variables (docker-compose `environment:`, CI, shell exports)
+// must always win over .env files. Capture them before dotenv mutates
+// process.env, then layer files underneath: .env.development > .env.
+const realEnvKeys = new Set(Object.keys(process.env));
+
 dotenv.config();
 
 if (fs.existsSync(".env.development")) {
-  dotenv.config({ path: ".env.development", override: true });
+  const devVars = dotenv.parse(fs.readFileSync(".env.development"));
+  for (const [key, value] of Object.entries(devVars)) {
+    if (!realEnvKeys.has(key)) {
+      process.env[key] = value;
+    }
+  }
 }
 
 const toBool = (val: string | undefined, def = false): boolean => {

@@ -27,6 +27,9 @@ import KickReward from "./kickReward.model";
 import DiscordUserLink from "./discordUserLink.model";
 import Notificacion from "./notificacion.model";
 import UserWatchtime from "./userWatchtime.model";
+import CommunityPost from "./communityPost.model";
+import CommunityComment from "./communityComment.model";
+import CommunityLike from "./communityLike.model";
 
 // DEFINE ASSOCIATIONS
 // Association between Permiso and RolPermiso (needed for the include in the middleware)
@@ -130,6 +133,22 @@ DiscordUserLink.belongsTo(Usuario, {
 Usuario.hasOne(UserWatchtime, { foreignKey: "usuario_id", as: "watchtime" });
 UserWatchtime.belongsTo(Usuario, { foreignKey: "usuario_id" });
 
+// Community associations
+CommunityPost.belongsTo(Usuario, { foreignKey: "usuario_id", as: "author" });
+Usuario.hasMany(CommunityPost, { foreignKey: "usuario_id" });
+CommunityPost.hasMany(CommunityComment, {
+  foreignKey: "post_id",
+  as: "comments",
+});
+CommunityComment.belongsTo(CommunityPost, { foreignKey: "post_id" });
+CommunityComment.belongsTo(Usuario, {
+  foreignKey: "usuario_id",
+  as: "author",
+});
+Usuario.hasMany(CommunityComment, { foreignKey: "usuario_id" });
+CommunityLike.belongsTo(Usuario, { foreignKey: "usuario_id" });
+Usuario.hasMany(CommunityLike, { foreignKey: "usuario_id" });
+
 // Export sequelize and all models
 export {
   sequelize,
@@ -158,6 +177,9 @@ export {
   DiscordUserLink,
   Notificacion,
   UserWatchtime,
+  CommunityPost,
+  CommunityComment,
+  CommunityLike,
 };
 
 // Default export for compatibility with `import models from "../models"`
@@ -188,4 +210,7 @@ export default {
   DiscordUserLink,
   Notificacion,
   UserWatchtime,
+  CommunityPost,
+  CommunityComment,
+  CommunityLike,
 };

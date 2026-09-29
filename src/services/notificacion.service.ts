@@ -11,7 +11,8 @@ type NotificacionTipo =
   | "canje_cancelado"
   | "canje_devuelto"
   | "historial_evento"
-  | "sistema";
+  | "sistema"
+  | "comunidad_respuesta";
 
 interface ListarResult {
   total: number;
@@ -126,6 +127,7 @@ class NotificacionService {
           "canje_devuelto",
           "historial_evento",
           "sistema",
+          "comunidad_respuesta",
         ].includes(tipo)
       ) {
         where.tipo = tipo;
