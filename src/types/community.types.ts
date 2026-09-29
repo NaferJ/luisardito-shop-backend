@@ -14,4 +14,11 @@ export interface CommunityMediaItem {
 
 export type CommunityLikeTarget = "post" | "comment";
 
+export type CommunityReportTarget = "post" | "comment";
+
+export type CommunityReportReason =
+  "spam" | "harassment" | "hate" | "sexual" | "violence" | "other";
+
+export type CommunityReportStatus = "open" | "resolved" | "dismissed";
+
 export type CommunityFeedSort = "new" | "top" | "hot";

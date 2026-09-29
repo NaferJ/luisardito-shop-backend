@@ -15,6 +15,8 @@ import {
   updateCommentSchema,
   postIdParamSchema,
   pinSchema,
+  hideSchema,
+  reportSchema,
 } from "../schemas/community.schema";
 
 const router = Router();
@@ -23,6 +25,14 @@ const router = Router();
 // query is validated inside the controller because Express 5 makes req.query
 // getter-only and the shared validate middleware cannot reassign it.
 router.get("/posts", auth, communityCtrl.listPosts);
+
+// Moderation queue: posts/comments pending_review or with open reports.
+router.get(
+  "/admin/queue",
+  authRequired,
+  permiso("moderar_comunidad"),
+  communityCtrl.getModerationQueue
+);
 
 router.post(
   "/posts",
@@ -62,6 +72,24 @@ router.post(
   communityWriteLimiter,
   validate(postIdParamSchema, "params"),
   communityCtrl.likeComment
+);
+
+router.post(
+  "/posts/:id/report",
+  authRequired,
+  communityWriteLimiter,
+  validate(postIdParamSchema, "params"),
+  validate(reportSchema),
+  communityCtrl.reportPost
+);
+
+router.post(
+  "/comments/:id/report",
+  authRequired,
+  communityWriteLimiter,
+  validate(postIdParamSchema, "params"),
+  validate(reportSchema),
+  communityCtrl.reportComment
 );
 
 router.delete(
@@ -115,6 +143,43 @@ router.patch(
   validate(postIdParamSchema, "params"),
   validate(pinSchema),
   communityCtrl.setPinned
+);
+
+// Moderator hide/unhide. Hide also approves removal of pending_review items;
+// unhide doubles as approval for them. Author soft-deletes (DELETE above)
+// stay separate so "deleted_by_author" content cannot be restored here.
+router.patch(
+  "/posts/:id/hide",
+  authRequired,
+  permiso("moderar_comunidad"),
+  validate(postIdParamSchema, "params"),
+  validate(hideSchema),
+  communityCtrl.hidePost
+);
+
+router.patch(
+  "/posts/:id/unhide",
+  authRequired,
+  permiso("moderar_comunidad"),
+  validate(postIdParamSchema, "params"),
+  communityCtrl.unhidePost
+);
+
+router.patch(
+  "/comments/:id/hide",
+  authRequired,
+  permiso("moderar_comunidad"),
+  validate(postIdParamSchema, "params"),
+  validate(hideSchema),
+  communityCtrl.hideComment
+);
+
+router.patch(
+  "/comments/:id/unhide",
+  authRequired,
+  permiso("moderar_comunidad"),
+  validate(postIdParamSchema, "params"),
+  communityCtrl.unhideComment
 );
 
 export = router;
