@@ -55,13 +55,17 @@ interface TopCommentDTO {
 interface CommentDTO {
   id: number;
   post_id: number;
-  body: string;
+  parent_id: number | null;
+  body: string | null;
   status: string;
+  pinned: boolean;
   like_count: number;
   viewer_liked: boolean;
   author: AuthorDTO | null;
   creado: Date;
   actualizado: Date;
+  edited_at: Date | null;
+  replies: CommentDTO[];
 }
 
 interface PostDTO {
@@ -78,6 +82,7 @@ interface PostDTO {
   author: AuthorDTO | null;
   creado: Date;
   actualizado: Date;
+  edited_at: Date | null;
   viewer_liked: boolean;
 }
 
@@ -104,6 +109,11 @@ interface CreatePostData {
   title: string;
   body: string;
   media?: CommunityMediaItem[];
+}
+
+interface UpdatePostData {
+  title?: string;
+  body?: string;
 }
 
 // Literal-included attributes are not declared model fields, so read them
@@ -149,14 +159,73 @@ function toCommentDTO(
   return {
     id: row.id,
     post_id: row.post_id,
+    parent_id: row.parent_id ?? null,
     body: row.body,
     status: row.status,
+    pinned: row.pinned ?? false,
     like_count: numericAttr(row, "like_count"),
     viewer_liked: likedIds.has(row.id),
     author: toAuthorDTO(row.author),
     creado: row.creado,
     actualizado: row.actualizado,
+    edited_at: row.edited_at ?? null,
+    replies: [],
   };
+}
+
+// Hidden comments with visible descendants stay in the tree as placeholders
+// so the replies are not orphaned.
+function toHiddenCommentPlaceholder(node: CommentDTO): CommentDTO {
+  return {
+    ...node,
+    body: null,
+    status: "hidden",
+    like_count: 0,
+    viewer_liked: false,
+    author: null,
+  };
+}
+
+// Builds a nested reply tree from a flat, creado-ASC comment list in O(n).
+// Hidden comments survive only while they still have a visible descendant;
+// hidden leaf subtrees are pruned. Top-level order is pinned first, then
+// creado ASC; replies keep creado ASC (the input order). A comment whose
+// parent is missing from the input is treated as a root.
+// Exported so the ordering/placeholder rules are unit-testable.
+function buildCommentTree(flat: CommentDTO[]): CommentDTO[] {
+  const nodes = new Map<number, CommentDTO>();
+  for (const comment of flat) {
+    nodes.set(comment.id, { ...comment, replies: [] });
+  }
+
+  const roots: CommentDTO[] = [];
+  for (const node of nodes.values()) {
+    const parent =
+      node.parent_id === null || node.parent_id === undefined
+        ? undefined
+        : nodes.get(node.parent_id);
+    if (parent) {
+      parent.replies.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  const prune = (list: CommentDTO[]): CommentDTO[] => {
+    const kept: CommentDTO[] = [];
+    for (const node of list) {
+      node.replies = prune(node.replies);
+      if (node.status === "hidden" && node.replies.length === 0) continue;
+      kept.push(
+        node.status === "hidden" ? toHiddenCommentPlaceholder(node) : node
+      );
+    }
+    return kept;
+  };
+
+  const tree = prune(roots);
+  tree.sort((a, b) => Number(b.pinned) - Number(a.pinned));
+  return tree;
 }
 
 function toPostDTO(
@@ -177,6 +246,7 @@ function toPostDTO(
     author: toAuthorDTO(row.author),
     creado: row.creado,
     actualizado: row.actualizado,
+    edited_at: row.edited_at ?? null,
     viewer_liked: extras.viewerLiked,
   };
 }
@@ -417,8 +487,11 @@ async function getPost(
   }
 
   const viewerId = viewer ? viewer.id : null;
+  // Visible + hidden comments: hidden ones may need a placeholder node when
+  // they still have visible descendants (hidden leaf comments are pruned
+  // while building the tree).
   const commentRows = await CommunityComment.findAll({
-    where: { post_id: post.id, status: "visible" },
+    where: { post_id: post.id, status: { [Op.in]: ["visible", "hidden"] } },
     attributes: {
       include: [[sequelize.literal(COMMENT_LIKE_COUNT_SQL), "like_count"]],
     },
@@ -435,8 +508,10 @@ async function getPost(
   const viewCounted = await trackPostView(post.id, viewerId, viewerIp);
 
   // commentRows are creado ASC, so `>` keeps the oldest comment on ties.
+  // Hidden comments never leak into top_comment.
   const topCommentRow = commentRows.reduce<CommunityComment | null>(
     (best, row) => {
+      if (row.status !== "visible") return best;
       const likeCount = numericAttr(row, "like_count");
       if (likeCount < 1) return best;
       if (!best || likeCount > numericAttr(best, "like_count")) return row;
@@ -455,7 +530,9 @@ async function getPost(
 
   return {
     ...dto,
-    comments: commentRows.map((row) => toCommentDTO(row, commentLikedIds)),
+    comments: buildCommentTree(
+      commentRows.map((row) => toCommentDTO(row, commentLikedIds))
+    ),
   };
 }
 
@@ -479,15 +556,28 @@ async function createPost(
 async function createComment(
   postId: number,
   user: Usuario,
-  body: string
+  body: string,
+  parentId?: number
 ): Promise<CommentDTO> {
   const post = await CommunityPost.findByPk(postId);
   if (!post || post.status !== "visible") {
     throw new AppError("Post not found", 404);
   }
 
+  let parent: CommunityComment | null = null;
+  if (parentId !== undefined && parentId !== null) {
+    parent = await CommunityComment.findByPk(parentId);
+    if (!parent || parent.status !== "visible") {
+      throw new AppError("Comment not found", 404);
+    }
+    if (parent.post_id !== post.id) {
+      throw new AppError("Parent comment belongs to a different post", 400);
+    }
+  }
+
   const comment = await CommunityComment.create({
     post_id: post.id,
+    parent_id: parent ? parent.id : null,
     usuario_id: user.id,
     body,
     status: "visible",
@@ -513,6 +603,36 @@ async function createComment(
     } catch (error) {
       logger.warn(
         `[Community] Failed to create reply notification for post ${post.id}: ${toErrorMessage(error)}`
+      );
+    }
+  }
+
+  // On replies, also notify the parent comment's author. Skipped on
+  // self-replies and when the parent author is the post author (already
+  // notified above, so nobody receives two notifications for one reply).
+  if (
+    parent &&
+    parent.usuario_id !== user.id &&
+    parent.usuario_id !== post.usuario_id
+  ) {
+    try {
+      await NotificacionService.crear(
+        parent.usuario_id,
+        "Nueva respuesta a tu comentario",
+        `${user.nickname} respondió a tu comentario en "${post.title}"`,
+        "comunidad_respuesta",
+        {
+          post_id: post.id,
+          comment_id: comment.id,
+          parent_comment_id: parent.id,
+          actor_id: user.id,
+          actor_nickname: user.nickname,
+        },
+        `/comunidad/${post.id}`
+      );
+    } catch (error) {
+      logger.warn(
+        `[Community] Failed to create reply notification for comment ${parent.id}: ${toErrorMessage(error)}`
       );
     }
   }
@@ -608,6 +728,25 @@ async function hideOwnedOrModerated(
   });
 }
 
+// Comment DTO with real like_count/viewer_liked for single-comment
+// responses (create/edit/pin/remove). replies stays empty: the nested
+// thread only exists inside the post detail tree.
+async function fetchCommentDTO(
+  comment: CommunityComment,
+  viewerId: number | null
+): Promise<CommentDTO> {
+  const [likedIds, likeCount] = await Promise.all([
+    fetchLikedTargets(viewerId, "comment", [comment.id]),
+    CommunityLike.count({
+      where: { target_type: "comment", target_id: comment.id },
+    }),
+  ]);
+
+  const dto = toCommentDTO(comment, likedIds);
+  dto.like_count = likeCount;
+  return dto;
+}
+
 async function removePost(postId: number, user: Usuario): Promise<PostDTO> {
   const post = await CommunityPost.findByPk(postId);
   await hideOwnedOrModerated(post, user, "Post not found");
@@ -622,17 +761,97 @@ async function removeComment(
     include: [AUTHOR_INCLUDE],
   });
   await hideOwnedOrModerated(comment, user, "Comment not found");
+  return fetchCommentDTO(comment, user.id);
+}
 
-  const [likedIds, likeCount] = await Promise.all([
-    fetchLikedTargets(user.id, "comment", [comment.id]),
-    CommunityLike.count({
-      where: { target_type: "comment", target_id: comment.id },
-    }),
-  ]);
+async function updatePost(
+  postId: number,
+  user: Usuario,
+  data: UpdatePostData
+): Promise<PostDTO> {
+  const post = await CommunityPost.findByPk(postId);
+  if (!post || post.status !== "visible") {
+    throw new AppError("Post not found", 404);
+  }
+  // Only the author edits content; moderators hide instead of editing.
+  if (post.usuario_id !== user.id) {
+    throw new AppError("Permission denied", 403);
+  }
 
-  const dto = toCommentDTO(comment, likedIds);
-  dto.like_count = likeCount;
-  return dto;
+  await post.update({
+    ...(data.title !== undefined ? { title: data.title } : {}),
+    ...(data.body !== undefined ? { body: data.body } : {}),
+    edited_at: new Date(),
+  });
+
+  return fetchPostDTO(post.id, user.id);
+}
+
+async function updateComment(
+  commentId: number,
+  user: Usuario,
+  body: string
+): Promise<CommentDTO> {
+  const comment = await CommunityComment.findByPk(commentId, {
+    include: [AUTHOR_INCLUDE],
+  });
+  if (!comment || comment.status !== "visible") {
+    throw new AppError("Comment not found", 404);
+  }
+  const post = await CommunityPost.findByPk(comment.post_id);
+  if (!post || post.status !== "visible") {
+    throw new AppError("Comment not found", 404);
+  }
+  if (comment.usuario_id !== user.id) {
+    throw new AppError("Permission denied", 403);
+  }
+
+  await comment.update({ body, edited_at: new Date() });
+  return fetchCommentDTO(comment, user.id);
+}
+
+async function setCommentPinned(
+  commentId: number,
+  pinned: boolean,
+  user: Usuario
+): Promise<CommentDTO> {
+  const comment = await CommunityComment.findByPk(commentId, {
+    include: [AUTHOR_INCLUDE],
+  });
+  if (!comment || comment.status !== "visible") {
+    throw new AppError("Comment not found", 404);
+  }
+  const post = await CommunityPost.findByPk(comment.post_id);
+  if (!post || post.status !== "visible") {
+    throw new AppError("Comment not found", 404);
+  }
+  if (comment.parent_id !== null) {
+    throw new AppError("Only top-level comments can be pinned", 400);
+  }
+
+  const isPostAuthor = user.id === post.usuario_id;
+  if (
+    !isPostAuthor &&
+    !(await userHasPermission(user.rol_id, "moderar_comunidad"))
+  ) {
+    throw new AppError("Permission denied", 403);
+  }
+
+  if (pinned) {
+    // At most one pinned comment per post: unpin the previous one in the
+    // same transaction before pinning this comment.
+    await sequelize.transaction(async (transaction) => {
+      await CommunityComment.update(
+        { pinned: false },
+        { where: { post_id: post.id, pinned: true }, transaction }
+      );
+      await comment.update({ pinned: true }, { transaction });
+    });
+  } else {
+    await comment.update({ pinned: false });
+  }
+
+  return fetchCommentDTO(comment, user.id);
 }
 
 async function setPinned(
@@ -651,6 +870,7 @@ async function setPinned(
 
 const CommunityService = {
   buildFeedOrder,
+  buildCommentTree,
   listPosts,
   getPost,
   createPost,
@@ -658,7 +878,10 @@ const CommunityService = {
   toggleLike,
   removePost,
   removeComment,
+  updatePost,
+  updateComment,
   setPinned,
+  setCommentPinned,
   userHasPermission,
 };
 

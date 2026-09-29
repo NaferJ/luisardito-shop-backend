@@ -41,9 +41,28 @@ const createComment = asyncHandler(async (req: Request, res: Response) => {
   const comment = await CommunityService.createComment(
     Number(req.params.id),
     req.user,
-    req.body.body
+    req.body.body,
+    req.body.parent_id
   );
   res.status(201).json(comment);
+});
+
+const updatePost = asyncHandler(async (req: Request, res: Response) => {
+  const post = await CommunityService.updatePost(
+    Number(req.params.id),
+    req.user,
+    req.body
+  );
+  res.json(post);
+});
+
+const updateComment = asyncHandler(async (req: Request, res: Response) => {
+  const comment = await CommunityService.updateComment(
+    Number(req.params.id),
+    req.user,
+    req.body.body
+  );
+  res.json(comment);
 });
 
 const likePost = asyncHandler(async (req: Request, res: Response) => {
@@ -89,6 +108,15 @@ const setPinned = asyncHandler(async (req: Request, res: Response) => {
   res.json(post);
 });
 
+const setCommentPinned = asyncHandler(async (req: Request, res: Response) => {
+  const comment = await CommunityService.setCommentPinned(
+    Number(req.params.id),
+    req.body.pinned,
+    req.user
+  );
+  res.json(comment);
+});
+
 export = {
   listPosts,
   createPost,
@@ -98,5 +126,8 @@ export = {
   likeComment,
   removePost,
   removeComment,
+  updatePost,
+  updateComment,
   setPinned,
+  setCommentPinned,
 };

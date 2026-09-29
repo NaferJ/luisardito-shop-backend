@@ -13,6 +13,7 @@ jest.mock("../../src/models", () => ({
     findAll: jest.fn(),
     findByPk: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
   },
   CommunityLike: {
     findAll: jest.fn(),
@@ -49,6 +50,7 @@ const {
 } = require("../../src/models");
 const NotificacionService = require("../../src/services/notificacion.service");
 const service = require("../../src/services/community.service");
+const { sequelize } = require("../../src/models/database");
 const AppError = require("../../src/utils/AppError");
 const { UniqueConstraintError } = require("sequelize");
 
@@ -69,6 +71,7 @@ function makePost(overrides = {}) {
     hidden_reason: null,
     creado: new Date("2026-09-28T10:00:00Z"),
     actualizado: new Date("2026-09-28T10:00:00Z"),
+    edited_at: null,
     author: {
       id: 9,
       nickname: "author",
@@ -86,15 +89,18 @@ function makeComment(overrides = {}) {
   return {
     id: 7,
     post_id: 1,
+    parent_id: null,
     usuario_id: 9,
     body: "nice",
     status: "visible",
+    pinned: false,
     like_count: 0,
     hidden_by: null,
     hidden_at: null,
     hidden_reason: null,
     creado: new Date("2026-09-28T11:00:00Z"),
     actualizado: new Date("2026-09-28T11:00:00Z"),
+    edited_at: null,
     author: { id: 9, nickname: "author", kick_data: null },
     update: jest.fn(async function (values) {
       Object.assign(this, values);
@@ -463,6 +469,42 @@ describe("community.service", () => {
       expect(result.comments[0].viewer_liked).toBe(false);
       expect(result.comments[1].viewer_liked).toBe(true);
     });
+
+    test("comments come back as a nested tree; hidden leaves are pruned", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityComment.findAll.mockResolvedValue([
+        makeComment({ id: 5 }),
+        makeComment({ id: 6, parent_id: 5 }),
+        makeComment({ id: 8, status: "hidden" }),
+        makeComment({ id: 9, status: "hidden" }),
+        makeComment({ id: 10, parent_id: 9 }),
+      ]);
+      CommunityLike.findAll.mockResolvedValue([]);
+
+      const result = await service.getPost(1, null, "5.6.7.8");
+
+      expect(result.comments.map((c) => c.id)).toEqual([5, 9]);
+      expect(result.comments[0].replies.map((c) => c.id)).toEqual([6]);
+      expect(result.comments[1]).toMatchObject({
+        status: "hidden",
+        body: null,
+        author: null,
+      });
+      expect(result.comments[1].replies.map((c) => c.id)).toEqual([10]);
+    });
+
+    test("top_comment ignores hidden comments", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityComment.findAll.mockResolvedValue([
+        makeComment({ id: 5, like_count: 1 }),
+        makeComment({ id: 6, status: "hidden", like_count: 99 }),
+      ]);
+      CommunityLike.findAll.mockResolvedValue([]);
+
+      const result = await service.getPost(1, null, "5.6.7.8");
+
+      expect(result.top_comment.id).toBe(5);
+    });
   });
 
   // ---------- createComment ----------
@@ -531,6 +573,122 @@ describe("community.service", () => {
       await expect(
         service.createComment(1, makeUser(), "hi")
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    test("reply stores parent_id and notifies the parent author", async () => {
+      CommunityPost.findByPk.mockResolvedValue(
+        makePost({ usuario_id: 9, title: "My post" })
+      );
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ id: 4, usuario_id: 5 })
+      );
+      CommunityComment.create.mockResolvedValue(
+        makeComment({ id: 5, usuario_id: 2, parent_id: 4 })
+      );
+
+      const result = await service.createComment(
+        1,
+        makeUser({ id: 2 }),
+        "hi",
+        4
+      );
+
+      expect(CommunityComment.create).toHaveBeenCalledWith(
+        expect.objectContaining({ parent_id: 4 })
+      );
+      expect(result.parent_id).toBe(4);
+      expect(result.replies).toEqual([]);
+      // Two notifications: the post author and the parent comment author.
+      expect(NotificacionService.crear).toHaveBeenCalledTimes(2);
+      expect(NotificacionService.crear).toHaveBeenCalledWith(
+        5,
+        "Nueva respuesta a tu comentario",
+        'viewer respondió a tu comentario en "My post"',
+        "comunidad_respuesta",
+        {
+          post_id: 1,
+          comment_id: 5,
+          parent_comment_id: 4,
+          actor_id: 2,
+          actor_nickname: "viewer",
+        },
+        "/comunidad/1"
+      );
+    });
+
+    test("missing or hidden parent comment -> 404", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityComment.findByPk.mockResolvedValue(null);
+      await expect(
+        service.createComment(1, makeUser(), "hi", 99)
+      ).rejects.toMatchObject({
+        statusCode: 404,
+        message: "Comment not found",
+      });
+
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ status: "hidden" })
+      );
+      await expect(
+        service.createComment(1, makeUser(), "hi", 7)
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(CommunityComment.create).not.toHaveBeenCalled();
+    });
+
+    test("parent on a different post -> 400", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ id: 1 }));
+      CommunityComment.findByPk.mockResolvedValue(makeComment({ post_id: 2 }));
+
+      await expect(
+        service.createComment(1, makeUser(), "hi", 7)
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(CommunityComment.create).not.toHaveBeenCalled();
+    });
+
+    test("parent author is the post author -> only one notification", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ id: 4, usuario_id: 9 })
+      );
+      CommunityComment.create.mockResolvedValue(
+        makeComment({ id: 5, usuario_id: 2, parent_id: 4 })
+      );
+
+      await service.createComment(1, makeUser({ id: 2 }), "hi", 4);
+
+      expect(NotificacionService.crear).toHaveBeenCalledTimes(1);
+      expect(NotificacionService.crear).toHaveBeenCalledWith(
+        9,
+        "Nueva respuesta en tu post",
+        'viewer comentó en "A great post"',
+        "comunidad_respuesta",
+        expect.objectContaining({ comment_id: 5 }),
+        "/comunidad/1"
+      );
+    });
+
+    test("self-reply skips the parent notification", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ id: 4, usuario_id: 2 })
+      );
+      CommunityComment.create.mockResolvedValue(
+        makeComment({ id: 5, usuario_id: 2, parent_id: 4 })
+      );
+
+      await service.createComment(1, makeUser({ id: 2 }), "hi", 4);
+
+      // Only the post-author notification fires; the parent author is the
+      // replier, so no second notification goes out.
+      expect(NotificacionService.crear).toHaveBeenCalledTimes(1);
+      expect(NotificacionService.crear).toHaveBeenCalledWith(
+        9,
+        expect.any(String),
+        expect.any(String),
+        "comunidad_respuesta",
+        expect.any(Object),
+        "/comunidad/1"
+      );
     });
   });
 
@@ -641,6 +799,363 @@ describe("community.service", () => {
 
       expect(post.update).toHaveBeenCalledWith({ pinned: true });
       expect(result.pinned).toBe(true);
+    });
+  });
+
+  // ---------- buildCommentTree ----------
+  describe("buildCommentTree", () => {
+    function makeDTO(overrides = {}) {
+      return {
+        id: 1,
+        post_id: 1,
+        parent_id: null,
+        body: "text",
+        status: "visible",
+        pinned: false,
+        like_count: 0,
+        viewer_liked: false,
+        author: { id: 9, nickname: "author", avatar: null },
+        creado: new Date("2026-09-28T11:00:00Z"),
+        actualizado: new Date("2026-09-28T11:00:00Z"),
+        edited_at: null,
+        replies: [],
+        ...overrides,
+      };
+    }
+
+    test("nests replies at unlimited depth", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1 }),
+        makeDTO({ id: 2, parent_id: 1 }),
+        makeDTO({ id: 3, parent_id: 2 }),
+        makeDTO({ id: 4, parent_id: 3 }),
+        makeDTO({ id: 5 }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([1, 5]);
+      expect(tree[0].replies[0].id).toBe(2);
+      expect(tree[0].replies[0].replies[0].id).toBe(3);
+      expect(tree[0].replies[0].replies[0].replies[0].id).toBe(4);
+    });
+
+    test("top level is pinned first then creado ASC; replies keep input order", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1, creado: new Date("2026-09-28T10:00:00Z") }),
+        makeDTO({
+          id: 2,
+          creado: new Date("2026-09-28T11:00:00Z"),
+          pinned: true,
+        }),
+        makeDTO({ id: 3, creado: new Date("2026-09-28T12:00:00Z") }),
+        makeDTO({ id: 4, parent_id: 1 }),
+        makeDTO({ id: 5, parent_id: 1 }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([2, 1, 3]);
+      expect(tree[1].replies.map((c) => c.id)).toEqual([4, 5]);
+    });
+
+    test("hidden parent with a visible child becomes a placeholder", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1, status: "hidden", body: "gone", like_count: 9 }),
+        makeDTO({ id: 2, parent_id: 1 }),
+      ]);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0]).toMatchObject({
+        id: 1,
+        status: "hidden",
+        body: null,
+        author: null,
+        like_count: 0,
+        viewer_liked: false,
+      });
+      expect(tree[0].replies.map((c) => c.id)).toEqual([2]);
+      expect(tree[0].replies[0].body).toBe("text");
+    });
+
+    test("hidden leaf comments are pruned", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1 }),
+        makeDTO({ id: 2, status: "hidden" }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([1]);
+    });
+
+    test("hidden chain with no visible descendant is pruned entirely", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1 }),
+        makeDTO({ id: 2, status: "hidden" }),
+        makeDTO({ id: 3, status: "hidden", parent_id: 2 }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([1]);
+    });
+
+    test("hidden chain survives when it leads to a visible descendant", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1, status: "hidden" }),
+        makeDTO({ id: 2, status: "hidden", parent_id: 1 }),
+        makeDTO({ id: 3, parent_id: 2 }),
+      ]);
+
+      expect(tree).toHaveLength(1);
+      expect(tree[0].status).toBe("hidden");
+      expect(tree[0].body).toBeNull();
+      expect(tree[0].replies[0].status).toBe("hidden");
+      expect(tree[0].replies[0].replies[0].id).toBe(3);
+    });
+
+    test("comment whose parent is missing is treated as a root", () => {
+      const tree = service.buildCommentTree([
+        makeDTO({ id: 1 }),
+        makeDTO({ id: 2, parent_id: 999 }),
+      ]);
+
+      expect(tree.map((c) => c.id)).toEqual([1, 2]);
+    });
+  });
+
+  // ---------- updatePost ----------
+  describe("updatePost", () => {
+    test("author edits title/body and edited_at is set", async () => {
+      const post = makePost({ usuario_id: 2 });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      const result = await service.updatePost(1, makeUser({ id: 2 }), {
+        title: "New title",
+        body: "New body",
+      });
+
+      expect(post.update).toHaveBeenCalledWith({
+        title: "New title",
+        body: "New body",
+        edited_at: expect.any(Date),
+      });
+      expect(result.title).toBe("New title");
+      expect(result.edited_at).toBeInstanceOf(Date);
+    });
+
+    test("partial update only touches the provided fields", async () => {
+      const post = makePost({ usuario_id: 2 });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      await service.updatePost(1, makeUser({ id: 2 }), { body: "New body" });
+
+      expect(post.update).toHaveBeenCalledWith({
+        body: "New body",
+        edited_at: expect.any(Date),
+      });
+    });
+
+    test("non-author -> 403, row untouched", async () => {
+      const post = makePost({ usuario_id: 9 });
+      CommunityPost.findByPk.mockResolvedValue(post);
+
+      await expect(
+        service.updatePost(1, makeUser({ id: 2 }), { body: "x" })
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(post.update).not.toHaveBeenCalled();
+    });
+
+    test("missing or hidden post -> 404 even for the author", async () => {
+      CommunityPost.findByPk.mockResolvedValue(null);
+      await expect(
+        service.updatePost(99, makeUser(), { body: "x" })
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+      await expect(
+        service.updatePost(1, makeUser({ id: 9 }), { body: "x" })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // ---------- updateComment ----------
+  describe("updateComment", () => {
+    test("author edits body and edited_at is set", async () => {
+      const comment = makeComment({ usuario_id: 2 });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityLike.findAll.mockResolvedValue([{ target_id: 7 }]);
+      CommunityLike.count.mockResolvedValue(3);
+
+      const result = await service.updateComment(
+        7,
+        makeUser({ id: 2 }),
+        "edited"
+      );
+
+      expect(comment.update).toHaveBeenCalledWith({
+        body: "edited",
+        edited_at: expect.any(Date),
+      });
+      expect(result).toMatchObject({
+        id: 7,
+        body: "edited",
+        like_count: 3,
+        viewer_liked: true,
+        replies: [],
+      });
+      expect(result.edited_at).toBeInstanceOf(Date);
+    });
+
+    test("non-author -> 403, row untouched", async () => {
+      const comment = makeComment({ usuario_id: 9 });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+
+      await expect(
+        service.updateComment(7, makeUser({ id: 2 }), "edited")
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(comment.update).not.toHaveBeenCalled();
+    });
+
+    test("missing, hidden, or on a hidden post -> 404", async () => {
+      CommunityComment.findByPk.mockResolvedValue(null);
+      await expect(
+        service.updateComment(99, makeUser(), "x")
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ status: "hidden" })
+      );
+      await expect(
+        service.updateComment(7, makeUser(), "x")
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ usuario_id: 2 })
+      );
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+      await expect(
+        service.updateComment(7, makeUser({ id: 2 }), "x")
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // ---------- setCommentPinned ----------
+  describe("setCommentPinned", () => {
+    function mockTransaction() {
+      jest
+        .spyOn(sequelize, "transaction")
+        .mockImplementation(async (cb) => cb({}));
+    }
+
+    test("post author pins; previous pin is cleared in the same transaction", async () => {
+      mockTransaction();
+      const comment = makeComment({ usuario_id: 4 });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 2 }));
+      CommunityComment.update.mockResolvedValue([1]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.setCommentPinned(
+        7,
+        true,
+        makeUser({ id: 2 })
+      );
+
+      expect(CommunityComment.update).toHaveBeenCalledWith(
+        { pinned: false },
+        expect.objectContaining({ where: { post_id: 1, pinned: true } })
+      );
+      expect(comment.update).toHaveBeenCalledWith(
+        { pinned: true },
+        expect.objectContaining({ transaction: {} })
+      );
+      expect(result.pinned).toBe(true);
+    });
+
+    test("moderator with moderar_comunidad can pin", async () => {
+      mockTransaction();
+      const comment = makeComment();
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      Permiso.findAll.mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      CommunityComment.update.mockResolvedValue([1]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.setCommentPinned(
+        7,
+        true,
+        makeUser({ id: 2, rol_id: 4 })
+      );
+
+      expect(comment.update).toHaveBeenCalledWith(
+        { pinned: true },
+        expect.anything()
+      );
+      expect(result.pinned).toBe(true);
+    });
+
+    test("other user -> 403", async () => {
+      const comment = makeComment();
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      Permiso.findAll.mockResolvedValue([]);
+
+      await expect(
+        service.setCommentPinned(7, true, makeUser({ id: 2, rol_id: 1 }))
+      ).rejects.toMatchObject({ statusCode: 403 });
+      expect(comment.update).not.toHaveBeenCalled();
+      expect(CommunityComment.update).not.toHaveBeenCalled();
+    });
+
+    test("reply comment -> 400 (top-level only)", async () => {
+      const comment = makeComment({ parent_id: 5 });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 2 }));
+
+      await expect(
+        service.setCommentPinned(7, true, makeUser({ id: 2 }))
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(comment.update).not.toHaveBeenCalled();
+    });
+
+    test("unpin sets pinned=false without touching other comments", async () => {
+      const comment = makeComment({ pinned: true });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 2 }));
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.setCommentPinned(
+        7,
+        false,
+        makeUser({ id: 2 })
+      );
+
+      expect(comment.update).toHaveBeenCalledWith({ pinned: false });
+      expect(CommunityComment.update).not.toHaveBeenCalled();
+      expect(result.pinned).toBe(false);
+    });
+
+    test("missing, hidden, or on a hidden post -> 404", async () => {
+      CommunityComment.findByPk.mockResolvedValue(null);
+      await expect(
+        service.setCommentPinned(99, true, makeUser())
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityComment.findByPk.mockResolvedValue(
+        makeComment({ status: "hidden" })
+      );
+      await expect(
+        service.setCommentPinned(7, true, makeUser())
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityComment.findByPk.mockResolvedValue(makeComment());
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+      await expect(
+        service.setCommentPinned(7, true, makeUser())
+      ).rejects.toMatchObject({ statusCode: 404 });
     });
   });
 

@@ -19,29 +19,53 @@ const mediaItemSchema = z.object({
   height: z.number().int().positive().optional(),
 });
 
+const postTitleSchema = z
+  .string({ message: "title is required" })
+  .trim()
+  .min(3, { message: "title must be at least 3 characters" })
+  .max(200, { message: "title must be at most 200 characters" });
+
+const postBodySchema = z
+  .string({ message: "body is required" })
+  .trim()
+  .min(1, { message: "body is required" })
+  .max(5000, { message: "body must be at most 5000 characters" });
+
+const commentBodySchema = z
+  .string({ message: "body is required" })
+  .trim()
+  .min(1, { message: "body is required" })
+  .max(2000, { message: "body must be at most 2000 characters" });
+
 const createPostSchema = z.object({
-  title: z
-    .string({ message: "title is required" })
-    .trim()
-    .min(3, { message: "title must be at least 3 characters" })
-    .max(200, { message: "title must be at most 200 characters" }),
-  body: z
-    .string({ message: "body is required" })
-    .trim()
-    .min(1, { message: "body is required" })
-    .max(5000, { message: "body must be at most 5000 characters" }),
+  title: postTitleSchema,
+  body: postBodySchema,
   media: z
     .array(mediaItemSchema)
     .max(4, { message: "a post can have at most 4 media items" })
     .optional(),
 });
 
+const updatePostSchema = z
+  .object({
+    title: postTitleSchema.optional(),
+    body: postBodySchema.optional(),
+  })
+  .refine((data) => data.title !== undefined || data.body !== undefined, {
+    message: "at least one of title or body is required",
+  });
+
 const createCommentSchema = z.object({
-  body: z
-    .string({ message: "body is required" })
-    .trim()
-    .min(1, { message: "body is required" })
-    .max(2000, { message: "body must be at most 2000 characters" }),
+  body: commentBodySchema,
+  parent_id: z
+    .number({ message: "parent_id must be a number" })
+    .int({ message: "parent_id must be an integer" })
+    .positive({ message: "parent_id must be a positive integer" })
+    .nullish(),
+});
+
+const updateCommentSchema = z.object({
+  body: commentBodySchema,
 });
 
 const listPostsQuerySchema = z.object({
@@ -71,7 +95,9 @@ const pinSchema = z.object({
 
 export {
   createPostSchema,
+  updatePostSchema,
   createCommentSchema,
+  updateCommentSchema,
   listPostsQuerySchema,
   postIdParamSchema,
   hideSchema,

@@ -10,6 +10,7 @@ import type Usuario from "./usuario.model";
 import {
   communitySharedColumns,
   communityModerationColumns,
+  communityEditedColumns,
   communityTimestampOptions,
 } from "./communityColumns";
 import type {
@@ -29,6 +30,7 @@ class CommunityPost extends Model<
   declare pinned: CreationOptional<boolean>;
   declare status: CreationOptional<CommunityStatus>;
   declare view_count: CreationOptional<number>;
+  declare edited_at: Date | null;
   declare hidden_by: number | null;
   declare hidden_at: Date | null;
   declare hidden_reason: string | null;
@@ -65,6 +67,7 @@ CommunityPost.init(
       defaultValue: 0,
     },
     ...communityModerationColumns,
+    ...communityEditedColumns,
   },
   {
     sequelize,

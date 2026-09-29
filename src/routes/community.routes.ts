@@ -10,7 +10,9 @@ import {
 import validate from "../middleware/validate.middleware";
 import {
   createPostSchema,
+  updatePostSchema,
   createCommentSchema,
+  updateCommentSchema,
   postIdParamSchema,
   pinSchema,
 } from "../schemas/community.schema";
@@ -74,6 +76,36 @@ router.delete(
   authRequired,
   validate(postIdParamSchema, "params"),
   communityCtrl.removeComment
+);
+
+// "/posts/:id" is a single-segment match and cannot shadow "/posts/:id/pin".
+// Edits use the write limiter, not the strict post-creation bucket.
+router.patch(
+  "/posts/:id",
+  authRequired,
+  communityWriteLimiter,
+  validate(postIdParamSchema, "params"),
+  validate(updatePostSchema),
+  communityCtrl.updatePost
+);
+
+router.patch(
+  "/comments/:id",
+  authRequired,
+  communityWriteLimiter,
+  validate(postIdParamSchema, "params"),
+  validate(updateCommentSchema),
+  communityCtrl.updateComment
+);
+
+// Comment pinning is decided in the service: the post author OR a user with
+// the moderar_comunidad permission may pin, so no permiso() gate here.
+router.patch(
+  "/comments/:id/pin",
+  authRequired,
+  validate(postIdParamSchema, "params"),
+  validate(pinSchema),
+  communityCtrl.setCommentPinned
 );
 
 router.patch(
