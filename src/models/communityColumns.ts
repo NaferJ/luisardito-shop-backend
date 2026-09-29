@@ -45,6 +45,14 @@ export const communityModerationColumns = {
   },
 } satisfies Record<string, ModelAttributeColumnOptions>;
 
+// Set when the author edits their content (posts and comments).
+export const communityEditedColumns = {
+  edited_at: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+} satisfies Record<string, ModelAttributeColumnOptions>;
+
 export const communityTimestampOptions = {
   timestamps: true,
   createdAt: "creado",

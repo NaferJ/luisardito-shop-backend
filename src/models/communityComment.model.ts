@@ -10,6 +10,7 @@ import type Usuario from "./usuario.model";
 import {
   communitySharedColumns,
   communityModerationColumns,
+  communityEditedColumns,
   communityTimestampOptions,
 } from "./communityColumns";
 import type { CommunityStatus } from "../types/community.types";
@@ -20,8 +21,11 @@ class CommunityComment extends Model<
 > {
   declare id: CreationOptional<number>;
   declare post_id: number;
+  declare parent_id: number | null;
   declare usuario_id: number;
   declare body: string;
+  declare pinned: CreationOptional<boolean>;
+  declare edited_at: Date | null;
   declare status: CreationOptional<CommunityStatus>;
   declare hidden_by: number | null;
   declare hidden_at: Date | null;
@@ -41,11 +45,22 @@ CommunityComment.init(
       allowNull: false,
       references: { model: "community_posts", key: "id" },
     },
+    parent_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      references: { model: "community_comments", key: "id" },
+    },
     body: {
       type: DataTypes.TEXT,
       allowNull: false,
     },
+    pinned: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     ...communityModerationColumns,
+    ...communityEditedColumns,
   },
   {
     sequelize,

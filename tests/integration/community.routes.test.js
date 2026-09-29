@@ -17,6 +17,9 @@ const {
 } = require("../../src/models");
 const {
   createPostSchema,
+  updatePostSchema,
+  createCommentSchema,
+  updateCommentSchema,
   listPostsQuerySchema,
   pinSchema,
 } = require("../../src/schemas/community.schema");
@@ -35,6 +38,7 @@ function makePostRow(overrides = {}) {
     comment_count: 0,
     creado: new Date("2026-09-28T10:00:00Z"),
     actualizado: new Date("2026-09-28T10:00:00Z"),
+    edited_at: null,
     author: { id: 9, nickname: "author", kick_data: null },
     ...overrides,
   };
@@ -150,11 +154,35 @@ describe("community routes", () => {
       expect(res.status).toBe(401);
       expect(res.body.code).toBe("TOKEN_MISSING");
     });
+
+    test("PATCH /api/community/posts/:id without token -> 401", async () => {
+      const res = await request(app)
+        .patch("/api/community/posts/1")
+        .send({ body: "edited" });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("TOKEN_MISSING");
+    });
+
+    test("PATCH /api/community/comments/:id without token -> 401", async () => {
+      const res = await request(app)
+        .patch("/api/community/comments/1")
+        .send({ body: "edited" });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("TOKEN_MISSING");
+    });
+
+    test("PATCH /api/community/comments/:id/pin without token -> 401", async () => {
+      const res = await request(app)
+        .patch("/api/community/comments/1/pin")
+        .send({ pinned: true });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("TOKEN_MISSING");
+    });
   });
 
   describe("authenticated requests with invalid payloads", () => {
-    function authToken() {
-      return jwt.sign({ userId: 2 }, process.env.JWT_SECRET);
+    function authToken(userId = 2) {
+      return jwt.sign({ userId }, process.env.JWT_SECRET);
     }
 
     test("POST /api/community/posts with invalid body -> 400", async () => {
@@ -166,6 +194,46 @@ describe("community routes", () => {
         .post("/api/community/posts")
         .set("Authorization", `Bearer ${authToken()}`)
         .send({ title: "x" });
+
+      expect(res.status).toBe(400);
+    });
+
+    test("PATCH /api/community/posts/:id with no fields -> 400", async () => {
+      // Distinct user id so the strict communityPostLimiter bucket is separate.
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: 7, nickname: "u", rol_id: 1 });
+
+      const res = await request(app)
+        .patch("/api/community/posts/1")
+        .set("Authorization", `Bearer ${authToken(7)}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    test("PATCH /api/community/comments/:id with invalid body -> 400", async () => {
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: 2, nickname: "u", rol_id: 1 });
+
+      const res = await request(app)
+        .patch("/api/community/comments/1")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    test("PATCH /api/community/comments/:id/pin with non-boolean pinned -> 400", async () => {
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: 2, nickname: "u", rol_id: 1 });
+
+      const res = await request(app)
+        .patch("/api/community/comments/1/pin")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ pinned: "yes" });
 
       expect(res.status).toBe(400);
     });
@@ -203,6 +271,37 @@ describe("community routes", () => {
       expect(pinSchema.safeParse({}).success).toBe(false);
       expect(pinSchema.safeParse({ pinned: "yes" }).success).toBe(false);
       expect(pinSchema.safeParse({ pinned: true }).success).toBe(true);
+    });
+
+    test("updatePostSchema requires at least one editable field", () => {
+      expect(updatePostSchema.safeParse({}).success).toBe(false);
+      expect(updatePostSchema.safeParse({ title: "ab" }).success).toBe(false);
+      expect(updatePostSchema.safeParse({ title: "ok title" }).success).toBe(
+        true
+      );
+      expect(updatePostSchema.safeParse({ body: "x" }).success).toBe(true);
+    });
+
+    test("updateCommentSchema enforces the comment body rule", () => {
+      expect(updateCommentSchema.safeParse({}).success).toBe(false);
+      expect(updateCommentSchema.safeParse({ body: "" }).success).toBe(false);
+      expect(updateCommentSchema.safeParse({ body: "ok" }).success).toBe(true);
+    });
+
+    test("createCommentSchema accepts an optional positive parent_id", () => {
+      expect(createCommentSchema.safeParse({ body: "hi" }).success).toBe(true);
+      expect(
+        createCommentSchema.safeParse({ body: "hi", parent_id: 3 }).success
+      ).toBe(true);
+      expect(
+        createCommentSchema.safeParse({ body: "hi", parent_id: null }).success
+      ).toBe(true);
+      expect(
+        createCommentSchema.safeParse({ body: "hi", parent_id: -1 }).success
+      ).toBe(false);
+      expect(
+        createCommentSchema.safeParse({ body: "hi", parent_id: "x" }).success
+      ).toBe(false);
     });
 
     test("listPostsQuerySchema coerces page/limit and caps sort values", () => {

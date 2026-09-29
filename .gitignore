@@ -50,5 +50,9 @@ backups/
 *.sql
 *.sql.gz
 
-# Local backup bundle (note that this file is large and sensitive)
-backup-antes-de-limpiar.bundle
+# AI working files
+.ai/
+.windsurf/
+
+# Local backup bundles
+*.bundle
