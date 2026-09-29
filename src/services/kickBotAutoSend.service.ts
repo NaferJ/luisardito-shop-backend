@@ -35,11 +35,11 @@ class KickBotAutoSendService {
     this.isRunning = true;
 
     // Run immediately the first time
-    this.checkAndSendCommands();
+    void this.checkAndSendCommands();
 
     // Configure periodic interval
     this.intervalId = setInterval(() => {
-      this.checkAndSendCommands();
+      void this.checkAndSendCommands();
     }, this.checkInterval);
   }
 
@@ -82,23 +82,25 @@ class KickBotAutoSendService {
 
       const now = new Date();
 
-      for (const command of autoSendCommands) {
-        try {
-          // Check if it is time to send this command
-          if (await this.shouldSendCommand(command, now)) {
-            await this.sendCommand(command);
-            // Update last sent
-            command.last_used_at = now;
-            await command.save();
+      await Promise.allSettled(
+        autoSendCommands.map(async (command) => {
+          try {
+            // Check if it is time to send this command
+            if (this.shouldSendCommand(command, now)) {
+              await this.sendCommand(command);
+              // Update last sent
+              command.last_used_at = now;
+              await command.save();
+            }
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : String(error);
+            logger.error(
+              `[AUTO-SEND] Error processing command ${command.command}:`,
+              msg
+            );
           }
-        } catch (error) {
-          const msg = error instanceof Error ? error.message : String(error);
-          logger.error(
-            `[AUTO-SEND] Error processing command ${command.command}:`,
-            msg
-          );
-        }
-      }
+        })
+      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("[AUTO-SEND] Error in checkAndSendCommands:", msg);
@@ -108,7 +110,7 @@ class KickBotAutoSendService {
   /**
    * Checks if a command should be sent at this time
    */
-  async shouldSendCommand(command: KickBotCommand, now: Date) {
+  shouldSendCommand(command: KickBotCommand, now: Date): boolean {
     if (!command.last_used_at) {
       // Never sent, send now
       return true;

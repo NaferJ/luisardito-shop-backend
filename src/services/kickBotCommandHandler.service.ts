@@ -115,7 +115,7 @@ class KickBotCommandHandlerService {
           dynamicCtx
         );
       } else {
-        response = await this.executeSimpleCommand(
+        response = this.executeSimpleCommand(
           command,
           content,
           username,
@@ -180,13 +180,13 @@ class KickBotCommandHandlerService {
   /**
    * Executes a simple command (static response with variables)
    */
-  async executeSimpleCommand(
+  executeSimpleCommand(
     command: KickBotCommand,
     content: string,
     username: string,
     channelName: string,
     usuario: Usuario | null = null
-  ): Promise<string> {
+  ): string {
     const args = this.extractArgs(content);
 
     // Replace variables in the message
@@ -519,10 +519,7 @@ class KickBotCommandHandlerService {
    * Checks if a user has the required permission to execute a command
    * (Currently returns true, but permission logic can be implemented here)
    */
-  async checkPermission(
-    command: KickBotCommand,
-    _username: string
-  ): Promise<boolean> {
+  checkPermission(command: KickBotCommand, _username: string): boolean {
     // Permission logic is not yet implemented — all commands are allowed.
     // When implementing, check if the user is a moderator, VIP, etc.
     return !command.requires_permission || true;

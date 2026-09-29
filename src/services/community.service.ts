@@ -560,14 +560,14 @@ async function createComment(
   parentId?: number
 ): Promise<CommentDTO> {
   const post = await CommunityPost.findByPk(postId);
-  if (!post || post.status !== "visible") {
+  if (post?.status !== "visible") {
     throw new AppError("Post not found", 404);
   }
 
   let parent: CommunityComment | null = null;
   if (parentId !== undefined && parentId !== null) {
     parent = await CommunityComment.findByPk(parentId);
-    if (!parent || parent.status !== "visible") {
+    if (parent?.status !== "visible") {
       throw new AppError("Comment not found", 404);
     }
     if (parent.post_id !== post.id) {
@@ -661,7 +661,7 @@ async function toggleLike(
     target = parent?.status === "visible" ? comment : null;
   }
 
-  if (!target || target.status !== "visible") {
+  if (target?.status !== "visible") {
     throw new AppError("Not found", 404);
   }
 
@@ -770,7 +770,7 @@ async function updatePost(
   data: UpdatePostData
 ): Promise<PostDTO> {
   const post = await CommunityPost.findByPk(postId);
-  if (!post || post.status !== "visible") {
+  if (post?.status !== "visible") {
     throw new AppError("Post not found", 404);
   }
   // Only the author edits content; moderators hide instead of editing.
@@ -795,11 +795,11 @@ async function updateComment(
   const comment = await CommunityComment.findByPk(commentId, {
     include: [AUTHOR_INCLUDE],
   });
-  if (!comment || comment.status !== "visible") {
+  if (comment?.status !== "visible") {
     throw new AppError("Comment not found", 404);
   }
   const post = await CommunityPost.findByPk(comment.post_id);
-  if (!post || post.status !== "visible") {
+  if (post?.status !== "visible") {
     throw new AppError("Comment not found", 404);
   }
   if (comment.usuario_id !== user.id) {
@@ -818,11 +818,11 @@ async function setCommentPinned(
   const comment = await CommunityComment.findByPk(commentId, {
     include: [AUTHOR_INCLUDE],
   });
-  if (!comment || comment.status !== "visible") {
+  if (comment?.status !== "visible") {
     throw new AppError("Comment not found", 404);
   }
   const post = await CommunityPost.findByPk(comment.post_id);
-  if (!post || post.status !== "visible") {
+  if (post?.status !== "visible") {
     throw new AppError("Comment not found", 404);
   }
   if (comment.parent_id !== null) {
