@@ -93,6 +93,21 @@ const pinSchema = z.object({
   pinned: z.boolean({ message: "pinned must be a boolean" }),
 });
 
+const reportSchema = z.object({
+  reason: z.enum(
+    ["spam", "harassment", "hate", "sexual", "violence", "other"],
+    {
+      message:
+        "reason must be one of spam, harassment, hate, sexual, violence, other",
+    }
+  ),
+  details: z
+    .string()
+    .trim()
+    .max(500, { message: "details must be at most 500 characters" })
+    .optional(),
+});
+
 export {
   createPostSchema,
   updatePostSchema,
@@ -102,4 +117,5 @@ export {
   postIdParamSchema,
   hideSchema,
   pinSchema,
+  reportSchema,
 };
