@@ -39,11 +39,16 @@ import leaderboardRoutes from "./src/routes/leaderboard.routes";
 import promocionesRoutes from "./src/routes/promociones.routes";
 import broadcasterInfoRoutes from "./src/routes/broadcasterInfo.routes";
 import notificacionesRoutes from "./src/routes/notificaciones.routes";
+import communityRoutes from "./src/routes/community.routes";
 
 const app = express();
 
 // Disable X-Powered-By header to avoid revealing framework info
 app.disable("x-powered-by");
+
+// Trust X-Forwarded-For only from private-network hops (nginx on the VPS via
+// the Docker bridge), so direct clients cannot spoof req.ip.
+app.set("trust proxy", "loopback, linklocal, uniquelocal");
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ service: "luisardito-shop-backend", status: "ok" });
@@ -88,6 +93,7 @@ app.use("/api/leaderboard", leaderboardRoutes);
 app.use("/api/promociones", promocionesRoutes);
 app.use("/api/broadcaster", broadcasterInfoRoutes); // Public route for broadcaster info
 app.use("/api/notificaciones", notificacionesRoutes); // Notifications route
+app.use("/api/community", communityRoutes); // Community routes
 
 // Health endpoint for liveness/readiness checks
 app.get("/health", (_req: Request, res: Response) => {

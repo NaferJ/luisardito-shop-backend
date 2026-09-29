@@ -15,7 +15,8 @@ type NotificacionTipo =
   | "canje_cancelado"
   | "canje_devuelto"
   | "historial_evento"
-  | "sistema";
+  | "sistema"
+  | "comunidad_respuesta";
 
 type NotificacionEstado = "no_leida" | "leida";
 
@@ -71,7 +72,8 @@ Notificacion.init(
         "canje_cancelado",
         "canje_devuelto",
         "historial_evento",
-        "sistema"
+        "sistema",
+        "comunidad_respuesta"
       ),
       allowNull: false,
       defaultValue: "sistema",
