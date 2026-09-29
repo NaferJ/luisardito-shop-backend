@@ -7,6 +7,11 @@ import {
 } from "sequelize";
 import { sequelize } from "./database";
 import type Usuario from "./usuario.model";
+import {
+  communitySharedColumns,
+  communityModerationColumns,
+  communityTimestampOptions,
+} from "./communityColumns";
 import type { CommunityStatus } from "../types/community.types";
 
 class CommunityComment extends Model<
@@ -30,56 +35,22 @@ class CommunityComment extends Model<
 
 CommunityComment.init(
   {
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true,
-    },
+    ...communitySharedColumns,
     post_id: {
       type: DataTypes.INTEGER,
       allowNull: false,
       references: { model: "community_posts", key: "id" },
     },
-    usuario_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: { model: "usuarios", key: "id" },
-    },
     body: {
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    status: {
-      type: DataTypes.ENUM("visible", "pending_review", "hidden"),
-      allowNull: false,
-      defaultValue: "visible",
-    },
-    hidden_by: {
-      type: DataTypes.INTEGER,
-      allowNull: true,
-      references: { model: "usuarios", key: "id" },
-    },
-    hidden_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-    hidden_reason: {
-      type: DataTypes.STRING(255),
-      allowNull: true,
-    },
-    creado: {
-      type: DataTypes.DATE,
-    },
-    actualizado: {
-      type: DataTypes.DATE,
-    },
+    ...communityModerationColumns,
   },
   {
     sequelize,
     tableName: "community_comments",
-    timestamps: true,
-    createdAt: "creado",
-    updatedAt: "actualizado",
+    ...communityTimestampOptions,
   }
 );
 

@@ -6,6 +6,10 @@ import {
   CreationOptional,
 } from "sequelize";
 import { sequelize } from "./database";
+import {
+  communitySharedColumns,
+  communityTimestampOptions,
+} from "./communityColumns";
 import type { CommunityLikeTarget } from "../types/community.types";
 
 class CommunityLike extends Model<
@@ -22,16 +26,7 @@ class CommunityLike extends Model<
 
 CommunityLike.init(
   {
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true,
-    },
-    usuario_id: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      references: { model: "usuarios", key: "id" },
-    },
+    ...communitySharedColumns,
     target_type: {
       type: DataTypes.ENUM("post", "comment"),
       allowNull: false,
@@ -40,19 +35,11 @@ CommunityLike.init(
       type: DataTypes.INTEGER,
       allowNull: false,
     },
-    creado: {
-      type: DataTypes.DATE,
-    },
-    actualizado: {
-      type: DataTypes.DATE,
-    },
   },
   {
     sequelize,
     tableName: "community_likes",
-    timestamps: true,
-    createdAt: "creado",
-    updatedAt: "actualizado",
+    ...communityTimestampOptions,
     // Indexes are owned by the migration — do not duplicate them here or
     // sequelize.sync() races the migration and fails on duplicate key names.
   }
