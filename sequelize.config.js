@@ -1,7 +1,18 @@
-require("dotenv").config();
+const dotenv = require("dotenv");
 const fs = require("fs");
+
+// Same precedence as config.ts: real env > .env.development > .env
+const realEnvKeys = new Set(Object.keys(process.env));
+
+dotenv.config();
+
 if (fs.existsSync(".env.development")) {
-  require("dotenv").config({ path: ".env.development", override: true });
+  const devVars = dotenv.parse(fs.readFileSync(".env.development"));
+  for (const [key, value] of Object.entries(devVars)) {
+    if (!realEnvKeys.has(key)) {
+      process.env[key] = value;
+    }
+  }
 }
 
 const toBool = (val, def = false) => {

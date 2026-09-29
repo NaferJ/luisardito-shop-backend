@@ -311,15 +311,21 @@ async function trackPostView(
   try {
     const redis = getRedisClient();
     const viewerKey = viewerId ?? viewerIp ?? "anonymous";
+    const dedupKey = `community:viewed:post:${postId}:${viewerKey}`;
     const setResult = await redis.set(
-      `community:viewed:post:${postId}:${viewerKey}`,
+      dedupKey,
       "1",
       "EX",
       VIEW_DEDUP_TTL_SECONDS,
       "NX"
     );
     if (setResult !== "OK") return false;
-    await CommunityPost.increment("view_count", { where: { id: postId } });
+    try {
+      await CommunityPost.increment("view_count", { where: { id: postId } });
+    } catch (error) {
+      await redis.del(dedupKey).catch(() => undefined);
+      throw error;
+    }
     return true;
   } catch (error) {
     logger.warn(
@@ -522,10 +528,18 @@ async function toggleLike(
   targetType: CommunityLikeTarget,
   targetId: number
 ): Promise<{ liked: boolean; like_count: number }> {
-  const target =
-    targetType === "post"
-      ? await CommunityPost.findByPk(targetId)
-      : await CommunityComment.findByPk(targetId);
+  let target: CommunityPost | CommunityComment | null;
+  if (targetType === "post") {
+    target = await CommunityPost.findByPk(targetId);
+  } else {
+    // Comments are only likeable while their post is visible too.
+    const comment = await CommunityComment.findByPk(targetId);
+    const parent =
+      comment?.status === "visible"
+        ? await CommunityPost.findByPk(comment.post_id)
+        : null;
+    target = parent?.status === "visible" ? comment : null;
+  }
 
   if (!target || target.status !== "visible") {
     throw new AppError("Not found", 404);
@@ -537,21 +551,21 @@ async function toggleLike(
     target_id: targetId,
   };
 
-  const existing = await CommunityLike.findOne({ where: likeWhere });
-
+  // Delete-first toggle: each request applies exactly one atomic change, so
+  // concurrent toggles behave as if they ran one after another.
   let liked: boolean;
-  if (existing) {
-    await existing.destroy();
+  const removed = await CommunityLike.destroy({ where: likeWhere });
+  if (removed > 0) {
     liked = false;
   } else {
     try {
       await CommunityLike.create(likeWhere);
       liked = true;
     } catch (error) {
-      // Double-click race: the row was created concurrently, so the like
-      // effectively exists.
+      // A concurrent toggle inserted the like first; this toggle undoes it.
       if (!(error instanceof UniqueConstraintError)) throw error;
-      liked = true;
+      await CommunityLike.destroy({ where: likeWhere });
+      liked = false;
     }
   }
 

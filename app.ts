@@ -46,8 +46,9 @@ const app = express();
 // Disable X-Powered-By header to avoid revealing framework info
 app.disable("x-powered-by");
 
-// Trust the first proxy hop (nginx on the VPS) so req.ip is the real client IP
-app.set("trust proxy", 1);
+// Trust X-Forwarded-For only from private-network hops (nginx on the VPS via
+// the Docker bridge), so direct clients cannot spoof req.ip.
+app.set("trust proxy", "loopback, linklocal, uniquelocal");
 
 app.get("/", (_req: Request, res: Response) => {
   res.json({ service: "luisardito-shop-backend", status: "ok" });

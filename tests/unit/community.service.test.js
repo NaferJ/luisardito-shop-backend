@@ -1,4 +1,5 @@
 const mockRedisSet = jest.fn();
+const mockRedisDel = jest.fn();
 
 jest.mock("../../src/models", () => ({
   CommunityPost: {
@@ -17,6 +18,7 @@ jest.mock("../../src/models", () => ({
     findAll: jest.fn(),
     findOne: jest.fn(),
     create: jest.fn(),
+    destroy: jest.fn(),
     count: jest.fn(),
   },
   Usuario: { findByPk: jest.fn() },
@@ -25,7 +27,7 @@ jest.mock("../../src/models", () => ({
 }));
 
 jest.mock("../../src/config/redis.config", () => ({
-  getRedisClient: jest.fn(() => ({ set: mockRedisSet })),
+  getRedisClient: jest.fn(() => ({ set: mockRedisSet, del: mockRedisDel })),
 }));
 
 jest.mock("../../src/services/notificacion.service", () => ({
@@ -116,6 +118,7 @@ describe("community.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRedisSet.mockResolvedValue("OK");
+    mockRedisDel.mockResolvedValue(1);
   });
 
   // ---------- buildFeedOrder ----------
@@ -153,7 +156,7 @@ describe("community.service", () => {
   describe("toggleLike", () => {
     test("creates the like when absent -> liked true", async () => {
       CommunityPost.findByPk.mockResolvedValue(makePost());
-      CommunityLike.findOne.mockResolvedValue(null);
+      CommunityLike.destroy.mockResolvedValue(0);
       CommunityLike.create.mockResolvedValue({});
       CommunityLike.count.mockResolvedValue(4);
 
@@ -168,29 +171,32 @@ describe("community.service", () => {
     });
 
     test("destroys the like when present -> liked false", async () => {
-      const destroy = jest.fn().mockResolvedValue(undefined);
       CommunityPost.findByPk.mockResolvedValue(makePost());
-      CommunityLike.findOne.mockResolvedValue({ destroy });
+      CommunityLike.destroy.mockResolvedValue(1);
       CommunityLike.count.mockResolvedValue(3);
 
       const result = await service.toggleLike(2, "post", 1);
 
-      expect(destroy).toHaveBeenCalledTimes(1);
+      expect(CommunityLike.destroy).toHaveBeenCalledTimes(1);
+      expect(CommunityLike.destroy).toHaveBeenCalledWith({
+        where: { usuario_id: 2, target_type: "post", target_id: 1 },
+      });
       expect(CommunityLike.create).not.toHaveBeenCalled();
       expect(result).toEqual({ liked: false, like_count: 3 });
     });
 
-    test("unique-constraint race on create -> liked true", async () => {
+    test("unique-constraint race on create -> this toggle unlikes", async () => {
       CommunityPost.findByPk.mockResolvedValue(makePost());
-      CommunityLike.findOne.mockResolvedValue(null);
+      CommunityLike.destroy.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
       CommunityLike.create.mockRejectedValue(
         new UniqueConstraintError({ message: "dup", errors: [] })
       );
-      CommunityLike.count.mockResolvedValue(1);
+      CommunityLike.count.mockResolvedValue(0);
 
       const result = await service.toggleLike(2, "post", 1);
 
-      expect(result).toEqual({ liked: true, like_count: 1 });
+      expect(CommunityLike.destroy).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ liked: false, like_count: 0 });
     });
 
     test("missing target -> 404", async () => {
@@ -198,7 +204,7 @@ describe("community.service", () => {
       await expect(service.toggleLike(2, "post", 99)).rejects.toMatchObject({
         statusCode: 404,
       });
-      expect(CommunityLike.findOne).not.toHaveBeenCalled();
+      expect(CommunityLike.destroy).not.toHaveBeenCalled();
     });
 
     test("hidden target -> 404", async () => {
@@ -210,14 +216,27 @@ describe("community.service", () => {
 
     test("comment target resolves via CommunityComment", async () => {
       CommunityComment.findByPk.mockResolvedValue(makeComment());
-      CommunityLike.findOne.mockResolvedValue(null);
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityLike.destroy.mockResolvedValue(0);
       CommunityLike.create.mockResolvedValue({});
       CommunityLike.count.mockResolvedValue(1);
 
       const result = await service.toggleLike(2, "comment", 7);
 
       expect(CommunityComment.findByPk).toHaveBeenCalledWith(7);
+      expect(CommunityPost.findByPk).toHaveBeenCalledWith(1);
       expect(result).toEqual({ liked: true, like_count: 1 });
+    });
+
+    test("comment on a hidden post -> 404", async () => {
+      CommunityComment.findByPk.mockResolvedValue(makeComment());
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+
+      await expect(service.toggleLike(2, "comment", 7)).rejects.toMatchObject({
+        statusCode: 404,
+      });
+      expect(CommunityLike.destroy).not.toHaveBeenCalled();
+      expect(CommunityLike.create).not.toHaveBeenCalled();
     });
   });
 
@@ -396,6 +415,21 @@ describe("community.service", () => {
       const result = await service.getPost(1, null, "5.6.7.8");
 
       expect(CommunityPost.increment).not.toHaveBeenCalled();
+      expect(result.view_count).toBe(10);
+    });
+
+    test("DB increment failure releases the dedup key for retries", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ view_count: 10 }));
+      CommunityComment.findAll.mockResolvedValue([]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityPost.increment.mockRejectedValue(new Error("db down"));
+      mockRedisSet.mockResolvedValue("OK");
+
+      const result = await service.getPost(1, null, "5.6.7.8");
+
+      expect(mockRedisDel).toHaveBeenCalledWith(
+        "community:viewed:post:1:5.6.7.8"
+      );
       expect(result.view_count).toBe(10);
     });
 

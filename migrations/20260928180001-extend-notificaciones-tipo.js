@@ -25,7 +25,11 @@ module.exports = {
   },
 
   down: async (queryInterface, Sequelize) => {
-    // Fails if rows already use 'comunidad_respuesta' — clean them first
+    // Keep existing reply notifications as generic 'sistema' notifications
+    // so the enum can shrink without failing on stored values.
+    await queryInterface.sequelize.query(
+      "UPDATE notificaciones SET tipo = 'sistema' WHERE tipo = 'comunidad_respuesta'"
+    );
     await queryInterface.sequelize.query(
       `ALTER TABLE notificaciones MODIFY COLUMN tipo ENUM(${enumSql(
         TIPOS_BASE
