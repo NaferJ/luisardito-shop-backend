@@ -145,14 +145,12 @@ class KickBotService {
       return tokenRecord;
     } catch (error: unknown) {
       const axiosErr = error as {
-        response?: { data?: unknown; status?: number };
+        response?: { status?: number };
       };
-      const errorData = axiosErr?.response?.data;
       const errorStatus = axiosErr?.response?.status;
 
       logger.error("[KickBot] Error renewing token:", {
         status: errorStatus,
-        data: errorData,
         message: toErrorMessage(error),
       });
 
@@ -388,9 +386,7 @@ class KickBotService {
     logger.info("[KickBot] Send details:", {
       url,
       payload,
-      tokenPreview: token
-        ? `${token.substring(0, 10)}...${token.slice(-5)}`
-        : "NO TOKEN",
+      hasToken: !!token,
       botUsername: this.botUsername,
       broadcasterId,
       timestamp: new Date().toISOString(),
@@ -602,9 +598,9 @@ class KickBotService {
         return;
       }
 
-      for (const record of records) {
-        await this._autoRefreshRecord(record);
-      }
+      await Promise.all(
+        records.map((record) => this._autoRefreshRecord(record))
+      );
     } catch (error: unknown) {
       logger.error(
         "[KickBot] Error in performAutoRefresh:",

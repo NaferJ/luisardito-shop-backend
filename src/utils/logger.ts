@@ -9,6 +9,28 @@ const isDebugEnabled = process.env.DEBUG_LOGS === "true";
 // Determine if debug logs should be shown
 const shouldLog = isDevelopment || isDebugEnabled;
 
+interface AxiosErrorLike {
+  isAxiosError: true;
+  message?: string;
+  code?: string;
+  config?: { method?: string; url?: string };
+  response?: { status?: number };
+}
+
+const sanitize = (arg: unknown): unknown => {
+  if (!arg || typeof arg !== "object" || !("isAxiosError" in arg)) {
+    return arg;
+  }
+  const err = arg as AxiosErrorLike;
+  return {
+    message: err.message,
+    code: err.code,
+    method: err.config?.method,
+    url: err.config?.url,
+    status: err.response?.status,
+  };
+};
+
 /**
  * Main logger with different levels
  */
@@ -18,7 +40,7 @@ const logger = {
    */
   info: (...args: unknown[]) => {
     if (shouldLog) {
-      console.log(...args);
+      console.log(...args.map(sanitize));
     }
   },
 
@@ -27,7 +49,7 @@ const logger = {
    */
   warn: (...args: unknown[]) => {
     if (shouldLog) {
-      console.warn(...args);
+      console.warn(...args.map(sanitize));
     }
   },
 
@@ -35,7 +57,7 @@ const logger = {
    * Error logs - ALWAYS logged (critical)
    */
   error: (...args: unknown[]) => {
-    console.error(...args);
+    console.error(...args.map(sanitize));
   },
 
   /**
@@ -43,7 +65,7 @@ const logger = {
    */
   debug: (...args: unknown[]) => {
     if (shouldLog) {
-      console.log("[DEBUG]", ...args);
+      console.log("[DEBUG]", ...args.map(sanitize));
     }
   },
 };

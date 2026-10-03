@@ -124,7 +124,9 @@ const redirectDiscord = (req: Request, res: Response) => {
     });
 
     const url = `${config.discord.oauthAuthorize}?${params.toString()}`;
-    logger.info("[Discord OAuth][redirectDiscord] Redirect URL:", url);
+    logger.info(
+      "[Discord OAuth][redirectDiscord] Redirecting to Discord authorize"
+    );
 
     return res.redirect(url);
   } catch (err) {
@@ -145,8 +147,8 @@ const callbackDiscord = async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Discord OAuth][callbackDiscord] Parameters received:", {
-      code,
-      state,
+      hasCode: !!code,
+      hasState: !!state,
     });
 
     if (!code || !state) {
@@ -159,7 +161,6 @@ const callbackDiscord = async (req: Request, res: Response) => {
     let decoded;
     try {
       decoded = jwt.verify(String(state), config.jwtSecret);
-      logger.info("[Discord OAuth][callbackDiscord] Decoded state:", decoded);
     } catch (e) {
       logger.error(
         "[Discord OAuth][callbackDiscord] Invalid or expired state:",
@@ -277,7 +278,10 @@ const callbackDiscord = async (req: Request, res: Response) => {
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=success`);
   } catch (error) {
-    logger.error("[Discord OAuth][callbackDiscord] Error:", error);
+    logger.error(
+      "[Discord OAuth][callbackDiscord] Error:",
+      error instanceof Error ? error.message : String(error)
+    );
     const frontendUrl = config.frontendUrl || "https://luisardito.com";
     return res.redirect(`${frontendUrl}/perfil?discord_linked=error`);
   }
@@ -286,22 +290,22 @@ const callbackDiscord = async (req: Request, res: Response) => {
 /**
  * Manual Discord linking (via temporary code)
  */
-const linkDiscordManual = asyncHandler(async (req: Request, _res: Response) => {
+const linkDiscordManual = asyncHandler((req: Request, _res: Response) => {
   const { code } = req.body;
   const userId = req.user?.id;
 
   if (!userId) {
-    throw new AppError("User not authenticated", 401);
+    return Promise.reject(new AppError("User not authenticated", 401));
   }
 
   if (!code) {
-    throw new AppError("Code required", 400);
+    return Promise.reject(new AppError("Code required", 400));
   }
 
   // Here we would implement the temporary code logic
   // For now, return that it is not implemented
   logger.info("[Discord OAuth][linkDiscordManual] Method not implemented yet");
-  throw new AppError("Method not implemented", 501);
+  return Promise.reject(new AppError("Method not implemented", 501));
 });
 
 /**

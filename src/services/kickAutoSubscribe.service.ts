@@ -73,8 +73,13 @@ async function processSubscriptionResults(
     `[Auto Subscribe] Processing ${subscriptionsData.length} subscriptions received from Kick`
   );
 
-  for (const sub of subscriptionsData) {
-    const result = await processSingleSubscription(sub, broadcasterUserId);
+  const results = await Promise.all(
+    subscriptionsData.map((sub) =>
+      processSingleSubscription(sub, broadcasterUserId)
+    )
+  );
+
+  for (const result of results) {
     if (result.subscription) {
       createdSubscriptions.push(result.subscription);
     }
@@ -305,21 +310,19 @@ async function performBroadcasterRefresh(
       `[Token Refresh] Renewing token for ${broadcasterToken.kick_username}`
     );
 
-    const refreshUrl = `${config.kick.apiBaseUrl}/oauth/token`;
-
-    const payload = {
+    const payload = new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: config.kick.clientId,
-      client_secret: config.kick.clientSecret,
+      client_id: String(config.kick.clientId || ""),
+      client_secret: String(config.kick.clientSecret || ""),
       refresh_token: broadcasterToken.refresh_token,
-    };
+    });
 
     const response: AxiosResponse<TokenRefreshResponse> = await axios.post(
-      refreshUrl,
+      config.kick.oauthToken,
       payload,
       {
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
         },
         timeout: 10000,
       }
@@ -367,13 +370,9 @@ async function handleRefreshError(
   }
 
   const axiosError = error as {
-    response: { status: number; data: unknown };
+    response: { status: number };
   };
-  logger.error(
-    "[Token Refresh] API Error:",
-    axiosError.response.status,
-    axiosError.response.data
-  );
+  logger.error("[Token Refresh] API Error:", axiosError.response.status);
 
   if (
     axiosError.response.status === 400 ||

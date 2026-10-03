@@ -41,8 +41,13 @@ const handleWebhook = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Missing required headers" });
     }
 
-    // Get raw body as string
-    const rawBody = JSON.stringify(req.body);
+    // Get raw body
+    if (!req.rawBody) {
+      logger.warn(
+        "[Kick Webhook] Raw body not captured; falling back to re-serialized JSON"
+      );
+    }
+    const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(req.body));
 
     // Verify webhook signature
     const isValidSignature = verifyWebhookSignature(
@@ -53,7 +58,11 @@ const handleWebhook = async (req: Request, res: Response) => {
     );
 
     if (!isValidSignature) {
-      logger.error("[Kick Webhook] Invalid signature");
+      logger.error("[Kick Webhook] Invalid signature", {
+        eventType,
+        messageId,
+        bodyBytes: rawBody.length,
+      });
       return res.status(401).json({ error: "Invalid signature" });
     }
 
