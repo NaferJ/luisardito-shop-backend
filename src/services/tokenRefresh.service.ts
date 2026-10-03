@@ -1,5 +1,6 @@
 import { refreshAccessToken } from "./kickAutoSubscribe.service";
 import { KickBroadcasterToken } from "../models";
+import config from "../../config";
 import logger from "../utils/logger";
 
 class TokenRefreshService {
@@ -86,6 +87,18 @@ class TokenRefreshService {
 
       // If the token expires in less than 1 hour, refresh it
       if (expiresAt.getTime() - now.getTime() < bufferTime) {
+        if (
+          String(broadcasterToken.kick_user_id) !==
+          String(config.kick.broadcasterId)
+        ) {
+          await broadcasterToken.update({
+            is_active: false,
+            subscription_error:
+              "Not refreshed: only the main broadcaster token is kept active",
+          });
+          return;
+        }
+
         logger.info(
           `[Token Refresh Service] Token for ${broadcasterToken.kick_username} expiring soon, refreshing...`
         );
@@ -100,12 +113,6 @@ class TokenRefreshService {
           logger.error(
             `[Token Refresh Service] Could not refresh token for ${broadcasterToken.kick_username}`
           );
-
-          // Mark as inactive if it cannot be refreshed
-          await broadcasterToken.update({
-            is_active: false,
-            subscription_error: "Token expired and could not be refreshed",
-          });
         }
       } else {
         logger.info(

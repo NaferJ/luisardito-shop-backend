@@ -49,8 +49,8 @@ const callbackKickBot = async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Kick OAuth][callbackKickBot] Parameters received:", {
-      code,
-      state,
+      hasCode: !!code,
+      hasState: !!state,
     });
 
     if (!code || !state) {
@@ -64,9 +64,11 @@ const callbackKickBot = async (req: Request, res: Response) => {
     let decodedState;
     try {
       decodedState = jwt.verify(state as string, config.jwtSecret);
-      logger.info("[Kick OAuth][callbackKickBot] Decoded state:", decodedState);
     } catch (err) {
-      logger.error("[Kick OAuth][callbackKickBot] Error decoding state:", err);
+      logger.error(
+        "[Kick OAuth][callbackKickBot] Error decoding state:",
+        err instanceof Error ? err.message : String(err)
+      );
       return res.status(400).json({ error: "Invalid or expired state" });
     }
 
@@ -145,7 +147,10 @@ const callbackKickBot = async (req: Request, res: Response) => {
       `${frontendUrl}/admin/integrations?kickBot=connected&msg=${message}`
     );
   } catch (err) {
-    logger.error("[Kick OAuth][callbackKickBot] Error:", err);
+    logger.error(
+      "[Kick OAuth][callbackKickBot] Error:",
+      err instanceof Error ? err.message : String(err)
+    );
     return res.status(500).json({
       error: "Error in the bot authentication callback",
       details: err instanceof Error ? err.message : String(err),

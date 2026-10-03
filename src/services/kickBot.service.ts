@@ -388,9 +388,7 @@ class KickBotService {
     logger.info("[KickBot] Send details:", {
       url,
       payload,
-      tokenPreview: token
-        ? `${token.substring(0, 10)}...${token.slice(-5)}`
-        : "NO TOKEN",
+      hasToken: !!token,
       botUsername: this.botUsername,
       broadcasterId,
       timestamp: new Date().toISOString(),

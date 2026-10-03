@@ -96,12 +96,6 @@ async function getKickUserData(
 ): Promise<NormalizedKickUser | Record<string, unknown>> {
   try {
     logger.info("[Kick API] Fetching user data. Type:", typeof userIdOrToken);
-    logger.info(
-      "[Kick API] Received token/ID (first 10 chars):",
-      typeof userIdOrToken === "string"
-        ? `${userIdOrToken.substring(0, 10)}... (length: ${userIdOrToken.length})`
-        : "Not a string"
-    );
 
     // If it is a token (long string), get authenticated user data
     if (typeof userIdOrToken === "string" && userIdOrToken.length > 20) {

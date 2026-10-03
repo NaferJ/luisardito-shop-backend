@@ -11,14 +11,14 @@ const KICK_PUBLIC_KEY = process.env.KICK_WEBHOOK_PUBLIC_KEY
  * Verifies a Kick webhook signature
  * @param messageId - Kick-Event-Message-Id header
  * @param timestamp - Kick-Event-Message-Timestamp header
- * @param body - Raw body of the request
+ * @param body - Raw body of the request, exactly as received (Buffer preferred)
  * @param signatureBase64 - Kick-Event-Signature header (Base64 encoded)
  * @returns true if the signature is valid, false otherwise
  */
 function verifyWebhookSignature(
   messageId: string,
   timestamp: string,
-  body: string,
+  body: string | Buffer,
   signatureBase64: string
 ): boolean {
   try {
@@ -28,14 +28,17 @@ function verifyWebhookSignature(
     }
 
     // Create the signature string by concatenating: messageId.timestamp.body
-    const signatureString = `${messageId}.${timestamp}.${body}`;
+    const signedPayload = Buffer.concat([
+      Buffer.from(`${messageId}.${timestamp}.`),
+      Buffer.isBuffer(body) ? body : Buffer.from(body),
+    ]);
 
     // Decode the signature from Base64
     const signature = Buffer.from(signatureBase64, "base64");
 
     // Verify the RSA-SHA256 signature with PKCS1v15
     const verifier = crypto.createVerify("RSA-SHA256");
-    verifier.update(signatureString);
+    verifier.update(signedPayload);
 
     return verifier.verify(KICK_PUBLIC_KEY, signature);
   } catch (error) {

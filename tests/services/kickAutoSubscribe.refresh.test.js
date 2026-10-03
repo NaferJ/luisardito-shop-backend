@@ -5,6 +5,7 @@ jest.mock("axios");
 jest.mock("../../config", () => ({
   kick: {
     apiBaseUrl: "https://api.kick.com",
+    oauthToken: "https://id.kick.com/oauth/token",
     clientId: "test-client-id",
     clientSecret: "test-client-secret",
   },
@@ -80,5 +81,23 @@ describe("kickAutoSubscribe.refreshAccessToken single-flight", () => {
 
     await refreshAccessToken(record);
     expect(axios.post).toHaveBeenCalledTimes(2);
+  });
+
+  test("posts a form-encoded refresh grant to the OAuth host", async () => {
+    mockTokenResponse();
+    await refreshAccessToken(buildRecord());
+
+    const [url, body, options] = axios.post.mock.calls[0];
+    expect(url).toBe("https://id.kick.com/oauth/token");
+    expect(body).toBeInstanceOf(URLSearchParams);
+    expect(Object.fromEntries(body)).toEqual({
+      grant_type: "refresh_token",
+      client_id: "test-client-id",
+      client_secret: "test-client-secret",
+      refresh_token: "old-refresh-token",
+    });
+    expect(options.headers["Content-Type"]).toBe(
+      "application/x-www-form-urlencoded"
+    );
   });
 });

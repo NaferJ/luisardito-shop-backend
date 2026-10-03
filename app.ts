@@ -22,6 +22,7 @@ import backupScheduler from "./src/services/backup.task";
 import discordBotService from "./src/services/discordBot.service";
 import kickBotAutoSendService from "./src/services/kickBotAutoSend.service";
 import dbCleanupTask from "./src/services/dbCleanup.task";
+import kickSubscriptionHealthTask from "./src/services/kickSubscriptionHealth.task";
 
 // Routes
 import authRoutes from "./src/routes/auth.routes";
@@ -57,7 +58,15 @@ app.get("/", (_req: Request, res: Response) => {
 // Global middleware
 app.use(customCors);
 app.use(cookieParser()); // Parse cookies
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      if (req.url?.startsWith("/api/kick-webhook")) {
+        (req as Request).rawBody = buf;
+      }
+    },
+  })
+);
 
 // Serve static files from assets
 app.use("/assets", express.static("assets"));
@@ -155,6 +164,9 @@ const start = async (): Promise<void> => {
 
     // Start automatic database cleanup (daily at 4:30 AM)
     dbCleanupTask.start();
+
+    // Start hourly Kick webhook subscription health check
+    kickSubscriptionHealthTask.start();
 
     // Start Discord bot
     await discordBotService.initialize();

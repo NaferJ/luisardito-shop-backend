@@ -16,7 +16,7 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["app.ts", "config.ts", "src/**/*"],
   "exclude": [
     "node_modules",
     "dist",

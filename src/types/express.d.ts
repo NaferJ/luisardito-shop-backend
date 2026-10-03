@@ -5,5 +5,6 @@ import type { Usuario } from "../models/usuario.model";
 declare module "express-serve-static-core" {
   interface Request {
     user: Usuario | null;
+    rawBody?: Buffer;
   }
 }

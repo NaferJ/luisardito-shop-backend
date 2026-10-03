@@ -21,8 +21,6 @@ import toErrorMessage from "../../utils/toErrorMessage";
 const redirectKick = (req: Request, res: Response) => {
   try {
     const { code_verifier, code_challenge } = generatePkce();
-    logger.info("[Kick OAuth][redirectKick] code_verifier:", code_verifier);
-    logger.info("[Kick OAuth][redirectKick] code_challenge:", code_challenge);
 
     const statePayload = {
       cv: code_verifier,
@@ -32,9 +30,6 @@ const redirectKick = (req: Request, res: Response) => {
     const state = jwt.sign(statePayload, config.jwtSecret, {
       expiresIn: "10m",
     });
-
-    logger.info("[Kick OAuth][redirectKick] statePayload:", statePayload);
-    logger.info("[Kick OAuth][redirectKick] state (JWT):", state);
 
     const params = new URLSearchParams({
       response_type: "code",
@@ -47,7 +42,7 @@ const redirectKick = (req: Request, res: Response) => {
     });
 
     const url = `${config.kick.oauthAuthorize}?${params.toString()}`;
-    logger.info("[Kick OAuth][redirectKick] Final redirect URL:", url);
+    logger.info("[Kick OAuth][redirectKick] Redirecting to Kick authorize");
     return res.redirect(url);
   } catch (err) {
     logger.error(
@@ -376,22 +371,18 @@ const callbackKick = async (req: Request, res: Response) => {
   try {
     const { code, state } = req.query || {};
     logger.info("[Kick OAuth][callbackKick] Parameters received:", {
-      code,
-      state,
+      hasCode: !!code,
+      hasState: !!state,
     });
 
     if (!code || !state) {
-      logger.info("[Kick OAuth][callbackKick] Missing code/state parameters:", {
-        code,
-        state,
-      });
+      logger.info("[Kick OAuth][callbackKick] Missing code/state parameters");
       return res.status(400).json({ error: "Missing code/state parameters" });
     }
 
     let decoded;
     try {
       decoded = jwt.verify(String(state), config.jwtSecret);
-      logger.info("[Kick OAuth][callbackKick] Decoded state:", decoded);
     } catch (e) {
       logger.info(
         "[Kick OAuth][callbackKick] Invalid or expired state:",
@@ -403,17 +394,13 @@ const callbackKick = async (req: Request, res: Response) => {
     const code_verifier = decoded?.cv;
     const finalRedirectUri = decoded?.ruri || config.kick.redirectUri;
     logger.info(
-      "[Kick OAuth][callbackKick] Recovered code_verifier:",
-      code_verifier
-    );
-    logger.info(
       "[Kick OAuth][callbackKick] finalRedirectUri:",
       finalRedirectUri
     );
 
     if (!code_verifier || !finalRedirectUri) {
       logger.info("[Kick OAuth][callbackKick] Invalid PKCE or redirect_uri:", {
-        code_verifier,
+        hasCodeVerifier: !!code_verifier,
         finalRedirectUri,
       });
       return res.status(400).json({ error: "Invalid PKCE or redirect_uri" });
@@ -425,7 +412,6 @@ const callbackKick = async (req: Request, res: Response) => {
 
     logger.info("[Kick OAuth][callbackKick] tokenUrl:", tokenUrl);
     logger.info("[Kick OAuth][callbackKick] clientId:", clientId);
-    logger.info("[Kick OAuth][callbackKick] clientSecret:", clientSecret);
 
     if (!clientId || !clientSecret) {
       logger.error(
@@ -445,20 +431,15 @@ const callbackKick = async (req: Request, res: Response) => {
       code_verifier,
     });
 
-    logger.info(
-      "[Kick OAuth][callbackKick] Parameters sent to token endpoint:",
-      params.toString()
-    );
-
     const tokenRes = await axios.post(tokenUrl, params.toString(), {
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       timeout: 10000,
     });
 
-    logger.info(
-      "[Kick OAuth][callbackKick] Token endpoint response:",
-      tokenRes.data
-    );
+    logger.info("[Kick OAuth][callbackKick] Token endpoint response:", {
+      scope: tokenRes.data?.scope,
+      expires_in: tokenRes.data?.expires_in,
+    });
 
     const tokenData = tokenRes.data;
 
@@ -570,7 +551,7 @@ const callbackKick = async (req: Request, res: Response) => {
 
     logger.info(
       "[Kick OAuth][callbackKick] Redirecting to frontend:",
-      redirectUrl
+      `${frontendUrl}/auth/callback`
     );
 
     return res.redirect(redirectUrl);

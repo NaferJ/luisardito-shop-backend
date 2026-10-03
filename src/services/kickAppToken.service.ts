@@ -3,6 +3,7 @@ import config from "../../config";
 import { KickEventSubscription } from "../models";
 import logger from "../utils/logger";
 import { Op } from "sequelize";
+import { DEFAULT_EVENTS } from "./kickAutoSubscribe.service";
 
 /**
  * Service to handle Kick App Access Tokens (permanent tokens)
@@ -34,6 +35,19 @@ interface SubscribeResult {
   message?: string;
 }
 
+interface KickRemoteSubscription {
+  id: string;
+  event: string;
+  version: number;
+}
+
+interface SubscriptionHealthResult {
+  remoteCount: number;
+  missing: string[];
+  resubscribed: number;
+  errors: { event: string; error: string }[];
+}
+
 interface WebhookStatus {
   app_token_subscriptions: number;
   user_token_subscriptions: number;
@@ -53,13 +67,13 @@ async function getAppAccessToken(): Promise<string | null> {
       "[App Token] Getting App Access Token with Client Credentials..."
     );
 
-    const tokenUrl = `${config.kick.apiBaseUrl}/oauth/token`;
+    const tokenUrl = config.kick.oauthToken;
 
-    const payload = {
+    const payload = new URLSearchParams({
       grant_type: "client_credentials",
-      client_id: config.kick.clientId,
-      client_secret: config.kick.clientSecret,
-    };
+      client_id: String(config.kick.clientId || ""),
+      client_secret: String(config.kick.clientSecret || ""),
+    });
 
     logger.info("[App Token] Sending request to:", tokenUrl);
     logger.info("[App Token] Client ID:", config.kick.clientId);
@@ -179,7 +193,9 @@ async function processAppSubscriptions(
  * @returns Subscription result
  */
 async function subscribeToEventsWithAppToken(
-  broadcasterUserId: string
+  broadcasterUserId: string,
+  events: { name: string; version: number }[] = DEFAULT_EVENTS,
+  existingAppToken: string | null = null
 ): Promise<SubscribeResult> {
   try {
     logger.info(
@@ -188,25 +204,12 @@ async function subscribeToEventsWithAppToken(
     );
 
     // 1. Get App Access Token
-    const appToken = await getAppAccessToken();
+    const appToken = existingAppToken ?? (await getAppAccessToken());
     if (!appToken) {
       throw new Error("Could not get App Access Token");
     }
 
-    // 2. List of events to subscribe
-    const events = [
-      { name: "chat.message.sent", version: 1 },
-      { name: "channel.followed", version: 1 },
-      { name: "channel.subscription.new", version: 1 },
-      { name: "channel.subscription.renewal", version: 1 },
-      { name: "channel.subscription.gifts", version: 1 },
-      { name: "livestream.status.updated", version: 1 },
-      { name: "livestream.metadata.updated", version: 1 },
-      { name: "kicks.gifted", version: 1 },
-      { name: "channel.reward.redemption.updated", version: 1 },
-    ];
-
-    // 3. Subscribe to events
+    // 2. Subscribe to events
     const subscribeUrl = `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`;
 
     const payload = {
@@ -235,7 +238,7 @@ async function subscribeToEventsWithAppToken(
       JSON.stringify(response.data, null, 2)
     );
 
-    // 4. Process response and save subscriptions
+    // 3. Process response and save subscriptions
     const subscriptionsData = response.data.data || [];
     const { createdSubscriptions, errors } = await processAppSubscriptions(
       subscriptionsData,
@@ -291,6 +294,83 @@ async function subscribeToEventsWithAppToken(
 }
 
 /**
+ * Compare Kick's real subscription list with DEFAULT_EVENTS, re-subscribe
+ * any missing events and mark local rows Kick no longer has as inactive.
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns Health check result
+ */
+async function ensureWebhookSubscriptions(
+  broadcasterUserId: string
+): Promise<SubscriptionHealthResult> {
+  const appToken = await getAppAccessToken();
+  if (!appToken) {
+    throw new Error("Could not get App Access Token");
+  }
+
+  const broadcasterId = Number.parseInt(broadcasterUserId);
+  const response: AxiosResponse<{ data?: KickRemoteSubscription[] }> =
+    await axios.get(
+      `${config.kick.apiBaseUrl}/public/v1/events/subscriptions`,
+      {
+        params: { broadcaster_user_id: broadcasterId },
+        headers: { Authorization: `Bearer ${appToken}` },
+        timeout: 15000,
+      }
+    );
+
+  const remote = response.data?.data;
+  if (!Array.isArray(remote)) {
+    throw new Error("Unexpected Kick subscription list response");
+  }
+  const present = new Set(remote.map((s) => `${s.event}:${s.version}`));
+  const missingEvents = DEFAULT_EVENTS.filter(
+    (e) => !present.has(`${e.name}:${e.version}`)
+  );
+
+  const remoteIds = remote.map((s) => s.id);
+  await KickEventSubscription.update(
+    { status: "inactive" },
+    {
+      where: {
+        broadcaster_user_id: broadcasterId,
+        status: "active",
+        ...(remoteIds.length > 0 && {
+          subscription_id: { [Op.notIn]: remoteIds },
+        }),
+      },
+    }
+  );
+
+  const result: SubscriptionHealthResult = {
+    remoteCount: remote.length,
+    missing: missingEvents.map((e) => e.name),
+    resubscribed: 0,
+    errors: [],
+  };
+
+  if (missingEvents.length === 0) {
+    return result;
+  }
+
+  logger.error(
+    "[Subscription Health] Kick dropped subscriptions, re-subscribing:",
+    result.missing
+  );
+
+  const subscribeResult = await subscribeToEventsWithAppToken(
+    broadcasterUserId,
+    missingEvents,
+    appToken
+  );
+  result.resubscribed = subscribeResult.totalSubscribed;
+  result.errors = subscribeResult.error
+    ? [{ event: "*", error: subscribeResult.error }]
+    : subscribeResult.errors;
+
+  return result;
+}
+
+/**
  * Check if App Token webhooks are working
  * @param broadcasterUserId - Broadcaster ID
  * @returns Webhook status
@@ -341,5 +421,6 @@ async function checkAppTokenWebhooksStatus(
 export {
   getAppAccessToken,
   subscribeToEventsWithAppToken,
+  ensureWebhookSubscriptions,
   checkAppTokenWebhooksStatus,
 };
