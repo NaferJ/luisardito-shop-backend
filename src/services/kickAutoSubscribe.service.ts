@@ -370,13 +370,9 @@ async function handleRefreshError(
   }
 
   const axiosError = error as {
-    response: { status: number; data: unknown };
+    response: { status: number };
   };
-  logger.error(
-    "[Token Refresh] API Error:",
-    axiosError.response.status,
-    axiosError.response.data
-  );
+  logger.error("[Token Refresh] API Error:", axiosError.response.status);
 
   if (
     axiosError.response.status === 400 ||

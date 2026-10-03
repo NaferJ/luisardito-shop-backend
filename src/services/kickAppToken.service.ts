@@ -39,6 +39,7 @@ interface KickRemoteSubscription {
   id: string;
   event: string;
   version: number;
+  method: string;
 }
 
 interface SubscriptionHealthResult {
@@ -104,11 +105,8 @@ async function getAppAccessToken(): Promise<string | null> {
     logger.error("[App Token] Error getting App Access Token:", msg);
 
     if (error && typeof error === "object" && "response" in error) {
-      const axiosError = error as {
-        response: { status: number; data: unknown };
-      };
+      const axiosError = error as { response: { status: number } };
       logger.error("[App Token] Status:", axiosError.response.status);
-      logger.error("[App Token] Response:", axiosError.response.data);
     }
 
     return null;
@@ -211,6 +209,51 @@ async function processAppSubscription(
     const msg = dbError instanceof Error ? dbError.message : String(dbError);
     logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
     return { subscription: null, error: { event: sub.name, error: msg } };
+  }
+}
+
+/**
+ * Reactivate or create the local row for a webhook Kick still reports,
+ * so connection status reflects the real remote state. Existing rows
+ * keep their original app_id; only created rows are marked APP_TOKEN.
+ * @param sub - Remote webhook subscription returned by Kick
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns An error entry, or null when reconciled
+ */
+async function reconcileRemoteSubscription(
+  sub: KickRemoteSubscription,
+  broadcasterUserId: string
+): Promise<{ event: string; error: string } | null> {
+  try {
+    const existing = await KickEventSubscription.findOne({
+      where: { subscription_id: sub.id },
+    });
+
+    if (existing) {
+      await existing.update({
+        broadcaster_user_id: Number.parseInt(broadcasterUserId),
+        event_type: sub.event,
+        event_version: sub.version,
+        method: "webhook",
+        status: "active",
+      });
+      return null;
+    }
+
+    await KickEventSubscription.create({
+      subscription_id: sub.id,
+      broadcaster_user_id: Number.parseInt(broadcasterUserId),
+      event_type: sub.event,
+      event_version: sub.version,
+      method: "webhook",
+      status: "active",
+      app_id: "APP_TOKEN",
+    });
+    return null;
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    logger.error(`[Subscription Health] Reconcile error ${sub.event}:`, msg);
+    return { event: sub.event, error: msg };
   }
 }
 
@@ -322,7 +365,9 @@ async function subscribeToEventsWithAppToken(
 
 /**
  * Compare Kick's real subscription list with DEFAULT_EVENTS, re-subscribe
- * any missing events and mark local rows Kick no longer has as inactive.
+ * any events missing a webhook, reactivate or create local rows for
+ * webhooks Kick still reports, and mark local webhook rows Kick no
+ * longer has as inactive. Websocket subscriptions do not count.
  * @param broadcasterUserId - Broadcaster ID
  * @returns Health check result
  */
@@ -349,17 +394,23 @@ async function ensureWebhookSubscriptions(
   if (!Array.isArray(remote)) {
     throw new TypeError("Unexpected Kick subscription list response");
   }
-  const present = new Set(remote.map((s) => `${s.event}:${s.version}`));
+
+  // Only webhook subscriptions deliver events to this API; entries with
+  // other methods (e.g. websocket) must not count as coverage.
+  const remoteWebhooks = remote.filter((s) => s.method === "webhook");
+
+  const present = new Set(remoteWebhooks.map((s) => `${s.event}:${s.version}`));
   const missingEvents = DEFAULT_EVENTS.filter(
     (e) => !present.has(`${e.name}:${e.version}`)
   );
 
-  const remoteIds = remote.map((s) => s.id);
+  const remoteIds = remoteWebhooks.map((s) => s.id);
   await KickEventSubscription.update(
     { status: "inactive" },
     {
       where: {
         broadcaster_user_id: broadcasterId,
+        method: "webhook",
         status: "active",
         ...(remoteIds.length > 0 && {
           subscription_id: { [Op.notIn]: remoteIds },
@@ -374,6 +425,19 @@ async function ensureWebhookSubscriptions(
     resubscribed: 0,
     errors: [],
   };
+
+  // Reactivate or recreate local rows for webhooks Kick still reports,
+  // so a local disconnect does not hide subscriptions that still exist.
+  const reconcileErrors = await Promise.all(
+    remoteWebhooks.map((sub) =>
+      reconcileRemoteSubscription(sub, broadcasterUserId)
+    )
+  );
+  for (const reconcileError of reconcileErrors) {
+    if (reconcileError) {
+      result.errors.push(reconcileError);
+    }
+  }
 
   if (missingEvents.length === 0) {
     return result;
@@ -390,9 +454,11 @@ async function ensureWebhookSubscriptions(
     appToken
   );
   result.resubscribed = subscribeResult.totalSubscribed;
-  result.errors = subscribeResult.error
-    ? [{ event: "*", error: subscribeResult.error }]
-    : subscribeResult.errors;
+  result.errors.push(
+    ...(subscribeResult.error
+      ? [{ event: "*", error: subscribeResult.error }]
+      : subscribeResult.errors)
+  );
 
   return result;
 }

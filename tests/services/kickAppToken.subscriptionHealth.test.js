@@ -42,6 +42,7 @@ function remoteSubs(events) {
     id: `sub-${i}`,
     event: e.name,
     version: e.version,
+    method: "webhook",
   }));
 }
 
@@ -135,6 +136,7 @@ describe("ensureWebhookSubscriptions", () => {
     const [values, { where }] = KickEventSubscription.update.mock.calls[0];
     expect(values).toEqual({ status: "inactive" });
     expect(where.broadcaster_user_id).toBe(2771761);
+    expect(where.method).toBe("webhook");
     expect(where.status).toBe("active");
     const [notIn] = Object.getOwnPropertySymbols(where.subscription_id);
     expect(where.subscription_id[notIn]).toEqual(
@@ -148,7 +150,89 @@ describe("ensureWebhookSubscriptions", () => {
     await ensureWebhookSubscriptions("2771761");
 
     const [, { where }] = KickEventSubscription.update.mock.calls[0];
-    expect(where).toEqual({ broadcaster_user_id: 2771761, status: "active" });
+    expect(where).toEqual({
+      broadcaster_user_id: 2771761,
+      method: "webhook",
+      status: "active",
+    });
+  });
+
+  test("does not count websocket subscriptions as webhook coverage", async () => {
+    const remote = remoteSubs(DEFAULT_EVENTS);
+    remote[0].method = "websocket"; // chat.message.sent only via websocket
+    mockKick({
+      remote,
+      subscribeData: [
+        {
+          subscription_id: "new-hook",
+          name: "chat.message.sent",
+          version: 1,
+        },
+      ],
+    });
+
+    const result = await ensureWebhookSubscriptions("2771761");
+
+    expect(result.missing).toEqual(["chat.message.sent"]);
+    expect(result.resubscribed).toBe(1);
+    const [, payload] = axios.post.mock.calls.find(
+      ([url]) => url === SUBSCRIPTIONS_URL
+    );
+    expect(payload.events).toEqual([{ name: "chat.message.sent", version: 1 }]);
+
+    // Websocket-only remote ids must not shield local webhook rows
+    const [, { where }] = KickEventSubscription.update.mock.calls[0];
+    const [notIn] = Object.getOwnPropertySymbols(where.subscription_id);
+    expect(where.subscription_id[notIn]).not.toContain("sub-0");
+  });
+
+  test("reactivates local rows for webhooks Kick still reports", async () => {
+    mockKick({ remote: remoteSubs(DEFAULT_EVENTS) });
+    const inactiveRow = { update: jest.fn().mockResolvedValue(undefined) };
+    KickEventSubscription.findOne.mockResolvedValue(inactiveRow);
+
+    const result = await ensureWebhookSubscriptions("2771761");
+
+    expect(result.missing).toEqual([]);
+    expect(inactiveRow.update).toHaveBeenCalledTimes(DEFAULT_EVENTS.length);
+    expect(inactiveRow.update).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "active", method: "webhook" })
+    );
+    expect(result.errors).toEqual([]);
+  });
+
+  test("creates local rows for remote webhooks missing locally", async () => {
+    mockKick({ remote: remoteSubs(DEFAULT_EVENTS) });
+    KickEventSubscription.findOne.mockResolvedValue(null);
+
+    await ensureWebhookSubscriptions("2771761");
+
+    expect(KickEventSubscription.create).toHaveBeenCalledTimes(
+      DEFAULT_EVENTS.length
+    );
+    expect(KickEventSubscription.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        subscription_id: "sub-0",
+        event_type: DEFAULT_EVENTS[0].name,
+        method: "webhook",
+        status: "active",
+        app_id: "APP_TOKEN",
+      })
+    );
+  });
+
+  test("records reconciliation errors without failing the check", async () => {
+    mockKick({ remote: remoteSubs(DEFAULT_EVENTS) });
+    KickEventSubscription.findOne.mockRejectedValue(new Error("db down"));
+
+    const result = await ensureWebhookSubscriptions("2771761");
+
+    expect(result.missing).toEqual([]);
+    expect(result.errors).toHaveLength(DEFAULT_EVENTS.length);
+    expect(result.errors[0]).toEqual({
+      event: DEFAULT_EVENTS[0].name,
+      error: "db down",
+    });
   });
 
   test("fetches the App Access Token only once when re-subscribing", async () => {

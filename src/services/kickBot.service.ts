@@ -145,14 +145,12 @@ class KickBotService {
       return tokenRecord;
     } catch (error: unknown) {
       const axiosErr = error as {
-        response?: { data?: unknown; status?: number };
+        response?: { status?: number };
       };
-      const errorData = axiosErr?.response?.data;
       const errorStatus = axiosErr?.response?.status;
 
       logger.error("[KickBot] Error renewing token:", {
         status: errorStatus,
-        data: errorData,
         message: toErrorMessage(error),
       });
 

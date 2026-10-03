@@ -350,8 +350,8 @@ function handleCallbackKickError(res: Response, error: unknown) {
   if (error && typeof error === "object" && "response" in error) {
     const axiosError = error as { response: { status: number; data: unknown } };
     logger.info(
-      "[Kick OAuth][callbackKick] error.response.data:",
-      axiosError.response.data
+      "[Kick OAuth][callbackKick] Provider error, status:",
+      axiosError.response.status
     );
     return res.status(axiosError.response.status).json({
       error: "Error communicating with Kick",

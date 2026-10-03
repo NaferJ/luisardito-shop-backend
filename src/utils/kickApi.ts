@@ -79,7 +79,6 @@ async function validateKickToken(accessToken: string): Promise<KickTokenInfo> {
     const err = error as AxiosErrorLike;
     logger.error("[Kick API] Error validating token:", {
       status: err.response?.status,
-      data: err.response?.data,
       message: err.message,
     });
     throw error;
@@ -174,7 +173,6 @@ async function getKickUserData(
           message: err.message,
           response: {
             status: err.response?.status,
-            data: err.response?.data,
             headers: err.response?.headers,
           },
         });
@@ -208,7 +206,6 @@ async function getKickUserData(
       logger.warn("[Kick API] Public endpoint not available:", {
         message: err.message,
         status: err.response?.status,
-        data: err.response?.data,
       });
       throw new Error("Could not fetch Kick user data", {
         cause: publicApiError,
@@ -219,7 +216,6 @@ async function getKickUserData(
     logger.error("[Kick API] Error fetching data:", {
       message: err.message,
       stack: err.stack,
-      response: err.response?.data,
     });
     throw error;
   }

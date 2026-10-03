@@ -14,7 +14,7 @@ interface AxiosErrorLike {
   message?: string;
   code?: string;
   config?: { method?: string; url?: string };
-  response?: { status?: number; data?: unknown };
+  response?: { status?: number };
 }
 
 const sanitize = (arg: unknown): unknown => {
@@ -28,7 +28,6 @@ const sanitize = (arg: unknown): unknown => {
     method: err.config?.method,
     url: err.config?.url,
     status: err.response?.status,
-    data: err.response?.data,
   };
 };
 

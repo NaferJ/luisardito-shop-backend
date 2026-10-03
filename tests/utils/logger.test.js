@@ -32,9 +32,34 @@ describe("logger", () => {
       method: "post",
       url: "https://id.kick.com/oauth/token",
       status: 400,
-      data: { error: "invalid_grant" },
     });
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("super-secret");
+  });
+
+  test("strips response bodies that echo credentials from axios errors", () => {
+    const axiosError = Object.assign(new Error("Request failed"), {
+      isAxiosError: true,
+      response: {
+        status: 400,
+        data: {
+          error: "invalid_client",
+          echoed_request: "client_secret=super-secret-value",
+        },
+      },
+    });
+
+    logger.error("[Test] Failed:", axiosError);
+
+    const [, logged] = errorSpy.mock.calls[0];
+    expect(logged).toEqual({
+      message: "Request failed",
+      code: undefined,
+      method: undefined,
+      url: undefined,
+      status: 400,
+    });
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("super-secret");
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("invalid_client");
   });
 
   test("passes non-axios values through unchanged", () => {
