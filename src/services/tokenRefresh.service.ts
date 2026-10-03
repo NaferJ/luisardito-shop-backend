@@ -20,11 +20,11 @@ class TokenRefreshService {
     logger.info("[Token Refresh Service] Starting service...");
 
     // Run immediately on start
-    this.checkAndRefreshTokens();
+    void this.checkAndRefreshTokens();
 
     // Schedule execution every 30 minutes
     this.intervalId = setInterval(() => {
-      this.checkAndRefreshTokens();
+      void this.checkAndRefreshTokens();
     }, this.intervalMs);
 
     this.isRunning = true;
@@ -62,9 +62,9 @@ class TokenRefreshService {
         return;
       }
 
-      for (const token of activeTokens) {
-        await this.checkTokenExpiration(token);
-      }
+      await Promise.all(
+        activeTokens.map((token) => this.checkTokenExpiration(token))
+      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("[Token Refresh Service] Error checking tokens:", msg);

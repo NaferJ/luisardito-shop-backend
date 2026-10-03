@@ -118,23 +118,30 @@ const start = async (): Promise<void> => {
   const retries = Number(process.env.DB_CONNECT_RETRIES || 30);
   const delayMs = Number(process.env.DB_CONNECT_RETRY_DELAY_MS || 2000);
 
-  let connected = false;
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  const tryConnect = async (attempt: number): Promise<boolean> => {
     try {
       await sequelize.authenticate();
-      connected = true;
-      break;
+      return true;
     } catch (err: unknown) {
       const code =
         (err as { parent?: { code?: string }; name?: string })?.parent?.code ||
         (err as { name?: string })?.name ||
         "UNKNOWN_ERROR";
+      if (attempt >= retries) {
+        logger.error(
+          `DB connection failed (attempt ${attempt}/${retries}) [${code}]`
+        );
+        return false;
+      }
       logger.error(
         `DB connection failed (attempt ${attempt}/${retries}) [${code}]. Retrying in ${delayMs}ms...`
       );
       await new Promise((r) => setTimeout(r, delayMs));
+      return tryConnect(attempt + 1);
     }
-  }
+  };
+
+  const connected = await tryConnect(1);
 
   if (!connected) {
     logger.error(

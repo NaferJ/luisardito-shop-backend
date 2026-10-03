@@ -290,22 +290,22 @@ const callbackDiscord = async (req: Request, res: Response) => {
 /**
  * Manual Discord linking (via temporary code)
  */
-const linkDiscordManual = asyncHandler(async (req: Request, _res: Response) => {
+const linkDiscordManual = asyncHandler((req: Request, _res: Response) => {
   const { code } = req.body;
   const userId = req.user?.id;
 
   if (!userId) {
-    throw new AppError("User not authenticated", 401);
+    return Promise.reject(new AppError("User not authenticated", 401));
   }
 
   if (!code) {
-    throw new AppError("Code required", 400);
+    return Promise.reject(new AppError("Code required", 400));
   }
 
   // Here we would implement the temporary code logic
   // For now, return that it is not implemented
   logger.info("[Discord OAuth][linkDiscordManual] Method not implemented yet");
-  throw new AppError("Method not implemented", 501);
+  return Promise.reject(new AppError("Method not implemented", 501));
 });
 
 /**

@@ -600,9 +600,9 @@ class KickBotService {
         return;
       }
 
-      for (const record of records) {
-        await this._autoRefreshRecord(record);
-      }
+      await Promise.all(
+        records.map((record) => this._autoRefreshRecord(record))
+      );
     } catch (error: unknown) {
       logger.error(
         "[KickBot] Error in performAutoRefresh:",

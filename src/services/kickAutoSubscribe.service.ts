@@ -73,8 +73,13 @@ async function processSubscriptionResults(
     `[Auto Subscribe] Processing ${subscriptionsData.length} subscriptions received from Kick`
   );
 
-  for (const sub of subscriptionsData) {
-    const result = await processSingleSubscription(sub, broadcasterUserId);
+  const results = await Promise.all(
+    subscriptionsData.map((sub) =>
+      processSingleSubscription(sub, broadcasterUserId)
+    )
+  );
+
+  for (const result of results) {
     if (result.subscription) {
       createdSubscriptions.push(result.subscription);
     }

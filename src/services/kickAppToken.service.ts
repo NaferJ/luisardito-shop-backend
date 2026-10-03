@@ -163,28 +163,55 @@ async function processAppSubscriptions(
   createdSubscriptions: KickEventSubscription[];
   errors: { event: string; error: string }[];
 }> {
-  const createdSubscriptions: KickEventSubscription[] = [];
-  const errors: { event: string; error: string }[] = [];
+  const results = await Promise.all(
+    subscriptionsData.map((sub) =>
+      processAppSubscription(sub, broadcasterUserId)
+    )
+  );
 
-  for (const sub of subscriptionsData) {
-    if (!sub.subscription_id || sub.error) {
-      if (sub.error) {
-        errors.push({ event: sub.name, error: sub.error });
-        logger.error(`[App Webhook] ${sub.name}:`, sub.error);
-      }
-      continue;
+  return {
+    createdSubscriptions: results
+      .map((r) => r.subscription)
+      .filter((s): s is KickEventSubscription => s !== null),
+    errors: results
+      .map((r) => r.error)
+      .filter((e): e is { event: string; error: string } => e !== null),
+  };
+}
+
+/**
+ * Process a single subscription entry from Kick: upsert it to the database
+ * or record an error if Kick reported one or the DB write failed.
+ * @param sub - Subscription entry returned by Kick
+ * @param broadcasterUserId - Broadcaster ID
+ * @returns The created/updated subscription and/or an error entry
+ */
+async function processAppSubscription(
+  sub: KickSubscriptionData,
+  broadcasterUserId: string
+): Promise<{
+  subscription: KickEventSubscription | null;
+  error: { event: string; error: string } | null;
+}> {
+  if (!sub.subscription_id || sub.error) {
+    if (sub.error) {
+      logger.error(`[App Webhook] ${sub.name}:`, sub.error);
+      return {
+        subscription: null,
+        error: { event: sub.name, error: sub.error },
+      };
     }
-    try {
-      const localSub = await upsertSubscription(sub, broadcasterUserId);
-      createdSubscriptions.push(localSub);
-    } catch (dbError) {
-      const msg = dbError instanceof Error ? dbError.message : String(dbError);
-      logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
-      errors.push({ event: sub.name, error: msg });
-    }
+    return { subscription: null, error: null };
   }
 
-  return { createdSubscriptions, errors };
+  try {
+    const subscription = await upsertSubscription(sub, broadcasterUserId);
+    return { subscription, error: null };
+  } catch (dbError) {
+    const msg = dbError instanceof Error ? dbError.message : String(dbError);
+    logger.error(`[App Webhook] DB error ${sub.name}:`, msg);
+    return { subscription: null, error: { event: sub.name, error: msg } };
+  }
 }
 
 /**
@@ -320,7 +347,7 @@ async function ensureWebhookSubscriptions(
 
   const remote = response.data?.data;
   if (!Array.isArray(remote)) {
-    throw new Error("Unexpected Kick subscription list response");
+    throw new TypeError("Unexpected Kick subscription list response");
   }
   const present = new Set(remote.map((s) => `${s.event}:${s.version}`));
   const missingEvents = DEFAULT_EVENTS.filter(
