@@ -57,6 +57,10 @@ interface CloudinaryConfig {
   apiSecret: string | undefined;
 }
 
+interface OpenAIConfig {
+  apiKey: string | undefined;
+}
+
 interface CookiesConfig {
   domain: string | undefined;
   secure: boolean;
@@ -81,6 +85,7 @@ interface AppConfig {
   kick: KickConfig;
   kickBot: KickBotConfig;
   cloudinary: CloudinaryConfig;
+  openai: OpenAIConfig;
   cookies: CookiesConfig;
   frontendUrl: string | undefined;
   port: number;
@@ -131,6 +136,9 @@ const config: AppConfig = {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,
     apiKey: process.env.CLOUDINARY_API_KEY,
     apiSecret: process.env.CLOUDINARY_API_SECRET,
+  },
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY,
   },
   cookies: {
     domain:

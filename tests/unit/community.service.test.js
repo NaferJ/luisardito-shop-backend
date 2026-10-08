@@ -22,6 +22,12 @@ jest.mock("../../src/models", () => ({
     destroy: jest.fn(),
     count: jest.fn(),
   },
+  CommunityReport: {
+    findAll: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
   Usuario: { findByPk: jest.fn() },
   Permiso: { findAll: jest.fn() },
   RolPermiso: {},
@@ -35,6 +41,10 @@ jest.mock("../../src/services/notificacion.service", () => ({
   crear: jest.fn(),
 }));
 
+jest.mock("../../src/services/moderation.service", () => ({
+  scanContent: jest.fn(),
+}));
+
 jest.mock("../../src/utils/logger", () => ({
   info: jest.fn(),
   warn: jest.fn(),
@@ -46,9 +56,11 @@ const {
   CommunityPost,
   CommunityComment,
   CommunityLike,
+  CommunityReport,
   Permiso,
 } = require("../../src/models");
 const NotificacionService = require("../../src/services/notificacion.service");
+const ModerationService = require("../../src/services/moderation.service");
 const service = require("../../src/services/community.service");
 const { sequelize } = require("../../src/models/database");
 const AppError = require("../../src/utils/AppError");
@@ -125,6 +137,10 @@ describe("community.service", () => {
     jest.clearAllMocks();
     mockRedisSet.mockResolvedValue("OK");
     mockRedisDel.mockResolvedValue(1);
+    ModerationService.scanContent.mockResolvedValue({
+      flagged: false,
+      categories: [],
+    });
   });
 
   // ---------- buildFeedOrder ----------
@@ -1229,6 +1245,562 @@ describe("community.service", () => {
       await expect(
         service.setCommentPinned(7, true, makeUser())
       ).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
+  // ---------- createPost (moderation scan) ----------
+  describe("createPost", () => {
+    test("flagged content -> created as pending_review with auto_flagged reason", async () => {
+      ModerationService.scanContent.mockResolvedValue({
+        flagged: true,
+        categories: ["hate", "harassment"],
+      });
+      CommunityPost.create.mockResolvedValue(
+        makePost({ status: "pending_review" })
+      );
+      CommunityPost.findByPk.mockResolvedValue(
+        makePost({ status: "pending_review" })
+      );
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      const result = await service.createPost(2, {
+        title: "a title",
+        body: "a body",
+      });
+
+      expect(ModerationService.scanContent).toHaveBeenCalledWith({
+        text: "a title\n\na body",
+        media: undefined,
+      });
+      expect(CommunityPost.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          usuario_id: 2,
+          status: "pending_review",
+          hidden_by: null,
+          hidden_at: expect.any(Date),
+          hidden_reason: "auto_flagged:hate,harassment",
+        })
+      );
+      expect(result.status).toBe("pending_review");
+    });
+
+    test("media items are passed to the scan", async () => {
+      const media = [
+        { type: "image", url: "https://res.cloudinary.com/img.png" },
+      ];
+      CommunityPost.create.mockResolvedValue(makePost({ media }));
+      CommunityPost.findByPk.mockResolvedValue(makePost({ media }));
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      await service.createPost(2, { title: "a title", body: "a body", media });
+
+      expect(ModerationService.scanContent).toHaveBeenCalledWith({
+        text: "a title\n\na body",
+        media,
+      });
+    });
+
+    test("not flagged -> created visible without moderation fields", async () => {
+      CommunityPost.create.mockResolvedValue(makePost());
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      await service.createPost(2, { title: "a title", body: "a body" });
+
+      const createArg = CommunityPost.create.mock.calls[0][0];
+      expect(createArg.status).toBe("visible");
+      expect(createArg.hidden_reason).toBeUndefined();
+      expect(createArg.hidden_at).toBeUndefined();
+    });
+  });
+
+  // ---------- createComment (moderation scan) ----------
+  describe("createComment moderation", () => {
+    test("flagged comment -> pending_review and no notifications go out", async () => {
+      ModerationService.scanContent.mockResolvedValue({
+        flagged: true,
+        categories: ["harassment"],
+      });
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityComment.create.mockResolvedValue(
+        makeComment({ id: 5, usuario_id: 2, status: "pending_review" })
+      );
+
+      const result = await service.createComment(1, makeUser({ id: 2 }), "bad");
+
+      expect(ModerationService.scanContent).toHaveBeenCalledWith({
+        text: "bad",
+      });
+      expect(CommunityComment.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "pending_review",
+          hidden_reason: "auto_flagged:harassment",
+        })
+      );
+      expect(NotificacionService.crear).not.toHaveBeenCalled();
+      expect(result.status).toBe("pending_review");
+    });
+  });
+
+  // ---------- edit re-scans ----------
+  describe("updatePost moderation", () => {
+    test("flagged edit -> pending_review set in the same update", async () => {
+      ModerationService.scanContent.mockResolvedValue({
+        flagged: true,
+        categories: ["violence"],
+      });
+      const post = makePost({ usuario_id: 2 });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      await service.updatePost(1, makeUser({ id: 2 }), { body: "bad edit" });
+
+      // The scan sees the merged content and the post's existing media.
+      expect(ModerationService.scanContent).toHaveBeenCalledWith({
+        text: "A great post\n\nbad edit",
+        media: undefined,
+      });
+      expect(post.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: "bad edit",
+          status: "pending_review",
+          hidden_reason: "auto_flagged:violence",
+        })
+      );
+    });
+  });
+
+  describe("updateComment moderation", () => {
+    test("flagged edit -> pending_review set in the same update", async () => {
+      ModerationService.scanContent.mockResolvedValue({
+        flagged: true,
+        categories: ["spam"],
+      });
+      const comment = makeComment({ usuario_id: 2 });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.updateComment(
+        7,
+        makeUser({ id: 2 }),
+        "spam edit"
+      );
+
+      expect(ModerationService.scanContent).toHaveBeenCalledWith({
+        text: "spam edit",
+      });
+      expect(comment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: "spam edit",
+          status: "pending_review",
+          hidden_reason: "auto_flagged:spam",
+        })
+      );
+      expect(result.status).toBe("pending_review");
+    });
+  });
+
+  // ---------- reportContent ----------
+  describe("reportContent", () => {
+    function makeReportRow(overrides = {}) {
+      return {
+        id: 10,
+        reporter_id: 2,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        details: null,
+        status: "open",
+        creado: new Date("2026-09-29T10:00:00Z"),
+        ...overrides,
+      };
+    }
+
+    test("creates a report on a visible post -> created true", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityReport.create.mockResolvedValue(makeReportRow());
+
+      const { report, created } = await service.reportContent(
+        makeUser({ id: 2 }),
+        "post",
+        1,
+        { reason: "spam", details: "it is spam" }
+      );
+
+      expect(created).toBe(true);
+      expect(CommunityReport.create).toHaveBeenCalledWith({
+        reporter_id: 2,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        details: "it is spam",
+      });
+      expect(report).toMatchObject({
+        id: 10,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        status: "open",
+      });
+    });
+
+    test("reporting own content -> 400", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 2 }));
+
+      await expect(
+        service.reportContent(makeUser({ id: 2 }), "post", 1, {
+          reason: "spam",
+        })
+      ).rejects.toMatchObject({
+        statusCode: 400,
+        message: "You cannot report your own content",
+      });
+      expect(CommunityReport.create).not.toHaveBeenCalled();
+    });
+
+    test("hidden or missing target -> 404", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+      await expect(
+        service.reportContent(makeUser(), "post", 1, { reason: "spam" })
+      ).rejects.toMatchObject({ statusCode: 404 });
+
+      CommunityPost.findByPk.mockResolvedValue(null);
+      await expect(
+        service.reportContent(makeUser(), "post", 99, { reason: "spam" })
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect(CommunityReport.create).not.toHaveBeenCalled();
+    });
+
+    test("comment on a hidden post -> 404", async () => {
+      CommunityComment.findByPk.mockResolvedValue(makeComment());
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+
+      await expect(
+        service.reportContent(makeUser(), "comment", 7, { reason: "spam" })
+      ).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    test("duplicate report -> returns the existing row, created false", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityReport.create.mockRejectedValue(
+        new UniqueConstraintError({ message: "dup", errors: [] })
+      );
+      CommunityReport.findOne.mockResolvedValue(
+        makeReportRow({ id: 10, reason: "spam" })
+      );
+
+      const { report, created } = await service.reportContent(
+        makeUser({ id: 2 }),
+        "post",
+        1,
+        { reason: "spam" }
+      );
+
+      expect(created).toBe(false);
+      expect(report.id).toBe(10);
+      expect(CommunityReport.findOne).toHaveBeenCalledWith({
+        where: { reporter_id: 2, target_type: "post", target_id: 1 },
+      });
+    });
+
+    test("non-unique create errors propagate", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost({ usuario_id: 9 }));
+      CommunityReport.create.mockRejectedValue(new Error("db down"));
+
+      await expect(
+        service.reportContent(makeUser(), "post", 1, { reason: "spam" })
+      ).rejects.toThrow("db down");
+    });
+  });
+
+  // ---------- moderator hide / unhide ----------
+  describe("hidePost / unhidePost", () => {
+    function mockTransaction() {
+      jest
+        .spyOn(sequelize, "transaction")
+        .mockImplementation(async (cb) => cb({}));
+    }
+
+    test("hide sets hidden fields and resolves open reports in a transaction", async () => {
+      mockTransaction();
+      const post = makePost({ usuario_id: 9 });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityReport.update.mockResolvedValue([2]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      const result = await service.hidePost(1, makeUser({ id: 2 }), "spam");
+
+      expect(post.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "hidden",
+          hidden_by: 2,
+          hidden_at: expect.any(Date),
+          hidden_reason: "spam",
+        }),
+        expect.objectContaining({ transaction: {} })
+      );
+      expect(CommunityReport.update).toHaveBeenCalledWith(
+        {
+          status: "resolved",
+          resolved_by: 2,
+          resolved_at: expect.any(Date),
+        },
+        expect.objectContaining({
+          where: { target_type: "post", target_id: 1, status: "open" },
+        })
+      );
+      expect(result.status).toBe("hidden");
+    });
+
+    test("hide without a reason uses the default", async () => {
+      mockTransaction();
+      const post = makePost({ status: "pending_review" });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityReport.update.mockResolvedValue([0]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      await service.hidePost(1, makeUser({ id: 2 }));
+
+      expect(post.update).toHaveBeenCalledWith(
+        expect.objectContaining({ hidden_reason: "removed_by_moderator" }),
+        expect.anything()
+      );
+    });
+
+    test("hide missing or already hidden -> 404", async () => {
+      CommunityPost.findByPk.mockResolvedValue(null);
+      await expect(service.hidePost(99, makeUser())).rejects.toMatchObject({
+        statusCode: 404,
+      });
+
+      CommunityPost.findByPk.mockResolvedValue(makePost({ status: "hidden" }));
+      await expect(service.hidePost(1, makeUser())).rejects.toMatchObject({
+        statusCode: 404,
+      });
+    });
+
+    test("unhide a visible post -> 409", async () => {
+      CommunityPost.findByPk.mockResolvedValue(makePost());
+      await expect(service.unhidePost(1, makeUser())).rejects.toMatchObject({
+        statusCode: 409,
+        message: "Content is already visible",
+      });
+    });
+
+    test("unhide author-deleted content -> 409", async () => {
+      const post = makePost({
+        status: "hidden",
+        hidden_reason: "deleted_by_author",
+      });
+      CommunityPost.findByPk.mockResolvedValue(post);
+
+      await expect(service.unhidePost(1, makeUser())).rejects.toMatchObject({
+        statusCode: 409,
+        message: "Content deleted by its author cannot be restored",
+      });
+      expect(post.update).not.toHaveBeenCalled();
+    });
+
+    test("unhide approves pending_review and dismisses open reports", async () => {
+      mockTransaction();
+      const post = makePost({
+        status: "pending_review",
+        hidden_reason: "auto_flagged:hate",
+      });
+      CommunityPost.findByPk.mockResolvedValue(post);
+      CommunityReport.update.mockResolvedValue([1]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      const result = await service.unhidePost(1, makeUser({ id: 2 }));
+
+      expect(post.update).toHaveBeenCalledWith(
+        {
+          status: "visible",
+          hidden_by: null,
+          hidden_at: null,
+          hidden_reason: null,
+        },
+        expect.objectContaining({ transaction: {} })
+      );
+      expect(CommunityReport.update).toHaveBeenCalledWith(
+        {
+          status: "dismissed",
+          resolved_by: 2,
+          resolved_at: expect.any(Date),
+        },
+        expect.objectContaining({
+          where: { target_type: "post", target_id: 1, status: "open" },
+        })
+      );
+      expect(result.status).toBe("visible");
+    });
+  });
+
+  describe("hideComment / unhideComment", () => {
+    function mockTransaction() {
+      jest
+        .spyOn(sequelize, "transaction")
+        .mockImplementation(async (cb) => cb({}));
+    }
+
+    test("hide clears pinned and resolves open reports", async () => {
+      mockTransaction();
+      const comment = makeComment({ pinned: true });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityReport.update.mockResolvedValue([1]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.hideComment(7, makeUser({ id: 2 }), "hate");
+
+      expect(comment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: "hidden",
+          hidden_by: 2,
+          hidden_reason: "hate",
+          pinned: false,
+        }),
+        expect.objectContaining({ transaction: {} })
+      );
+      expect(CommunityReport.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "resolved", resolved_by: 2 }),
+        expect.objectContaining({
+          where: { target_type: "comment", target_id: 7, status: "open" },
+        })
+      );
+      expect(result.status).toBe("hidden");
+      expect(result.pinned).toBe(false);
+    });
+
+    test("unhide a hidden comment restores it as visible", async () => {
+      mockTransaction();
+      const comment = makeComment({
+        status: "hidden",
+        hidden_reason: "removed_by_moderator",
+      });
+      CommunityComment.findByPk.mockResolvedValue(comment);
+      CommunityReport.update.mockResolvedValue([0]);
+      CommunityLike.findAll.mockResolvedValue([]);
+      CommunityLike.count.mockResolvedValue(0);
+
+      const result = await service.unhideComment(7, makeUser({ id: 2 }));
+
+      expect(comment.update).toHaveBeenCalledWith(
+        {
+          status: "visible",
+          hidden_by: null,
+          hidden_at: null,
+          hidden_reason: null,
+        },
+        expect.objectContaining({ transaction: {} })
+      );
+      expect(result.status).toBe("visible");
+    });
+
+    test("unhide missing comment -> 404", async () => {
+      CommunityComment.findByPk.mockResolvedValue(null);
+      await expect(service.unhideComment(99, makeUser())).rejects.toMatchObject(
+        { statusCode: 404 }
+      );
+    });
+  });
+
+  // ---------- getModerationQueue ----------
+  describe("getModerationQueue", () => {
+    function makeReportRow(overrides = {}) {
+      return {
+        id: 1,
+        reporter_id: 3,
+        target_type: "post",
+        target_id: 5,
+        reason: "spam",
+        details: null,
+        status: "open",
+        creado: new Date("2026-09-29T10:00:00Z"),
+        reporter: { id: 3, nickname: "reporter", kick_data: null },
+        ...overrides,
+      };
+    }
+
+    test("includes pending_review and visible-with-open-reports, never hidden", async () => {
+      CommunityReport.findAll.mockResolvedValue([
+        makeReportRow({ id: 1 }),
+        makeReportRow({ id: 2, reason: "hate" }),
+        makeReportRow({ id: 3, target_type: "comment", target_id: 8 }),
+      ]);
+      CommunityPost.findAll.mockResolvedValue([
+        makePost({ id: 5 }),
+        makePost({ id: 6, status: "pending_review" }),
+      ]);
+      CommunityComment.findAll.mockResolvedValue([makeComment({ id: 8 })]);
+
+      const result = await service.getModerationQueue();
+
+      // The where clause only admits pending_review or visible+reported rows.
+      const postWhere = CommunityPost.findAll.mock.calls[0][0].where;
+      expect(postWhere[Op.or]).toEqual([
+        { status: "pending_review" },
+        { status: "visible", id: { [Op.in]: [5] } },
+      ]);
+      const commentWhere = CommunityComment.findAll.mock.calls[0][0].where;
+      expect(commentWhere[Op.or]).toEqual([
+        { status: "pending_review" },
+        { status: "visible", id: { [Op.in]: [8] } },
+      ]);
+
+      // Only open reports were requested.
+      expect(CommunityReport.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { status: "open" } })
+      );
+
+      expect(result.posts).toHaveLength(2);
+      const reportedPost = result.posts.find((p) => p.id === 5);
+      expect(reportedPost.report_count).toBe(2);
+      expect(reportedPost.reports.map((r) => r.id)).toEqual([1, 2]);
+      expect(reportedPost.reports[0].reporter).toEqual({
+        id: 3,
+        nickname: "reporter",
+        avatar: null,
+      });
+      const pendingPost = result.posts.find((p) => p.id === 6);
+      expect(pendingPost).toMatchObject({
+        status: "pending_review",
+        report_count: 0,
+        reports: [],
+      });
+
+      expect(result.comments).toHaveLength(1);
+      expect(result.comments[0]).toMatchObject({
+        id: 8,
+        post_id: 1,
+        report_count: 1,
+      });
+      expect(result.comments[0].reports[0].reason).toBe("spam");
+    });
+
+    test("lists are capped at 100 and ordered creado ASC", async () => {
+      CommunityReport.findAll.mockResolvedValue([]);
+      CommunityPost.findAll.mockResolvedValue([]);
+      CommunityComment.findAll.mockResolvedValue([]);
+
+      const result = await service.getModerationQueue();
+
+      expect(CommunityPost.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ order: [["creado", "ASC"]], limit: 100 })
+      );
+      expect(CommunityComment.findAll).toHaveBeenCalledWith(
+        expect.objectContaining({ order: [["creado", "ASC"]], limit: 100 })
+      );
+      expect(result).toEqual({ posts: [], comments: [] });
     });
   });
 

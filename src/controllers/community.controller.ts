@@ -117,6 +117,68 @@ const setCommentPinned = asyncHandler(async (req: Request, res: Response) => {
   res.json(comment);
 });
 
+// reportContent returns `created` so a repeat report can be answered with
+// 200 (idempotent) while a brand-new report gets 201.
+const reportPost = asyncHandler(async (req: Request, res: Response) => {
+  const { report, created } = await CommunityService.reportContent(
+    req.user,
+    "post",
+    Number(req.params.id),
+    req.body
+  );
+  res.status(created ? 201 : 200).json(report);
+});
+
+const reportComment = asyncHandler(async (req: Request, res: Response) => {
+  const { report, created } = await CommunityService.reportContent(
+    req.user,
+    "comment",
+    Number(req.params.id),
+    req.body
+  );
+  res.status(created ? 201 : 200).json(report);
+});
+
+const hidePost = asyncHandler(async (req: Request, res: Response) => {
+  const post = await CommunityService.hidePost(
+    Number(req.params.id),
+    req.user,
+    req.body?.reason
+  );
+  res.json(post);
+});
+
+const unhidePost = asyncHandler(async (req: Request, res: Response) => {
+  const post = await CommunityService.unhidePost(
+    Number(req.params.id),
+    req.user
+  );
+  res.json(post);
+});
+
+const hideComment = asyncHandler(async (req: Request, res: Response) => {
+  const comment = await CommunityService.hideComment(
+    Number(req.params.id),
+    req.user,
+    req.body?.reason
+  );
+  res.json(comment);
+});
+
+const unhideComment = asyncHandler(async (req: Request, res: Response) => {
+  const comment = await CommunityService.unhideComment(
+    Number(req.params.id),
+    req.user
+  );
+  res.json(comment);
+});
+
+const getModerationQueue = asyncHandler(
+  async (_req: Request, res: Response) => {
+    res.json(await CommunityService.getModerationQueue());
+  }
+);
+
 export = {
   listPosts,
   createPost,
@@ -130,4 +192,11 @@ export = {
   updateComment,
   setPinned,
   setCommentPinned,
+  reportPost,
+  reportComment,
+  hidePost,
+  unhidePost,
+  hideComment,
+  unhideComment,
+  getModerationQueue,
 };

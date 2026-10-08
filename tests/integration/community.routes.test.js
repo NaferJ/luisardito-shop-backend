@@ -12,9 +12,13 @@ const app = require("../../app");
 const {
   CommunityPost,
   CommunityComment,
+  CommunityLike,
+  CommunityReport,
   Usuario,
   Permiso,
 } = require("../../src/models");
+const { sequelize } = require("../../src/models/database");
+const { UniqueConstraintError } = require("sequelize");
 const {
   createPostSchema,
   updatePostSchema,
@@ -22,6 +26,8 @@ const {
   updateCommentSchema,
   listPostsQuerySchema,
   pinSchema,
+  hideSchema,
+  reportSchema,
 } = require("../../src/schemas/community.schema");
 
 function makePostRow(overrides = {}) {
@@ -40,8 +46,38 @@ function makePostRow(overrides = {}) {
     actualizado: new Date("2026-09-28T10:00:00Z"),
     edited_at: null,
     author: { id: 9, nickname: "author", kick_data: null },
+    update: jest.fn(async function (values) {
+      Object.assign(this, values);
+    }),
     ...overrides,
   };
+}
+
+function makeCommentRow(overrides = {}) {
+  return {
+    id: 7,
+    post_id: 1,
+    parent_id: null,
+    usuario_id: 9,
+    body: "nice",
+    status: "visible",
+    pinned: false,
+    hidden_by: null,
+    hidden_at: null,
+    hidden_reason: null,
+    creado: new Date("2026-09-28T11:00:00Z"),
+    actualizado: new Date("2026-09-28T11:00:00Z"),
+    edited_at: null,
+    author: { id: 9, nickname: "author", kick_data: null },
+    update: jest.fn(async function (values) {
+      Object.assign(this, values);
+    }),
+    ...overrides,
+  };
+}
+
+function authToken(userId = 2) {
+  return jwt.sign({ userId }, process.env.JWT_SECRET);
 }
 
 describe("community routes", () => {
@@ -256,6 +292,395 @@ describe("community routes", () => {
     });
   });
 
+  describe("reports", () => {
+    function mockAuth(userId = 2, rolId = 1) {
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: userId, nickname: "u", rol_id: rolId });
+    }
+
+    test("POST /posts/:id/report without token -> 401", async () => {
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .send({ reason: "spam" });
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("TOKEN_MISSING");
+    });
+
+    test("POST /posts/:id/report with invalid reason -> 400", async () => {
+      mockAuth();
+      const createSpy = jest.spyOn(CommunityReport, "create");
+
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "bogus" });
+
+      expect(res.status).toBe(400);
+      expect(createSpy).not.toHaveBeenCalled();
+    });
+
+    test("POST /posts/:id/report on a visible post -> 201", async () => {
+      mockAuth();
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ usuario_id: 9 }));
+      jest.spyOn(CommunityReport, "create").mockResolvedValue({
+        id: 10,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        status: "open",
+        creado: new Date("2026-09-29T10:00:00Z"),
+      });
+
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam", details: "it is spam" });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({
+        id: 10,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        status: "open",
+      });
+      expect(CommunityReport.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reporter_id: 2,
+          target_type: "post",
+          target_id: 1,
+          reason: "spam",
+          details: "it is spam",
+        })
+      );
+    });
+
+    test("POST /posts/:id/report on own post -> 400", async () => {
+      mockAuth();
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ usuario_id: 2 }));
+
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("You cannot report your own content");
+    });
+
+    test("POST /posts/:id/report on a hidden post -> 404", async () => {
+      mockAuth();
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ status: "hidden" }));
+
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(404);
+    });
+
+    test("POST /posts/:id/report twice -> 200 with the existing report", async () => {
+      mockAuth();
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ usuario_id: 9 }));
+      jest
+        .spyOn(CommunityReport, "create")
+        .mockRejectedValue(
+          new UniqueConstraintError({ message: "dup", errors: [] })
+        );
+      jest.spyOn(CommunityReport, "findOne").mockResolvedValue({
+        id: 10,
+        target_type: "post",
+        target_id: 1,
+        reason: "spam",
+        status: "open",
+        creado: new Date("2026-09-29T10:00:00Z"),
+      });
+
+      const res = await request(app)
+        .post("/api/community/posts/1/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(10);
+    });
+
+    test("POST /comments/:id/report on a visible comment -> 201", async () => {
+      mockAuth();
+      jest
+        .spyOn(CommunityComment, "findByPk")
+        .mockResolvedValue(makeCommentRow({ usuario_id: 9 }));
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ status: "visible" }));
+      jest.spyOn(CommunityReport, "create").mockResolvedValue({
+        id: 11,
+        target_type: "comment",
+        target_id: 7,
+        reason: "harassment",
+        status: "open",
+        creado: new Date("2026-09-29T10:00:00Z"),
+      });
+
+      const res = await request(app)
+        .post("/api/community/comments/7/report")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "harassment" });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toMatchObject({ id: 11, target_type: "comment" });
+    });
+  });
+
+  describe("moderator hide / unhide", () => {
+    function mockAuth(userId = 2, rolId = 4) {
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: userId, nickname: "mod", rol_id: rolId });
+    }
+
+    function mockTransaction() {
+      jest
+        .spyOn(sequelize, "transaction")
+        .mockImplementation(async (cb) => cb({}));
+    }
+
+    test("PATCH /posts/:id/hide without moderar_comunidad -> 403", async () => {
+      mockAuth(2, 1);
+      jest.spyOn(Permiso, "findAll").mockResolvedValue([]);
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/hide")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("PERMISSION_DENIED");
+    });
+
+    test("PATCH /posts/:id/unhide without permission -> 403", async () => {
+      mockAuth(2, 1);
+      jest.spyOn(Permiso, "findAll").mockResolvedValue([]);
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/unhide")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    test("PATCH /comments/:id/hide without permission -> 403", async () => {
+      mockAuth(2, 1);
+      jest.spyOn(Permiso, "findAll").mockResolvedValue([]);
+
+      const res = await request(app)
+        .patch("/api/community/comments/7/hide")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(403);
+    });
+
+    test("PATCH /posts/:id/hide hides the post and resolves open reports", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      const post = makePostRow({ usuario_id: 9 });
+      jest.spyOn(CommunityPost, "findByPk").mockResolvedValue(post);
+      jest.spyOn(CommunityReport, "update").mockResolvedValue([2]);
+      jest.spyOn(CommunityLike, "findAll").mockResolvedValue([]);
+      jest.spyOn(CommunityComment, "findAll").mockResolvedValue([]);
+      mockTransaction();
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/hide")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({ reason: "spam" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("hidden");
+      expect(CommunityReport.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "resolved", resolved_by: 2 }),
+        expect.objectContaining({
+          where: { target_type: "post", target_id: 1, status: "open" },
+        })
+      );
+    });
+
+    test("PATCH /comments/:id/hide hides the comment and clears pinned", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      const comment = makeCommentRow({ pinned: true });
+      jest.spyOn(CommunityComment, "findByPk").mockResolvedValue(comment);
+      jest.spyOn(CommunityReport, "update").mockResolvedValue([0]);
+      jest.spyOn(CommunityLike, "findAll").mockResolvedValue([]);
+      jest.spyOn(CommunityLike, "count").mockResolvedValue(0);
+      mockTransaction();
+
+      const res = await request(app)
+        .patch("/api/community/comments/7/hide")
+        .set("Authorization", `Bearer ${authToken()}`)
+        .send({});
+
+      expect(res.status).toBe(200);
+      expect(comment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "hidden", pinned: false }),
+        expect.anything()
+      );
+      expect(res.body.status).toBe("hidden");
+    });
+
+    test("PATCH /posts/:id/unhide on a visible post -> 409", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      jest
+        .spyOn(CommunityPost, "findByPk")
+        .mockResolvedValue(makePostRow({ status: "visible" }));
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/unhide")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe("Content is already visible");
+    });
+
+    test("PATCH /posts/:id/unhide on author-deleted content -> 409", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      const post = makePostRow({
+        status: "hidden",
+        hidden_reason: "deleted_by_author",
+      });
+      jest.spyOn(CommunityPost, "findByPk").mockResolvedValue(post);
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/unhide")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe(
+        "Content deleted by its author cannot be restored"
+      );
+      expect(post.update).not.toHaveBeenCalled();
+    });
+
+    test("PATCH /posts/:id/unhide approves pending_review and dismisses reports", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      const post = makePostRow({
+        status: "pending_review",
+        hidden_reason: "auto_flagged:hate",
+      });
+      jest.spyOn(CommunityPost, "findByPk").mockResolvedValue(post);
+      jest.spyOn(CommunityReport, "update").mockResolvedValue([1]);
+      jest.spyOn(CommunityLike, "findAll").mockResolvedValue([]);
+      jest.spyOn(CommunityComment, "findAll").mockResolvedValue([]);
+      mockTransaction();
+
+      const res = await request(app)
+        .patch("/api/community/posts/1/unhide")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("visible");
+      expect(CommunityReport.update).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "dismissed", resolved_by: 2 }),
+        expect.anything()
+      );
+    });
+  });
+
+  describe("GET /api/community/admin/queue", () => {
+    function mockAuth(userId = 2, rolId = 4) {
+      jest
+        .spyOn(Usuario, "findByPk")
+        .mockResolvedValue({ id: userId, nickname: "mod", rol_id: rolId });
+    }
+
+    test("without token -> 401", async () => {
+      const res = await request(app).get("/api/community/admin/queue");
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe("TOKEN_MISSING");
+    });
+
+    test("without moderar_comunidad -> 403", async () => {
+      mockAuth(2, 1);
+      jest.spyOn(Permiso, "findAll").mockResolvedValue([]);
+
+      const res = await request(app)
+        .get("/api/community/admin/queue")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("PERMISSION_DENIED");
+    });
+
+    test("returns pending and reported content grouped with report details", async () => {
+      mockAuth();
+      jest
+        .spyOn(Permiso, "findAll")
+        .mockResolvedValue([{ nombre: "moderar_comunidad" }]);
+      jest.spyOn(CommunityReport, "findAll").mockResolvedValue([
+        {
+          id: 1,
+          target_type: "post",
+          target_id: 5,
+          reason: "spam",
+          details: "ads",
+          status: "open",
+          creado: new Date("2026-09-29T10:00:00Z"),
+          reporter: { id: 3, nickname: "rep", kick_data: null },
+        },
+      ]);
+      jest
+        .spyOn(CommunityPost, "findAll")
+        .mockResolvedValue([
+          makePostRow({ id: 5 }),
+          makePostRow({ id: 6, status: "pending_review" }),
+        ]);
+      jest.spyOn(CommunityComment, "findAll").mockResolvedValue([]);
+
+      const res = await request(app)
+        .get("/api/community/admin/queue")
+        .set("Authorization", `Bearer ${authToken()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.posts).toHaveLength(2);
+      expect(res.body.comments).toHaveLength(0);
+      const reported = res.body.posts.find((p) => p.id === 5);
+      expect(reported.report_count).toBe(1);
+      expect(reported.reports[0]).toMatchObject({
+        id: 1,
+        reason: "spam",
+        details: "ads",
+        reporter: { id: 3, nickname: "rep", avatar: null },
+      });
+      const pending = res.body.posts.find((p) => p.id === 6);
+      expect(pending.status).toBe("pending_review");
+      expect(pending.report_count).toBe(0);
+    });
+  });
+
   describe("zod schemas", () => {
     test("createPostSchema rejects empty body and oversized title", () => {
       expect(createPostSchema.safeParse({}).success).toBe(false);
@@ -265,6 +690,29 @@ describe("community routes", () => {
       expect(
         createPostSchema.safeParse({ title: "ok title", body: "x" }).success
       ).toBe(true);
+    });
+
+    test("reportSchema requires a known reason and optional details", () => {
+      expect(reportSchema.safeParse({}).success).toBe(false);
+      expect(reportSchema.safeParse({ reason: "bogus" }).success).toBe(false);
+      expect(reportSchema.safeParse({ reason: "spam" }).success).toBe(true);
+      expect(
+        reportSchema.safeParse({
+          reason: "other",
+          details: "x".repeat(501),
+        }).success
+      ).toBe(false);
+      expect(
+        reportSchema.safeParse({ reason: "hate", details: " context " }).success
+      ).toBe(true);
+    });
+
+    test("hideSchema allows an empty body and caps the reason", () => {
+      expect(hideSchema.safeParse({}).success).toBe(true);
+      expect(hideSchema.safeParse({ reason: "spam" }).success).toBe(true);
+      expect(hideSchema.safeParse({ reason: "x".repeat(256) }).success).toBe(
+        false
+      );
     });
 
     test("pinSchema requires a boolean", () => {

@@ -1,10 +1,11 @@
 import { Op, UniqueConstraintError } from "sequelize";
-import type { Order } from "sequelize";
+import type { Order, Transaction } from "sequelize";
 import { sequelize } from "../models/database";
 import {
   CommunityPost,
   CommunityComment,
   CommunityLike,
+  CommunityReport,
   Usuario,
   Permiso,
   RolPermiso,
@@ -13,8 +14,12 @@ import type {
   CommunityFeedSort,
   CommunityLikeTarget,
   CommunityMediaItem,
+  CommunityReportReason,
+  CommunityReportTarget,
+  CommunityStatus,
 } from "../types/community.types";
 import { getRedisClient } from "../config/redis.config";
+import ModerationService from "./moderation.service";
 import NotificacionService from "./notificacion.service";
 import AppError from "../utils/AppError";
 import logger from "../utils/logger";
@@ -103,6 +108,58 @@ interface ListPostsResult {
   page: number;
   limit: number;
   pages: number;
+}
+
+interface ReportDTO {
+  id: number;
+  target_type: CommunityReportTarget;
+  target_id: number;
+  reason: CommunityReportReason;
+  status: string;
+  creado: Date;
+}
+
+interface ReportInput {
+  reason: CommunityReportReason;
+  details?: string | null;
+}
+
+interface QueueReportDTO {
+  id: number;
+  reason: CommunityReportReason;
+  details: string | null;
+  reporter: AuthorDTO | null;
+  creado: Date;
+}
+
+interface QueuePostItem {
+  id: number;
+  title: string;
+  body: string;
+  media: CommunityMediaItem[];
+  status: string;
+  hidden_reason: string | null;
+  author: AuthorDTO | null;
+  creado: Date;
+  report_count: number;
+  reports: QueueReportDTO[];
+}
+
+interface QueueCommentItem {
+  id: number;
+  post_id: number;
+  body: string;
+  status: string;
+  hidden_reason: string | null;
+  author: AuthorDTO | null;
+  creado: Date;
+  report_count: number;
+  reports: QueueReportDTO[];
+}
+
+interface ModerationQueueDTO {
+  posts: QueuePostItem[];
+  comments: QueueCommentItem[];
 }
 
 interface CreatePostData {
@@ -285,6 +342,23 @@ function buildFeedOrder(sort: CommunityFeedSort): Order {
         ["creado", "DESC"],
       ];
   }
+}
+
+// Field set applied when the auto-moderation scan flags content: the row is
+// created/updated as pending_review and stamped with the matched categories
+// (truncated to the hidden_reason column size) so moderators see why.
+function autoFlagFields(categories: string[]): {
+  status: CommunityStatus;
+  hidden_by: null;
+  hidden_at: Date;
+  hidden_reason: string;
+} {
+  return {
+    status: "pending_review",
+    hidden_by: null,
+    hidden_at: new Date(),
+    hidden_reason: `auto_flagged:${categories.join(",")}`.slice(0, 255),
+  };
 }
 
 async function userHasPermission(
@@ -551,14 +625,17 @@ async function createPost(
   userId: number,
   data: CreatePostData
 ): Promise<PostDTO> {
-  // Moderation scan (pending_review) is handled by a later feature (#89);
-  // posts are created as visible for now.
+  const scan = await ModerationService.scanContent({
+    text: `${data.title}\n\n${data.body}`,
+    media: data.media,
+  });
   const post = await CommunityPost.create({
     usuario_id: userId,
     title: data.title,
     body: data.body,
     media: data.media ?? null,
     status: "visible",
+    ...(scan.flagged ? autoFlagFields(scan.categories) : {}),
   });
 
   return fetchPostDTO(post.id, userId);
@@ -586,6 +663,8 @@ async function createComment(
     }
   }
 
+  const scan = await ModerationService.scanContent({ text: body });
+
   // Threads are one level deep: a reply to a reply is stored under the
   // top-level comment. Notifications still target the replied-to author.
   const comment = await CommunityComment.create({
@@ -594,11 +673,15 @@ async function createComment(
     usuario_id: user.id,
     body,
     status: "visible",
+    ...(scan.flagged ? autoFlagFields(scan.categories) : {}),
   });
+
+  // Comments held for review do not notify anyone until they are approved.
+  const isVisible = comment.status === "visible";
 
   // Notify the post author (skip self-comments). A notification failure must
   // never fail the comment itself.
-  if (post.usuario_id !== user.id) {
+  if (isVisible && post.usuario_id !== user.id) {
     try {
       await NotificacionService.crear(
         post.usuario_id,
@@ -624,6 +707,7 @@ async function createComment(
   // self-replies and when the parent author is the post author (already
   // notified above, so nobody receives two notifications for one reply).
   if (
+    isVisible &&
     parent &&
     parent.usuario_id !== user.id &&
     parent.usuario_id !== post.usuario_id
@@ -796,10 +880,19 @@ async function updatePost(
     throw new AppError("Permission denied", 403);
   }
 
+  // Edits must not bypass moderation: the resulting content is scanned again.
+  const nextTitle = data.title !== undefined ? data.title : post.title;
+  const nextBody = data.body !== undefined ? data.body : post.body;
+  const scan = await ModerationService.scanContent({
+    text: `${nextTitle}\n\n${nextBody}`,
+    media: post.media ?? undefined,
+  });
+
   await post.update({
     ...(data.title !== undefined ? { title: data.title } : {}),
     ...(data.body !== undefined ? { body: data.body } : {}),
     edited_at: new Date(),
+    ...(scan.flagged ? autoFlagFields(scan.categories) : {}),
   });
 
   return fetchPostDTO(post.id, user.id);
@@ -824,7 +917,12 @@ async function updateComment(
     throw new AppError("Permission denied", 403);
   }
 
-  await comment.update({ body, edited_at: new Date() });
+  const scan = await ModerationService.scanContent({ text: body });
+  await comment.update({
+    body,
+    edited_at: new Date(),
+    ...(scan.flagged ? autoFlagFields(scan.categories) : {}),
+  });
   return fetchCommentDTO(comment, user.id);
 }
 
@@ -895,6 +993,320 @@ async function setPinned(
   return fetchPostDTO(post.id, viewerId);
 }
 
+function toReportDTO(row: CommunityReport): ReportDTO {
+  return {
+    id: row.id,
+    target_type: row.target_type,
+    target_id: row.target_id,
+    reason: row.reason,
+    status: row.status,
+    creado: row.creado,
+  };
+}
+
+// A target is reportable only while it is publicly visible; for comments the
+// parent post must be visible too. `created` tells the controller whether to
+// answer 201 (new report) or 200 (repeat report returns the existing row).
+async function reportContent(
+  user: Usuario,
+  targetType: CommunityReportTarget,
+  targetId: number,
+  data: ReportInput
+): Promise<{ report: ReportDTO; created: boolean }> {
+  let authorId: number;
+  if (targetType === "post") {
+    const post = await CommunityPost.findByPk(targetId);
+    if (post?.status !== "visible") {
+      throw new AppError("Not found", 404);
+    }
+    authorId = post.usuario_id;
+  } else {
+    const comment = await CommunityComment.findByPk(targetId);
+    const post =
+      comment?.status === "visible"
+        ? await CommunityPost.findByPk(comment.post_id)
+        : null;
+    if (!comment || post?.status !== "visible") {
+      throw new AppError("Not found", 404);
+    }
+    authorId = comment.usuario_id;
+  }
+
+  if (authorId === user.id) {
+    throw new AppError("You cannot report your own content", 400);
+  }
+
+  const reportWhere = {
+    reporter_id: user.id,
+    target_type: targetType,
+    target_id: targetId,
+  };
+
+  try {
+    const report = await CommunityReport.create({
+      ...reportWhere,
+      reason: data.reason,
+      details: data.details ?? null,
+    });
+    return { report: toReportDTO(report), created: true };
+  } catch (error) {
+    // A repeat report hits the (reporter, target) unique index; return the
+    // existing row so reporting stays idempotent.
+    if (!(error instanceof UniqueConstraintError)) throw error;
+    const existing = await CommunityReport.findOne({ where: reportWhere });
+    if (!existing) throw error;
+    return { report: toReportDTO(existing), created: false };
+  }
+}
+
+// Marks every open report on the target inside an existing transaction.
+async function resolveOpenReports(
+  targetType: CommunityReportTarget,
+  targetId: number,
+  status: "resolved" | "dismissed",
+  moderatorId: number,
+  transaction: Transaction
+): Promise<void> {
+  await CommunityReport.update(
+    { status, resolved_by: moderatorId, resolved_at: new Date() },
+    {
+      where: {
+        target_type: targetType,
+        target_id: targetId,
+        status: "open",
+      },
+      transaction,
+    }
+  );
+}
+
+// Minimal shape shared by CommunityPost and CommunityComment for moderator
+// hide/unhide (their Model.update overloads differ, so a union is not
+// callable — same trick as HideableRow above).
+interface ModeratableRow {
+  id: number;
+  status: string;
+  hidden_reason: string | null;
+  update(
+    values: Record<string, unknown>,
+    options?: { transaction?: Transaction }
+  ): Promise<unknown>;
+}
+
+// Moderator hide: works on visible and pending_review content (auto-flagged
+// items are confirmed directly from the queue) and resolves its open reports
+// in the same transaction.
+async function moderateHide(
+  instance: ModeratableRow | null,
+  targetType: CommunityReportTarget,
+  user: Usuario,
+  notFoundMessage: string,
+  reason?: string,
+  extraUpdates: Record<string, unknown> = {}
+): Promise<void> {
+  if (!instance || instance.status === "hidden") {
+    throw new AppError(notFoundMessage, 404);
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    await instance.update(
+      {
+        status: "hidden",
+        hidden_by: user.id,
+        hidden_at: new Date(),
+        hidden_reason: reason || "removed_by_moderator",
+        ...extraUpdates,
+      },
+      { transaction }
+    );
+    await resolveOpenReports(
+      targetType,
+      instance.id,
+      "resolved",
+      user.id,
+      transaction
+    );
+  });
+}
+
+// Moderator unhide/approve: restores hidden content and approves
+// pending_review items, dismissing their open reports. Content deleted by its
+// own author cannot be restored by a moderator.
+async function moderateUnhide(
+  instance: ModeratableRow | null,
+  targetType: CommunityReportTarget,
+  user: Usuario,
+  notFoundMessage: string
+): Promise<void> {
+  if (!instance) {
+    throw new AppError(notFoundMessage, 404);
+  }
+  if (instance.status === "visible") {
+    throw new AppError("Content is already visible", 409);
+  }
+  if (instance.hidden_reason === "deleted_by_author") {
+    throw new AppError("Content deleted by its author cannot be restored", 409);
+  }
+
+  await sequelize.transaction(async (transaction) => {
+    await instance.update(
+      {
+        status: "visible",
+        hidden_by: null,
+        hidden_at: null,
+        hidden_reason: null,
+      },
+      { transaction }
+    );
+    await resolveOpenReports(
+      targetType,
+      instance.id,
+      "dismissed",
+      user.id,
+      transaction
+    );
+  });
+}
+
+async function hidePost(
+  postId: number,
+  user: Usuario,
+  reason?: string
+): Promise<PostDTO> {
+  const post = await CommunityPost.findByPk(postId);
+  await moderateHide(post, "post", user, "Post not found", reason);
+  return fetchPostDTO(post.id, user.id);
+}
+
+async function unhidePost(postId: number, user: Usuario): Promise<PostDTO> {
+  const post = await CommunityPost.findByPk(postId);
+  await moderateUnhide(post, "post", user, "Post not found");
+  return fetchPostDTO(post.id, user.id);
+}
+
+async function hideComment(
+  commentId: number,
+  user: Usuario,
+  reason?: string
+): Promise<CommentDTO> {
+  const comment = await CommunityComment.findByPk(commentId, {
+    include: [AUTHOR_INCLUDE],
+  });
+  await moderateHide(comment, "comment", user, "Comment not found", reason, {
+    pinned: false,
+  });
+  return fetchCommentDTO(comment, user.id);
+}
+
+async function unhideComment(
+  commentId: number,
+  user: Usuario
+): Promise<CommentDTO> {
+  const comment = await CommunityComment.findByPk(commentId, {
+    include: [AUTHOR_INCLUDE],
+  });
+  await moderateUnhide(comment, "comment", user, "Comment not found");
+  return fetchCommentDTO(comment, user.id);
+}
+
+const QUEUE_LIMIT = 100;
+
+const REPORTER_INCLUDE = {
+  model: Usuario,
+  as: "reporter",
+  attributes: ["id", "nickname", "kick_data"],
+};
+
+// Moderation queue: everything pending_review plus visible content that has
+// at least one open report. Hidden content never appears. Open reports are
+// fetched once and grouped in memory to avoid an N+1 per queue item.
+async function getModerationQueue(): Promise<ModerationQueueDTO> {
+  const openReports = await CommunityReport.findAll({
+    where: { status: "open" },
+    include: [REPORTER_INCLUDE],
+    order: [["creado", "ASC"]],
+  });
+
+  const reportsByTarget = new Map<string, QueueReportDTO[]>();
+  const reportedPostIds = new Set<number>();
+  const reportedCommentIds = new Set<number>();
+  for (const row of openReports) {
+    const key = `${row.target_type}:${row.target_id}`;
+    const list = reportsByTarget.get(key) ?? [];
+    list.push({
+      id: row.id,
+      reason: row.reason,
+      details: row.details ?? null,
+      reporter: toAuthorDTO(row.reporter),
+      creado: row.creado,
+    });
+    reportsByTarget.set(key, list);
+    if (row.target_type === "post") {
+      reportedPostIds.add(row.target_id);
+    } else {
+      reportedCommentIds.add(row.target_id);
+    }
+  }
+
+  const [postRows, commentRows] = await Promise.all([
+    CommunityPost.findAll({
+      where: {
+        [Op.or]: [
+          { status: "pending_review" },
+          { status: "visible", id: { [Op.in]: [...reportedPostIds] } },
+        ],
+      },
+      include: [AUTHOR_INCLUDE],
+      order: [["creado", "ASC"]],
+      limit: QUEUE_LIMIT,
+    }),
+    CommunityComment.findAll({
+      where: {
+        [Op.or]: [
+          { status: "pending_review" },
+          { status: "visible", id: { [Op.in]: [...reportedCommentIds] } },
+        ],
+      },
+      include: [AUTHOR_INCLUDE],
+      order: [["creado", "ASC"]],
+      limit: QUEUE_LIMIT,
+    }),
+  ]);
+
+  const posts: QueuePostItem[] = postRows.map((row) => {
+    const reports = reportsByTarget.get(`post:${row.id}`) ?? [];
+    return {
+      id: row.id,
+      title: row.title,
+      body: row.body,
+      media: row.media ?? [],
+      status: row.status,
+      hidden_reason: row.hidden_reason ?? null,
+      author: toAuthorDTO(row.author),
+      creado: row.creado,
+      report_count: reports.length,
+      reports,
+    };
+  });
+
+  const comments: QueueCommentItem[] = commentRows.map((row) => {
+    const reports = reportsByTarget.get(`comment:${row.id}`) ?? [];
+    return {
+      id: row.id,
+      post_id: row.post_id,
+      body: row.body,
+      status: row.status,
+      hidden_reason: row.hidden_reason ?? null,
+      author: toAuthorDTO(row.author),
+      creado: row.creado,
+      report_count: reports.length,
+      reports,
+    };
+  });
+
+  return { posts, comments };
+}
+
 const CommunityService = {
   buildFeedOrder,
   buildCommentTree,
@@ -909,6 +1321,12 @@ const CommunityService = {
   updateComment,
   setPinned,
   setCommentPinned,
+  reportContent,
+  hidePost,
+  unhidePost,
+  hideComment,
+  unhideComment,
+  getModerationQueue,
   userHasPermission,
 };
 

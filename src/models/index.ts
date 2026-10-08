@@ -30,6 +30,7 @@ import UserWatchtime from "./userWatchtime.model";
 import CommunityPost from "./communityPost.model";
 import CommunityComment from "./communityComment.model";
 import CommunityLike from "./communityLike.model";
+import CommunityReport from "./communityReport.model";
 
 // DEFINE ASSOCIATIONS
 // Association between Permiso and RolPermiso (needed for the include in the middleware)
@@ -148,6 +149,15 @@ CommunityComment.belongsTo(Usuario, {
 Usuario.hasMany(CommunityComment, { foreignKey: "usuario_id" });
 CommunityLike.belongsTo(Usuario, { foreignKey: "usuario_id" });
 Usuario.hasMany(CommunityLike, { foreignKey: "usuario_id" });
+CommunityReport.belongsTo(Usuario, {
+  foreignKey: "reporter_id",
+  as: "reporter",
+});
+Usuario.hasMany(CommunityReport, { foreignKey: "reporter_id" });
+CommunityReport.belongsTo(Usuario, {
+  foreignKey: "resolved_by",
+  as: "resolver",
+});
 
 // Export sequelize and all models
 export {
@@ -180,6 +190,7 @@ export {
   CommunityPost,
   CommunityComment,
   CommunityLike,
+  CommunityReport,
 };
 
 // Default export for compatibility with `import models from "../models"`
@@ -213,4 +224,5 @@ export default {
   CommunityPost,
   CommunityComment,
   CommunityLike,
+  CommunityReport,
 };
