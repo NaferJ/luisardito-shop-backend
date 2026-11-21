@@ -4,8 +4,8 @@ import logger from "./logger";
 function base64url(input: Buffer): string {
   return Buffer.from(input)
     .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
     .replaceAll("=", "");
 }
 

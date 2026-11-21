@@ -266,21 +266,19 @@ const refreshToken = asyncHandler(async (_req: Request, res: Response) => {
 /**
  * Gets the status of the automatic refresh service
  */
-const getRefreshServiceStatus = asyncHandler(
-  async (_req: Request, res: Response) => {
-    try {
-      const status = tokenRefreshService.getStatus();
-      return res.json(status);
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      logger.error(
-        "[Kick Broadcaster] Error fetching service status:",
-        error instanceof Error ? error.message : String(error)
-      );
-      throw new AppError("Internal server error", 500);
-    }
+const getRefreshServiceStatus = asyncHandler((_req: Request, res: Response) => {
+  try {
+    const status = tokenRefreshService.getStatus();
+    res.json(status);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    logger.error(
+      "[Kick Broadcaster] Error fetching service status:",
+      error instanceof Error ? error.message : String(error)
+    );
+    throw new AppError("Internal server error", 500);
   }
-);
+});
 
 /**
  * Debug endpoint to verify configuration

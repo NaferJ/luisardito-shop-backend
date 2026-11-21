@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 /**
  * Safely converts an unknown error value to a string message.
  *
@@ -16,7 +18,7 @@ function toErrorMessage(error: unknown): string {
   try {
     return JSON.stringify(error);
   } catch {
-    return String(error);
+    return inspect(error);
   }
 }
 

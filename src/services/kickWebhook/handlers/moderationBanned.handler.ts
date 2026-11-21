@@ -11,7 +11,7 @@ interface ModerationBannedPayload {
 /**
  * Handle moderation bans
  */
-async function handleModerationBanned(
+function handleModerationBanned(
   payload: ModerationBannedPayload,
   _metadata: unknown
 ) {

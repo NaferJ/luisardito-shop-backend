@@ -180,19 +180,25 @@ class VipService {
       },
     });
 
+    const results = await Promise.allSettled(
+      expiredVips.map((user) => this.removeVip(user.id, "Automatic expiration"))
+    );
+
     let cleanedCount = 0;
-    for (const user of expiredVips) {
-      try {
-        await this.removeVip(user.id, "Automatic expiration");
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
         cleanedCount++;
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
+      } else {
+        const msg =
+          result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason);
         logger.error(
-          `[VIP CLEANUP] Error removing expired VIP for user ${user.id}:`,
+          `[VIP CLEANUP] Error removing expired VIP for user ${expiredVips[index].id}:`,
           msg
         );
       }
-    }
+    });
 
     logger.info(`[VIP CLEANUP] ${cleanedCount} expired VIPs removed`);
     return { cleaned_count: cleanedCount, total_expired: expiredVips.length };

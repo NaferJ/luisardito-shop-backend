@@ -302,12 +302,12 @@ const listar = asyncHandler(async (req: Request, res: Response) => {
 
   // Add VIP and subscriber info to each user
   const now = new Date();
-  for (const canje of canjes) {
-    const c = canje as CanjeWithAssociations;
-    if (c.Usuario) {
-      await enrichUsuarioWithStatus(c.Usuario, now, true);
-    }
-  }
+  await Promise.all(
+    canjes.map((canje) => {
+      const c = canje as CanjeWithAssociations;
+      return c.Usuario ? enrichUsuarioWithStatus(c.Usuario, now, true) : null;
+    })
+  );
 
   res.json(canjes);
 });
@@ -417,12 +417,12 @@ const listarMios = asyncHandler(async (req: Request, res: Response) => {
 
   // Add VIP and subscriber info to the user (same user, for consistency)
   const now = new Date();
-  for (const canje of canjes) {
-    const c = canje as CanjeWithAssociations;
-    if (c.Usuario) {
-      await enrichUsuarioWithStatus(c.Usuario, now, false);
-    }
-  }
+  await Promise.all(
+    canjes.map((canje) => {
+      const c = canje as CanjeWithAssociations;
+      return c.Usuario ? enrichUsuarioWithStatus(c.Usuario, now, false) : null;
+    })
+  );
 
   res.json({
     data: canjes,
@@ -451,12 +451,12 @@ const listarPorUsuario = asyncHandler(async (req: Request, res: Response) => {
 
   // Add VIP and subscriber info to the user
   const now = new Date();
-  for (const canje of canjes) {
-    const c = canje as CanjeWithAssociations;
-    if (c.Usuario) {
-      await enrichUsuarioWithStatus(c.Usuario, now, true);
-    }
-  }
+  await Promise.all(
+    canjes.map((canje) => {
+      const c = canje as CanjeWithAssociations;
+      return c.Usuario ? enrichUsuarioWithStatus(c.Usuario, now, true) : null;
+    })
+  );
 
   res.json(canjes);
 });

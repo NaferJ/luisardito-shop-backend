@@ -97,27 +97,29 @@ async function storeSubscriptionsLocally(
   broadcaster_user_id: string | number,
   sanitizedMethod: string
 ): Promise<KickEventSubscription[]> {
-  const createdSubscriptions: KickEventSubscription[] = [];
-
-  for (const sub of subscriptionsData) {
-    if (!sub.subscription_id || sub.error) continue;
-    try {
-      const localSub = await KickEventSubscription.create({
-        subscription_id: sub.subscription_id,
-        broadcaster_user_id: Number(broadcaster_user_id),
-        event_type: sub.name,
-        event_version: Number(sub.version),
-        method: sanitizedMethod,
-        status: "active",
-      });
-      createdSubscriptions.push(localSub);
-    } catch (dbError) {
-      logger.error(
-        "[Kick Subscription] Error saving subscription locally:",
-        dbError instanceof Error ? dbError.message : String(dbError)
-      );
-    }
-  }
+  const createdSubscriptions = (
+    await Promise.all(
+      subscriptionsData.map(async (sub) => {
+        if (!sub.subscription_id || sub.error) return null;
+        try {
+          return await KickEventSubscription.create({
+            subscription_id: sub.subscription_id,
+            broadcaster_user_id: Number(broadcaster_user_id),
+            event_type: sub.name,
+            event_version: Number(sub.version),
+            method: sanitizedMethod,
+            status: "active",
+          });
+        } catch (dbError) {
+          logger.error(
+            "[Kick Subscription] Error saving subscription locally:",
+            dbError instanceof Error ? dbError.message : String(dbError)
+          );
+          return null;
+        }
+      })
+    )
+  ).filter((sub): sub is KickEventSubscription => sub !== null);
 
   return createdSubscriptions;
 }

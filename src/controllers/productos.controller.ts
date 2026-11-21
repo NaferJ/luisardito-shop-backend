@@ -373,26 +373,28 @@ const actualizarPromociones = asyncHandler(
         attributes: ["id"],
       });
 
-      for (const promo of todasPromociones) {
-        const debeEstar = promocion_ids.includes(promo.id);
-        const estaAsignado = await PromocionProducto.findOne({
-          where: {
-            promocion_id: promo.id,
-            producto_id: id as unknown as number,
-          },
-        });
-
-        if (debeEstar && !estaAsignado) {
-          // Add relation
-          await PromocionProducto.create({
-            promocion_id: promo.id,
-            producto_id: id as unknown as number,
+      await Promise.all(
+        todasPromociones.map(async (promo) => {
+          const debeEstar = promocion_ids.includes(promo.id);
+          const estaAsignado = await PromocionProducto.findOne({
+            where: {
+              promocion_id: promo.id,
+              producto_id: id as unknown as number,
+            },
           });
-        } else if (!debeEstar && estaAsignado) {
-          // Remove relation
-          await estaAsignado.destroy();
-        }
-      }
+
+          if (debeEstar && !estaAsignado) {
+            // Add relation
+            await PromocionProducto.create({
+              promocion_id: promo.id,
+              producto_id: id as unknown as number,
+            });
+          } else if (!debeEstar && estaAsignado) {
+            // Remove relation
+            await estaAsignado.destroy();
+          }
+        })
+      );
 
       res.json({
         message: "Promotions updated successfully",

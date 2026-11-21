@@ -245,12 +245,9 @@ class BotrixMigrationService {
       }
 
       // Regex to detect watchtime messages from Kick chat (Spanish format: "@user has spent [X days] [Y hours] [Z min] watching [this channel|the stream]")
-      // Safe pattern: captures the time part as a sequence of "number + unit"
-      const timeUnit = /\d+\s+(?:d[íi]as?|horas?|h|min)\s*/i;
-      const watchtimeRegex = new RegExp(
-        `@(\\w+)\\s+ha\\s+pasado\\s+((?:${timeUnit.source})+)viendo\\s+(?:este\\s+canal|el\\s+stream)`,
-        "i"
-      );
+      // Linear pattern: captures everything before "viendo" via a negated class, avoiding nested quantifiers (S5852)
+      const watchtimeRegex =
+        /@(\w+)\s+ha\s+pasado\s+([^\nv]*)viendo\s+(?:este\s+canal|el\s+stream)/i;
       const match = watchtimeRegex.exec(content);
 
       if (!match) {
@@ -263,6 +260,7 @@ class BotrixMigrationService {
       let days = 0,
         hours = 0,
         minutes = 0;
+      let hasTimeComponent = false;
       const parts = timeStr.trim().split(" ").filter(Boolean);
       for (let i = 0; i < parts.length - 1; i++) {
         const num = Number.parseInt(parts[i], 10);
@@ -271,6 +269,12 @@ class BotrixMigrationService {
         if (unit.startsWith("min")) minutes = num;
         else if (unit.startsWith("h")) hours = num;
         else if (unit.startsWith("d")) days = num;
+        else continue;
+        hasTimeComponent = true;
+      }
+
+      if (!hasTimeComponent) {
+        return { processed: false, reason: "Pattern not matched" };
       }
 
       // Convert everything to minutes: days * 24 * 60 + hours * 60 + minutes

@@ -1,11 +1,13 @@
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 /**
- * Wraps an async Express route handler so that rejected promises
- * are forwarded to Express' error-handling middleware via next(err).
+ * Wraps an Express route handler so that rejected promises are forwarded
+ * to Express' error-handling middleware via next(err). Synchronous throws
+ * are also routed through next(err) so sync handlers keep the same
+ * error contract as async ones.
  *
- * @param fn - Async Express handler (req, res, next)
- * @returns Express handler that catches promise rejections
+ * @param fn - Express handler (req, res, next), sync or async
+ * @returns Express handler that catches throws and promise rejections
  */
 type AsyncRouteHandler = (
   req: Request,
@@ -15,7 +17,12 @@ type AsyncRouteHandler = (
 
 const asyncHandler =
   (fn: AsyncRouteHandler): RequestHandler =>
-  (req, res, next) =>
-    Promise.resolve(fn(req, res, next)).catch(next);
+  (req, res, next) => {
+    try {
+      return Promise.resolve(fn(req, res, next)).catch(next);
+    } catch (error) {
+      next(error);
+    }
+  };
 
 export = asyncHandler;

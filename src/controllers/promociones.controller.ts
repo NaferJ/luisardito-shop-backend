@@ -266,16 +266,16 @@ function buildUpdatePayload(
   nuevaFechaInicio: Date | string,
   nuevaFechaFin: Date | string
 ) {
+  // descripcion is nullable in the model (allowNull: true); null is a valid
+  // value for clearing it, so we cannot use ?? (which would also fall back on
+  // null). A destructuring default only applies when the field is undefined.
+  const { descripcion = promocion.descripcion } = campos;
+
   return {
     codigo: campos.codigo ? campos.codigo.toUpperCase() : promocion.codigo,
     nombre: campos.nombre || promocion.nombre,
     titulo: campos.titulo || promocion.titulo,
-    // descripcion is nullable in the model (allowNull: true); null is a valid
-    // value for clearing it, so we cannot use ?? (which would pass null through).
-    descripcion:
-      campos.descripcion === undefined
-        ? promocion.descripcion
-        : campos.descripcion,
+    descripcion,
     tipo: (campos.tipo || promocion.tipo) as
       "producto" | "categoria" | "global" | "por_cantidad",
     tipo_descuento: (campos.tipo_descuento || promocion.tipo_descuento) as
@@ -556,31 +556,33 @@ const exportarPDF = asyncHandler(async (req: Request, res: Response) => {
   logger.info(`[PDF Export] Total promotions found: ${promociones.length}`);
 
   // Get usage statistics separately and prepare data
-  const promocionesConEstadisticas: Array<Record<string, unknown>> = [];
+  const promocionesConEstadisticas: Array<Record<string, unknown>> =
+    await Promise.all(
+      promociones.map(async (promocion) => {
+        const estadisticas = (await UsoPromocion.findOne({
+          where: { promocion_id: promocion.id },
+          attributes: [
+            [sequelize.fn("COUNT", sequelize.col("id")), "total_usos"],
+            [
+              sequelize.fn("SUM", sequelize.col("descuento_aplicado")),
+              "puntos_descontados",
+            ],
+          ],
+          raw: true,
+        })) as unknown as {
+          total_usos: string;
+          puntos_descontados: string;
+        } | null;
 
-  for (const promocion of promociones) {
-    const estadisticas = (await UsoPromocion.findOne({
-      where: { promocion_id: promocion.id },
-      attributes: [
-        [sequelize.fn("COUNT", sequelize.col("id")), "total_usos"],
-        [
-          sequelize.fn("SUM", sequelize.col("descuento_aplicado")),
-          "puntos_descontados",
-        ],
-      ],
-      raw: true,
-    })) as unknown as { total_usos: string; puntos_descontados: string } | null;
-
-    // Convert to plain object for easier PDF access
-    const promocionData = {
-      ...promocion.toJSON(),
-      total_usos: Number.parseInt(estadisticas?.total_usos as string) || 0,
-      puntos_descontados:
-        Number.parseInt(estadisticas?.puntos_descontados as string) || 0,
-    };
-
-    promocionesConEstadisticas.push(promocionData);
-  }
+        // Convert to plain object for easier PDF access
+        return {
+          ...promocion.toJSON(),
+          total_usos: Number.parseInt(estadisticas?.total_usos as string) || 0,
+          puntos_descontados:
+            Number.parseInt(estadisticas?.puntos_descontados as string) || 0,
+        };
+      })
+    );
 
   logger.debug("[PDF Export] Sample data:", promocionesConEstadisticas[0]);
 

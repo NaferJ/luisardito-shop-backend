@@ -6,7 +6,7 @@ import logger from "../../utils/logger";
  * Find a DiscordUserLink by tienda_user_id
  * @param userId - User id
  */
-async function findDiscordLinkByUserId(userId: number) {
+function findDiscordLinkByUserId(userId: number) {
   return DiscordUserLink.findOne({
     where: { tienda_user_id: userId },
   });
