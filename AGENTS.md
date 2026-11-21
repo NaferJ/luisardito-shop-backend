@@ -149,6 +149,10 @@ Always tell the user when moving a card between statuses.
 
 **Every issue must be assigned to NaferJ.** When creating an issue, always pass `--add-assignee NaferJ`. The board is a solo project — there are no unassigned cards.
 
+### PR rule
+
+**Every PR must be assigned to NaferJ** and carry at least one category label matching the linked issue (e.g. `ops`, `feature`, `tooling`). PRs never create separate board cards — the `Closes #NN` link is the single source of truth.
+
 ### Status updates
 
 Status updates are high-level project health reports (not task-level updates). Add one via the project board UI (side panel -> Add update).
