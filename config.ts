@@ -63,6 +63,24 @@ interface CookiesConfig {
   sameSite: "lax" | "strict" | "none";
 }
 
+interface BackupR2Config {
+  endpoint: string | undefined;
+  accessKeyId: string | undefined;
+  secretAccessKey: string | undefined;
+  bucketName: string | undefined;
+}
+
+interface BackupConfig {
+  enabled: boolean;
+  time: string;
+  retentionDays: number;
+  remoteRetentionDays: number;
+  dbContainer: string;
+  dbUser: string;
+  dbPassword: string;
+  r2: BackupR2Config;
+}
+
 interface DiscordConfig {
   botToken: string | undefined;
   clientId: string | undefined;
@@ -85,6 +103,7 @@ interface AppConfig {
   frontendUrl: string | undefined;
   port: number;
   discord: DiscordConfig;
+  backup: BackupConfig;
 }
 
 const config: AppConfig = {
@@ -154,6 +173,21 @@ const config: AppConfig = {
     redirectUri:
       process.env.DISCORD_REDIRECT_URI ||
       "https://api.luisardito.com/api/auth/discord/callback",
+  },
+  backup: {
+    enabled: toBool(process.env.BACKUP_ENABLED),
+    time: process.env.BACKUP_TIME || "03:00",
+    retentionDays: Number(process.env.BACKUP_RETENTION_DAYS || 3),
+    remoteRetentionDays: Number(process.env.BACKUP_REMOTE_RETENTION_DAYS || 30),
+    dbContainer: process.env.BACKUP_DB_CONTAINER || "luisardito-mysql",
+    dbUser: "root",
+    dbPassword: process.env.MYSQL_ROOT_PASSWORD || "root",
+    r2: {
+      endpoint: process.env.R2_ENDPOINT,
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+      bucketName: process.env.R2_BUCKET_NAME,
+    },
   },
 };
 

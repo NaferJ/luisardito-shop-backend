@@ -36,6 +36,7 @@ Rules to avoid this:
    docker run --rm -v "${PWD}:/app" -w /app node:22 sh -c "npm install --no-audit --no-fund"
    ```
    Then run `npm ci` locally (Windows) to install from the corrected lock without touching it again.
+   From Git Bash, use `MSYS_NO_PATHCONV=1` and `$(pwd -W)` instead of `${PWD}` — Git Bash rewrites `-w /app` into a Windows path. PowerShell works as written.
 3. Verify before pushing: `docker run --rm -v "${PWD}:/app" -w /app node:22 sh -c "rm -rf node_modules && npm ci"` should succeed with no errors — this exactly mirrors CI.
 
 ## Environment
@@ -147,6 +148,10 @@ Always tell the user when moving a card between statuses.
 ### Assignment rule
 
 **Every issue must be assigned to NaferJ.** When creating an issue, always pass `--add-assignee NaferJ`. The board is a solo project — there are no unassigned cards.
+
+### PR rule
+
+**Every PR must be assigned to NaferJ** and carry at least one category label matching the linked issue (e.g. `ops`, `feature`, `tooling`). PRs never create separate board cards — the `Closes #NN` link is the single source of truth.
 
 ### Status updates
 
