@@ -12,6 +12,7 @@ import {
   ListObjectsV2Command,
   GetObjectCommand,
   DeleteObjectsCommand,
+  type _Object,
 } from "@aws-sdk/client-s3";
 import config from "../../config";
 import logger from "../utils/logger";
@@ -304,6 +305,26 @@ class BackupService {
   }
 
   /**
+   * Fetches all objects in the bucket, following pagination.
+   * Pages depend on the previous continuation token, so they are
+   * fetched sequentially via recursion.
+   */
+  private async listAllRemoteObjects(token?: string): Promise<_Object[]> {
+    const page = await this.s3.send(
+      new ListObjectsV2Command({
+        Bucket: this.config.r2.bucketName,
+        ContinuationToken: token,
+      })
+    );
+
+    const contents = page.Contents ?? [];
+    if (!page.IsTruncated) return contents;
+
+    const rest = await this.listAllRemoteObjects(page.NextContinuationToken);
+    return contents.concat(rest);
+  }
+
+  /**
    * Deletes remote backups older than the remote retention policy
    */
   async cleanRemoteBackups() {
@@ -313,51 +334,41 @@ class BackupService {
       Date.now() - this.config.remoteRetentionDays * 24 * 60 * 60 * 1000;
 
     try {
-      const keysToDelete: { Key: string }[] = [];
-      let continuationToken: string | undefined;
-
-      do {
-        const page = await this.s3.send(
-          new ListObjectsV2Command({
-            Bucket: this.config.r2.bucketName,
-            ContinuationToken: continuationToken,
-          })
-        );
-
-        for (const obj of page.Contents || []) {
-          if (
+      const objects = await this.listAllRemoteObjects();
+      const keysToDelete = objects
+        .filter(
+          (obj) =>
             obj.Key &&
             obj.LastModified &&
             obj.LastModified.getTime() < cutoffMs
-          ) {
-            keysToDelete.push({ Key: obj.Key });
-          }
-        }
-
-        continuationToken = page.IsTruncated
-          ? page.NextContinuationToken
-          : undefined;
-      } while (continuationToken);
+        )
+        .map((obj) => ({ Key: obj.Key as string }));
 
       // DeleteObjects accepts at most 1000 keys per request
-      for (let i = 0; i < keysToDelete.length; i += 1000) {
-        const chunk = keysToDelete.slice(i, i + 1000);
-        await this.s3.send(
-          new DeleteObjectsCommand({
-            Bucket: this.config.r2.bucketName,
-            Delete: { Objects: chunk },
-          })
-        );
-        for (const { Key } of chunk) {
-          logger.info(`Deleted old remote backup: ${Key}`);
-        }
-      }
+      const chunks = Array.from(
+        { length: Math.ceil(keysToDelete.length / 1000) },
+        (_, i) => keysToDelete.slice(i * 1000, (i + 1) * 1000)
+      );
 
-      if (keysToDelete.length > 0) {
-        logger.info(`Cleaned ${keysToDelete.length} old remote backups`);
-      } else {
-        logger.info("No old remote backups to clean");
-      }
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          await this.s3.send(
+            new DeleteObjectsCommand({
+              Bucket: this.config.r2.bucketName,
+              Delete: { Objects: chunk },
+            })
+          );
+          for (const { Key } of chunk) {
+            logger.info(`Deleted old remote backup: ${Key}`);
+          }
+        })
+      );
+
+      logger.info(
+        keysToDelete.length > 0
+          ? `Cleaned ${keysToDelete.length} old remote backups`
+          : "No old remote backups to clean"
+      );
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn("Error cleaning remote backups:", msg);
@@ -371,30 +382,14 @@ class BackupService {
     if (!this.r2Configured) return [];
 
     try {
-      const backups: RemoteBackupInfo[] = [];
-      let continuationToken: string | undefined;
-
-      do {
-        const page = await this.s3.send(
-          new ListObjectsV2Command({
-            Bucket: this.config.r2.bucketName,
-            ContinuationToken: continuationToken,
-          })
-        );
-
-        for (const obj of page.Contents || []) {
-          if (!obj.Key) continue;
-          backups.push({
-            key: obj.Key,
-            size: ((obj.Size || 0) / 1024 / 1024).toFixed(2) + " MB",
-            date: obj.LastModified || new Date(0),
-          });
-        }
-
-        continuationToken = page.IsTruncated
-          ? page.NextContinuationToken
-          : undefined;
-      } while (continuationToken);
+      const objects = await this.listAllRemoteObjects();
+      const backups = objects
+        .filter((obj) => obj.Key)
+        .map((obj) => ({
+          key: obj.Key as string,
+          size: ((obj.Size || 0) / 1024 / 1024).toFixed(2) + " MB",
+          date: obj.LastModified || new Date(0),
+        }));
 
       return backups.sort((a, b) => b.date.getTime() - a.date.getTime());
     } catch (error) {
@@ -427,7 +422,7 @@ class BackupService {
     );
 
     if (!(response.Body instanceof Readable)) {
-      throw new Error("Unexpected response body from R2");
+      throw new TypeError("Unexpected response body from R2");
     }
 
     await pipeline(response.Body, createWriteStream(destPath));
@@ -471,25 +466,29 @@ class BackupService {
 
     try {
       const files = await fs.readdir(this.config.localPath);
-      let deletedCount = 0;
+      const candidates = files.filter(
+        (file) => file.startsWith("backup-") && file.endsWith(".sql.gz")
+      );
 
-      for (const file of files) {
-        if (!file.startsWith("backup-") || !file.endsWith(".sql.gz")) {
-          continue;
-        }
+      const expired = (
+        await Promise.all(
+          candidates.map(async (file) => {
+            const filePath = path.join(this.config.localPath, file);
+            const stats = await fs.stat(filePath);
+            return stats.mtime < cutoffDate ? filePath : null;
+          })
+        )
+      ).filter((filePath): filePath is string => filePath !== null);
 
-        const filePath = path.join(this.config.localPath, file);
-        const stats = await fs.stat(filePath);
-
-        if (stats.mtime < cutoffDate) {
+      await Promise.all(
+        expired.map(async (filePath) => {
           await fs.unlink(filePath);
-          deletedCount++;
-          logger.info(`Deleted old backup: ${file}`);
-        }
-      }
+          logger.info(`Deleted old backup: ${path.basename(filePath)}`);
+        })
+      );
 
-      if (deletedCount > 0) {
-        logger.info(`Cleaned ${deletedCount} old backups`);
+      if (expired.length > 0) {
+        logger.info(`Cleaned ${expired.length} old backups`);
       } else {
         logger.info("No old backups to clean");
       }
@@ -512,20 +511,22 @@ class BackupService {
   async listBackups(): Promise<BackupInfo[]> {
     try {
       const files = await fs.readdir(this.config.localPath);
-      const backups: BackupInfo[] = [];
+      const candidates = files.filter(
+        (file) => file.startsWith("backup-") && file.endsWith(".sql.gz")
+      );
 
-      for (const file of files) {
-        if (file.startsWith("backup-") && file.endsWith(".sql.gz")) {
-          const filePath = path.join(this.config.localPath, file);
-          const stats = await fs.stat(filePath);
-
-          backups.push({
+      const backups = await Promise.all(
+        candidates.map(async (file) => {
+          const stats = await fs.stat(
+            path.join(this.config.localPath, file)
+          );
+          return {
             filename: file,
             size: (stats.size / 1024 / 1024).toFixed(2) + " MB",
             date: stats.mtime,
-          });
-        }
-      }
+          };
+        })
+      );
 
       return backups.sort((a, b) => b.date.getTime() - a.date.getTime());
     } catch (error) {
