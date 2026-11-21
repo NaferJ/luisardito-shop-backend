@@ -24,8 +24,8 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install docker-cli, git, git-lfs, and mariadb-client for backups (mysqldump)
-RUN apk add --no-cache docker-cli git git-lfs mariadb-client
+# Install docker-cli so the backup job can run mysqldump inside the db container
+RUN apk add --no-cache docker-cli
 
 # Install production dependencies only
 # npm ci strictly uses package-lock.json (no version drift).

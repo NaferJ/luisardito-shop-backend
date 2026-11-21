@@ -58,6 +58,20 @@ jobs:
         env:
           PROD_GITHUB_TOKEN: ${{ secrets.PROD_GITHUB_TOKEN }}
 
+      - name: Validate R2 secrets
+        shell: bash
+        run: |
+          [ "$R2_ENDPOINT" != "" ] || { echo "R2_ENDPOINT missing"; exit 1; }
+          [ "$R2_ACCESS_KEY_ID" != "" ] || { echo "R2_ACCESS_KEY_ID missing"; exit 1; }
+          [ "$R2_SECRET_ACCESS_KEY" != "" ] || { echo "R2_SECRET_ACCESS_KEY missing"; exit 1; }
+          [ "$R2_BUCKET_NAME" != "" ] || { echo "R2_BUCKET_NAME missing"; exit 1; }
+          echo "All required R2 secrets are present."
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+
       - name: Ensure production .env file exists
         uses: appleboy/ssh-action@7eaf76671a0d7eec5d98ee897acda4f968735a17 # v1.2.0
         with:
@@ -130,13 +144,15 @@ jobs:
             echo "LEADERBOARD_SNAPSHOT_INTERVAL_HOURS=336" >> "$ENV_PATH"
             echo "LEADERBOARD_CLEANUP_DAYS=30" >> "$ENV_PATH"
 
-            # Backup configuration
+            # Backup configuration (local tier + Cloudflare R2 remote tier)
             echo "BACKUP_ENABLED=true" >> "$ENV_PATH"
-            echo "BACKUP_GITHUB_REPO_URL=${{ secrets.BACKUP_GITHUB_REPO_URL }}" >> "$ENV_PATH"
-            echo "BACKUP_GITHUB_TOKEN=${{ secrets.BACKUP_GITHUB_TOKEN }}" >> "$ENV_PATH"
-            echo "BACKUP_GITHUB_USER_EMAIL=${{ secrets.BACKUP_GITHUB_USER_EMAIL }}" >> "$ENV_PATH"
             echo "BACKUP_TIME=03:00" >> "$ENV_PATH"
             echo "BACKUP_RETENTION_DAYS=3" >> "$ENV_PATH"
+            echo "BACKUP_REMOTE_RETENTION_DAYS=30" >> "$ENV_PATH"
+            echo "R2_ENDPOINT=${{ secrets.R2_ENDPOINT }}" >> "$ENV_PATH"
+            echo "R2_ACCESS_KEY_ID=${{ secrets.R2_ACCESS_KEY_ID }}" >> "$ENV_PATH"
+            echo "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}" >> "$ENV_PATH"
+            echo "R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}" >> "$ENV_PATH"
 
             # Discord Bot Configuration
             echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" >> "$ENV_PATH"

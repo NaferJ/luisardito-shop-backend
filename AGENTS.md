@@ -36,6 +36,7 @@ Rules to avoid this:
    docker run --rm -v "${PWD}:/app" -w /app node:22 sh -c "npm install --no-audit --no-fund"
    ```
    Then run `npm ci` locally (Windows) to install from the corrected lock without touching it again.
+   From Git Bash, use `MSYS_NO_PATHCONV=1` and `$(pwd -W)` instead of `${PWD}` — Git Bash rewrites `-w /app` into a Windows path. PowerShell works as written.
 3. Verify before pushing: `docker run --rm -v "${PWD}:/app" -w /app node:22 sh -c "rm -rf node_modules && npm ci"` should succeed with no errors — this exactly mirrors CI.
 
 ## Environment

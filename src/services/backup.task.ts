@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from "node-cron";
 import backupService from "./backup.service";
+import config from "../../config";
 import logger from "../utils/logger";
 
 class BackupScheduler {
@@ -9,8 +10,8 @@ class BackupScheduler {
    * Starts the automatic backup scheduler
    */
   start() {
-    const backupTime = process.env.BACKUP_TIME || "03:00";
-    const enabled = process.env.BACKUP_ENABLED === "true";
+    const backupTime = config.backup.time;
+    const enabled = config.backup.enabled;
 
     if (!enabled) {
       logger.info("Backup scheduler disabled");

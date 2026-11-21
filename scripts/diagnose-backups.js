@@ -7,10 +7,9 @@
 
 require("dotenv").config();
 
-const backupService = require("./dist/src/services/backup.service");
-const backupScheduler = require("./dist/src/services/backup.task");
+const backupService = require("../dist/src/services/backup.service");
+const backupScheduler = require("../dist/src/services/backup.task");
 const fs = require("fs");
-const path = require("path");
 
 async function diagnoseBackups() {
   console.log("Backup System Diagnostic\n");
@@ -19,14 +18,26 @@ async function diagnoseBackups() {
   console.log("1. Configuration:");
   console.log("   BACKUP_ENABLED:", process.env.BACKUP_ENABLED);
   console.log("   BACKUP_TIME:", process.env.BACKUP_TIME);
+  console.log("   BACKUP_RETENTION_DAYS:", process.env.BACKUP_RETENTION_DAYS);
   console.log(
-    "   BACKUP_GITHUB_TOKEN:",
-    process.env.BACKUP_GITHUB_TOKEN ? "Configured" : "Missing"
+    "   BACKUP_REMOTE_RETENTION_DAYS:",
+    process.env.BACKUP_REMOTE_RETENTION_DAYS
   );
-  console.log("   BACKUP_GITHUB_REPO_URL:", process.env.BACKUP_GITHUB_REPO_URL);
   console.log(
-    "   BACKUP_GITHUB_USER_EMAIL:",
-    process.env.BACKUP_GITHUB_USER_EMAIL
+    "   R2_ENDPOINT:",
+    process.env.R2_ENDPOINT ? "Configured" : "Missing"
+  );
+  console.log(
+    "   R2_ACCESS_KEY_ID:",
+    process.env.R2_ACCESS_KEY_ID ? "Configured" : "Missing"
+  );
+  console.log(
+    "   R2_SECRET_ACCESS_KEY:",
+    process.env.R2_SECRET_ACCESS_KEY ? "Configured" : "Missing"
+  );
+  console.log(
+    "   R2_BUCKET_NAME:",
+    process.env.R2_BUCKET_NAME ? "Configured" : "Missing"
   );
   console.log("");
 
@@ -42,25 +53,12 @@ async function diagnoseBackups() {
 
   // 3. Verify directories
   console.log("3. Directories:");
-  const localPath = path.join(__dirname, "backups/local");
-  const githubPath = path.join(__dirname, "backups/github");
+  const localPath = backupService.config.localPath;
 
   console.log(
     "   Local path:",
     localPath,
     fs.existsSync(localPath) ? "Exists" : "Missing"
-  );
-  console.log(
-    "   GitHub path:",
-    githubPath,
-    fs.existsSync(githubPath) ? "Exists" : "Missing"
-  );
-
-  const gitPath = path.join(githubPath, ".git");
-  console.log(
-    "   GitHub .git:",
-    gitPath,
-    fs.existsSync(gitPath) ? "Initialized" : "Not initialized"
   );
   console.log("");
 
@@ -93,35 +91,26 @@ async function diagnoseBackups() {
     console.log("   Backups disabled (BACKUP_ENABLED != true)");
   }
 
-  if (process.env.BACKUP_GITHUB_TOKEN) {
-    console.log("   GitHub token configured");
+  if (backupService.r2Configured) {
+    console.log("   R2 configured");
   } else {
-    console.log("   GitHub token missing");
+    console.log("   R2 missing configuration");
   }
+  console.log("");
 
-  // 6. Verify GitHub repository state
-  console.log("6. GitHub repository state:");
-  if (fs.existsSync(gitPath)) {
-    try {
-      const { execFileSync } = require("child_process");
-      // Absolute git path to avoid PATH injection (S4036)
-      const gitBin = process.platform === "win32" ? "git" : "/usr/bin/git";
-      const lastCommit = execFileSync(gitBin, ["log", "-1", "--oneline"], {
-        cwd: githubPath,
-        encoding: "utf8",
-      }).trim();
-      console.log("   Last commit:", lastCommit);
-
-      const status = execFileSync(gitBin, ["status", "--porcelain"], {
-        cwd: githubPath,
-        encoding: "utf8",
-      }).trim();
-      console.log("   Repo status:", status || "Clean");
-    } catch (error) {
-      console.log("   Error verifying repo:", error.message);
+  // 6. Verify R2 connectivity and remote backups
+  console.log("6. R2 remote storage:");
+  try {
+    const connected = await backupService.checkR2Connection();
+    if (connected) {
+      console.log("   R2 connection: OK");
+      const remoteBackups = await backupService.listRemoteBackups();
+      console.log("   Remote backups found:", remoteBackups.length);
+    } else {
+      console.log("   R2 connection: FAILED (or not configured)");
     }
-  } else {
-    console.log("   Repository not initialized");
+  } catch (error) {
+    console.log("   Error checking R2:", error.message);
   }
   console.log("");
 

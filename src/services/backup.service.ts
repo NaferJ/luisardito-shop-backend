@@ -3,24 +3,38 @@ import { promisify } from "node:util";
 import crypto from "node:crypto";
 import { promises as fs, createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
-import zlib from "node:zlib";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import zlib from "node:zlib";
+import {
+  S3Client,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  GetObjectCommand,
+  DeleteObjectsCommand,
+} from "@aws-sdk/client-s3";
+import config from "../../config";
 import logger from "../utils/logger";
 
 const execAsync = promisify(exec);
 
+const BACKUP_FILENAME_PATTERN = /^backup-[\w-]+\.sql\.gz$/;
+
 interface BackupConfig {
   enabled: boolean;
-  githubRepoUrl: string | undefined;
-  githubToken: string | undefined;
-  githubUserEmail: string | undefined;
   retentionDays: number;
+  remoteRetentionDays: number;
   localPath: string;
-  githubPath: string;
   dbContainer: string;
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  r2: {
+    endpoint: string | undefined;
+    accessKeyId: string | undefined;
+    secretAccessKey: string | undefined;
+    bucketName: string | undefined;
+  };
 }
 
 interface BackupResult {
@@ -38,28 +52,63 @@ interface BackupInfo {
   date: Date;
 }
 
+interface RemoteBackupInfo {
+  key: string;
+  size: string;
+  date: Date;
+}
+
 class BackupService {
   config: BackupConfig;
+  private s3Client: S3Client | null = null;
 
   constructor() {
     this.config = {
-      enabled: process.env.BACKUP_ENABLED === "true",
-      githubRepoUrl: process.env.BACKUP_GITHUB_REPO_URL,
-      githubToken: process.env.BACKUP_GITHUB_TOKEN,
-      githubUserEmail: process.env.BACKUP_GITHUB_USER_EMAIL,
-      retentionDays: Number.parseInt(process.env.BACKUP_RETENTION_DAYS || "3"),
-      localPath: path.join(__dirname, "../../backups/local"),
-      githubPath: path.join(__dirname, "../../backups/github"),
-      dbContainer: "luisardito-mysql",
-      dbName: process.env.DB_NAME || "luisardito_shop",
-      dbUser: "root",
-      dbPassword: process.env.MYSQL_ROOT_PASSWORD || "root",
+      enabled: config.backup.enabled,
+      retentionDays: config.backup.retentionDays,
+      remoteRetentionDays: config.backup.remoteRetentionDays,
+      localPath: path.join(process.cwd(), "backups", "local"),
+      dbContainer: config.backup.dbContainer,
+      dbName: config.db.database || "luisardito_shop",
+      dbUser: config.backup.dbUser,
+      dbPassword: config.backup.dbPassword,
+      r2: {
+        endpoint: config.backup.r2.endpoint,
+        accessKeyId: config.backup.r2.accessKeyId,
+        secretAccessKey: config.backup.r2.secretAccessKey,
+        bucketName: config.backup.r2.bucketName,
+      },
     };
 
     // Validate configuration
-    if (this.config.enabled && !this.config.githubToken) {
-      logger.warn("Backup enabled but BACKUP_GITHUB_TOKEN is missing");
+    if (this.config.enabled && !this.r2Configured) {
+      logger.warn(
+        "Backups enabled but R2 is not fully configured (need R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME); remote uploads will be skipped"
+      );
     }
+  }
+
+  get r2Configured(): boolean {
+    const r2 = this.config.r2;
+    return Boolean(
+      r2.endpoint && r2.accessKeyId && r2.secretAccessKey && r2.bucketName
+    );
+  }
+
+  get s3(): S3Client {
+    if (!this.s3Client) {
+      const r2 = this.config.r2;
+      this.s3Client = new S3Client({
+        region: "auto",
+        endpoint: r2.endpoint,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: r2.accessKeyId,
+          secretAccessKey: r2.secretAccessKey,
+        },
+      });
+    }
+    return this.s3Client;
   }
 
   /**
@@ -101,11 +150,12 @@ class BackupService {
 
       logger.info(`Backup created: ${gzFilename} (${sizeMB} MB)`);
 
-      // 5. Upload to GitHub
-      if (this.config.githubToken) {
-        await this.pushToGitHub(localGzPath, gzFilename);
+      // 5. Upload to R2
+      if (this.r2Configured) {
+        const uploaded = await this.uploadToR2(localGzPath, gzFilename);
+        if (uploaded) await this.cleanRemoteBackups();
       } else {
-        logger.warn("GitHub token not configured, skipping GitHub upload");
+        logger.warn("R2 not configured, skipping remote upload");
       }
 
       // 6. Clean old backups
@@ -225,224 +275,188 @@ class BackupService {
   }
 
   /**
-   * Uploads the backup to GitHub
+   * Uploads the backup to Cloudflare R2
    */
-  async pushToGitHub(backupPath: string, filename: string) {
-    logger.info("Uploading backup to GitHub...");
+  async uploadToR2(backupPath: string, filename: string): Promise<boolean> {
+    logger.info("Uploading backup to R2...");
 
     try {
-      // Check file size
       const stats = await fs.stat(backupPath);
-      const sizeMB = stats.size / 1024 / 1024;
 
-      // Initialize repo if it does not exist (this also configures Git LFS)
-      await this.initGitHubRepo();
-
-      // Check if Git LFS is available
-      const hasLFS = await this.checkGitLFS();
-
-      if (!hasLFS && sizeMB > 95) {
-        logger.warn(
-          `Backup too large (${sizeMB.toFixed(2)} MB) - GitHub has a 100 MB limit`
-        );
-        logger.warn("Suggestion: install Git LFS to handle large files");
-        logger.warn("Local backups are working correctly");
-        return;
-      }
-
-      if (hasLFS && sizeMB > 95) {
-        logger.info(`Using Git LFS for large file (${sizeMB.toFixed(2)} MB)`);
-      }
-
-      // Copy file to the GitHub directory
-      const year = new Date().getFullYear();
-      const month = String(new Date().getMonth() + 1).padStart(2, "0");
-      const destDir = path.join(this.config.githubPath, String(year), month);
-
-      await fs.mkdir(destDir, { recursive: true });
-      const destPath = path.join(destDir, filename);
-      await fs.copyFile(backupPath, destPath);
-
-      // Commit and push
-      const repoPath = this.config.githubPath;
-      const relativePath = path.join(String(year), month, filename);
-
-      // Set merge as the default strategy
-      await execAsync(`cd "${repoPath}" && git config pull.rebase false`);
-
-      await execAsync(`cd "${repoPath}" && git add "${relativePath}"`);
-      await execAsync(
-        `cd "${repoPath}" && git commit -m "Automatic backup: ${filename}"`
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.config.r2.bucketName,
+          Key: filename,
+          Body: createReadStream(backupPath),
+          ContentType: "application/gzip",
+          ContentLength: stats.size,
+        })
       );
 
-      // Try to sync with remote
-      try {
-        await execAsync(`cd "${repoPath}" && git pull origin main --no-edit`);
-        await execAsync(`cd "${repoPath}" && git push origin main`);
-      } catch {
-        // If there are conflicts, force push (backups don't need to preserve history)
-        logger.warn("[Backup] Conflict detected, forcing push...");
-        await execAsync(`cd "${repoPath}" && git push --force origin main`);
-      }
-
-      logger.info("Backup uploaded to GitHub successfully");
+      logger.info("Backup uploaded to R2 successfully");
+      return true;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.error("Error uploading to GitHub:", msg);
-      // Don't fail the whole process if GitHub fails
-    }
-  }
-
-  /**
-   * Checks if Git LFS is available and configured
-   */
-  async checkGitLFS(): Promise<boolean> {
-    try {
-      await execAsync("git lfs version");
-
-      // Check if it is configured in the repo
-      const gitattributesPath = path.join(
-        this.config.githubPath,
-        ".gitattributes"
-      );
-      const content = await fs.readFile(gitattributesPath, "utf-8");
-      return content.includes("*.sql.gz");
-    } catch {
+      logger.error("Error uploading to R2:", msg);
+      // Don't fail the whole process if R2 fails
       return false;
     }
   }
 
   /**
-   * Initializes the GitHub repository if it does not exist
+   * Deletes remote backups older than the remote retention policy
    */
-  async initGitHubRepo() {
-    const repoPath = this.config.githubPath;
+  async cleanRemoteBackups() {
+    if (!this.r2Configured) return;
+
+    const cutoffMs =
+      Date.now() - this.config.remoteRetentionDays * 24 * 60 * 60 * 1000;
 
     try {
-      // Check if it already exists
-      await fs.access(path.join(repoPath, ".git"));
+      const keysToDelete: { Key: string }[] = [];
+      let continuationToken: string | undefined;
 
-      // Update remote with token
-      const authUrl = this.config.githubRepoUrl!.replace(
-        "https://",
-        `https://x-access-token:${this.config.githubToken}@`
-      );
-      await execAsync(
-        `cd "${repoPath}" && git remote set-url origin "${authUrl}"`
-      );
-
-      // Ensure Git LFS is configured
-      await this.ensureGitLFS(repoPath);
-    } catch {
-      // Does not exist, initialize from scratch
-      logger.info("Initializing backup repository...");
-
-      const authUrl = this.config.githubRepoUrl!.replace(
-        "https://",
-        `https://x-access-token:${this.config.githubToken}@`
-      );
-
-      // Ensure the directory exists and is empty
-      await fs.mkdir(repoPath, { recursive: true });
-
-      try {
-        // Try to clone first (if the repo has content)
-        await execAsync(`git clone "${authUrl}" "${repoPath}"`);
-        logger.info("Repository cloned successfully");
-      } catch {
-        // If clone fails, initialize a new repo
-        logger.info("Empty repository, initializing new repo...");
-
-        // Configure safe.directory to avoid ownership errors
-        await execAsync(
-          `git config --global --add safe.directory "${repoPath}"`
+      do {
+        const page = await this.s3.send(
+          new ListObjectsV2Command({
+            Bucket: this.config.r2.bucketName,
+            ContinuationToken: continuationToken,
+          })
         );
 
-        // Initialize git in the directory
-        await execAsync(`cd "${repoPath}" && git init`);
-
-        // Try to add remote, if it fails use set-url
-        try {
-          await execAsync(
-            `cd "${repoPath}" && git remote add origin "${authUrl}"`
-          );
-        } catch {
-          // Remote already exists, update it
-          await execAsync(
-            `cd "${repoPath}" && git remote set-url origin "${authUrl}"`
-          );
+        for (const obj of page.Contents || []) {
+          if (
+            obj.Key &&
+            obj.LastModified &&
+            obj.LastModified.getTime() < cutoffMs
+          ) {
+            keysToDelete.push({ Key: obj.Key });
+          }
         }
 
-        // Create or switch to main branch
-        try {
-          await execAsync(`cd "${repoPath}" && git checkout -b main`);
-        } catch {
-          await execAsync(`cd "${repoPath}" && git checkout main`);
-        }
+        continuationToken = page.IsTruncated
+          ? page.NextContinuationToken
+          : undefined;
+      } while (continuationToken);
 
-        logger.info("Repository initialized");
+      // DeleteObjects accepts at most 1000 keys per request
+      for (let i = 0; i < keysToDelete.length; i += 1000) {
+        const chunk = keysToDelete.slice(i, i + 1000);
+        await this.s3.send(
+          new DeleteObjectsCommand({
+            Bucket: this.config.r2.bucketName,
+            Delete: { Objects: chunk },
+          })
+        );
+        for (const { Key } of chunk) {
+          logger.info(`Deleted old remote backup: ${Key}`);
+        }
       }
 
-      // Configure safe.directory for existing repos too (just in case)
-      await execAsync(
-        `git config --global --add safe.directory "${repoPath}"`
-      ).catch(() => {});
-
-      // Configure git user (now we are sure it is a git repo)
-      const email = this.config.githubUserEmail || "backup@luisardito.com";
-      await execAsync(`cd "${repoPath}" && git config user.email "${email}"`);
-      await execAsync(`cd "${repoPath}" && git config user.name "Backup Bot"`);
-
-      // Configure Git LFS
-      await this.ensureGitLFS(repoPath);
-
-      logger.info("Backup repository fully configured");
+      if (keysToDelete.length > 0) {
+        logger.info(`Cleaned ${keysToDelete.length} old remote backups`);
+      } else {
+        logger.info("No old remote backups to clean");
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn("Error cleaning remote backups:", msg);
     }
   }
 
   /**
-   * Ensures Git LFS is configured in the repository
+   * Lists backups stored in R2
    */
-  async ensureGitLFS(repoPath: string) {
+  async listRemoteBackups(): Promise<RemoteBackupInfo[]> {
+    if (!this.r2Configured) return [];
+
     try {
-      // Check if git-lfs is installed
-      await execAsync("git lfs version");
+      const backups: RemoteBackupInfo[] = [];
+      let continuationToken: string | undefined;
 
-      // Initialize Git LFS in the repository
-      await execAsync(`cd "${repoPath}" && git lfs install`);
+      do {
+        const page = await this.s3.send(
+          new ListObjectsV2Command({
+            Bucket: this.config.r2.bucketName,
+            ContinuationToken: continuationToken,
+          })
+        );
 
-      // Check if .gitattributes exists and has the correct configuration
-      const gitattributesPath = path.join(repoPath, ".gitattributes");
-      try {
-        const content = await fs.readFile(gitattributesPath, "utf-8");
-        if (!content.includes("*.sql.gz")) {
-          // Add tracking for .sql.gz files
-          await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
-          logger.info("Git LFS configured to track *.sql.gz files");
+        for (const obj of page.Contents || []) {
+          if (!obj.Key) continue;
+          backups.push({
+            key: obj.Key,
+            size: ((obj.Size || 0) / 1024 / 1024).toFixed(2) + " MB",
+            date: obj.LastModified || new Date(0),
+          });
         }
-      } catch {
-        // .gitattributes does not exist, create tracking
-        await execAsync(`cd "${repoPath}" && git lfs track "*.sql.gz"`);
 
-        // Commit .gitattributes if it is new
-        try {
-          await execAsync(`cd "${repoPath}" && git add .gitattributes`);
-          await execAsync(
-            `cd "${repoPath}" && git commit -m "chore: configure Git LFS for backups"`
-          );
-          await execAsync(`cd "${repoPath}" && git push origin main`);
-          logger.info("Git LFS configured and .gitattributes committed");
-        } catch {
-          // If commit fails, probably because there are no changes or the repo is empty
-          logger.info("Git LFS configured locally");
-        }
-      }
+        continuationToken = page.IsTruncated
+          ? page.NextContinuationToken
+          : undefined;
+      } while (continuationToken);
+
+      return backups.sort((a, b) => b.date.getTime() - a.date.getTime());
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      logger.warn("Git LFS is not available:", msg);
-      logger.warn(
-        "Install Git LFS with: apk add git-lfs (on Alpine) or apt-get install git-lfs (on Debian/Ubuntu)"
+      logger.error("Error listing remote backups:", msg);
+      return [];
+    }
+  }
+
+  /**
+   * Downloads a remote backup from R2 into the local backups directory
+   */
+  async downloadRemoteBackup(filename: string): Promise<string> {
+    if (!BACKUP_FILENAME_PATTERN.test(filename)) {
+      throw new Error(`Invalid backup filename: ${filename}`);
+    }
+
+    if (!this.r2Configured) {
+      throw new Error("R2 is not configured, cannot download remote backups");
+    }
+
+    await fs.mkdir(this.config.localPath, { recursive: true });
+    const destPath = path.join(this.config.localPath, filename);
+
+    const response = await this.s3.send(
+      new GetObjectCommand({
+        Bucket: this.config.r2.bucketName,
+        Key: filename,
+      })
+    );
+
+    if (!(response.Body instanceof Readable)) {
+      throw new Error("Unexpected response body from R2");
+    }
+
+    await pipeline(response.Body, createWriteStream(destPath));
+
+    logger.info(`Downloaded remote backup: ${filename}`);
+    return destPath;
+  }
+
+  /**
+   * Checks connectivity with the R2 bucket
+   */
+  async checkR2Connection(): Promise<boolean> {
+    if (!this.r2Configured) {
+      logger.warn("R2 is not configured");
+      return false;
+    }
+
+    try {
+      await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: this.config.r2.bucketName,
+          MaxKeys: 1,
+        })
       );
+      return true;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.error("R2 connection check failed:", msg);
+      return false;
     }
   }
 
@@ -490,7 +504,6 @@ class BackupService {
    */
   async ensureDirectories() {
     await fs.mkdir(this.config.localPath, { recursive: true });
-    await fs.mkdir(this.config.githubPath, { recursive: true });
   }
 
   /**
@@ -530,9 +543,13 @@ class BackupService {
   ): Promise<{ success: boolean; error?: string }> {
     logger.info(`Starting backup restore: ${filename}`);
 
-    const backupPath = path.join(this.config.localPath, filename);
-
     try {
+      if (!BACKUP_FILENAME_PATTERN.test(filename)) {
+        throw new Error(`Invalid backup filename: ${filename}`);
+      }
+
+      const backupPath = path.join(this.config.localPath, filename);
+
       // Verify the file exists
       await fs.access(backupPath);
 

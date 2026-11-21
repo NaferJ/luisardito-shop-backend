@@ -103,11 +103,11 @@ GET    /admin/community/stats  (permiso: moderar_comunidad) → views/engagement
 
 ### A6. Backups → R2 (D3)
 
-- [ ] `npm i @aws-sdk/client-s3` — regenerate lock in Linux container (`docker run --rm -v ${PWD}:/app -w /app node:22 npm install`) then `npm ci` — DO NOT `npm install` on Windows
-- [ ] Replace `pushToGitHub()` (~250 lines of git/LFS juggling) with S3 `PutObject` + keep local `.sql.gz` tier
-- [ ] Env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` → `.env.example` + `config.ts`
-- [ ] Set R2 lifecycle rule (delete after N days) via dashboard or API — replaces `cleanOldBackups` remote side
-- [ ] Update restore path/docs (`scripts/restore-backup.js`, `diagnose-backups.js`)
+- [x] `npm i @aws-sdk/client-s3` — regenerate lock in Linux container (`docker run --rm -v ${PWD}:/app -w /app node:22 npm install`) then `npm ci` — DO NOT `npm install` on Windows
+- [x] Replace `pushToGitHub()` (~250 lines of git/LFS juggling) with S3 `PutObject` + keep local `.sql.gz` tier
+- [x] Env: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET` → `.env.example` + `config.ts`
+- [x] Remote retention enforced in-app — `BACKUP_REMOTE_RETENTION_DAYS=30`, `cleanRemoteBackups()` lists + deletes old R2 objects; no dashboard lifecycle rule
+- [x] Update restore path/docs (`scripts/restore-backup.js`, `diagnose-backups.js`)
 
 ---
 
@@ -181,3 +181,4 @@ Frontend (board 12):
   - **Fixed pre-existing bug**: `config.ts` used `dotenv.config({override:true})` for `.env.development`, stomping compose env vars → container's Redis auth was silently broken (WRONGPASS). Now real env > .env.development > .env.
   - **Infra gotcha**: a WSL dev server shadows `:3001` on `localhost` — requests may not reach the Docker container. Use `127.0.0.1:3001` or in-container checks to test the container.
   - Board: #91, #92 moved to In Progress (implemented, uncommitted).
+- **2026-11-21** — A6 (#86) implemented on branch `refactor/backup-storage-r2`, uncommitted. GitHub+LFS remote tier replaced by Cloudflare R2 via `@aws-sdk/client-s3` (in-app `PutObject`/`ListObjectsV2`/`GetObject`/`DeleteObjects`); cron, docker-exec mysqldump, gzip and local retention unchanged. Remote retention enforced in-app (`BACKUP_REMOTE_RETENTION_DAYS=30` via `cleanRemoteBackups`), not via an R2 dashboard lifecycle rule. Naming deviation from the A6 env list: shipped `R2_ENDPOINT`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME` (poxyram convention) instead of `R2_ACCOUNT_ID`/`R2_BUCKET`. `scripts/restore-backup.js` can list and download remote backups; `scripts/diagnose-backups.js` checks R2 connectivity. Dockerfile now installs only `docker-cli` for backups. Also fixed `localPath` (now `process.cwd()`-based): prod backups were landing in `/app/dist/backups/local` (ephemeral) instead of the mounted `/app/backups` volume — verified uid 1000/`node` ownership makes the fix safe.
