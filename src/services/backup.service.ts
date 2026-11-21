@@ -338,9 +338,7 @@ class BackupService {
       const keysToDelete = objects
         .filter(
           (obj) =>
-            obj.Key &&
-            obj.LastModified &&
-            obj.LastModified.getTime() < cutoffMs
+            obj.Key && obj.LastModified && obj.LastModified.getTime() < cutoffMs
         )
         .map((obj) => ({ Key: obj.Key as string }));
 
@@ -517,9 +515,7 @@ class BackupService {
 
       const backups = await Promise.all(
         candidates.map(async (file) => {
-          const stats = await fs.stat(
-            path.join(this.config.localPath, file)
-          );
+          const stats = await fs.stat(path.join(this.config.localPath, file));
           return {
             filename: file,
             size: (stats.size / 1024 / 1024).toFixed(2) + " MB",
