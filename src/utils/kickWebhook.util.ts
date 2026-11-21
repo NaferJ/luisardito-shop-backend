@@ -4,7 +4,7 @@ import logger from "./logger";
 // Kick public key for verifying signatures (loaded from environment variable)
 // In .env it is stored in a single line with literal \n as separator
 const KICK_PUBLIC_KEY = process.env.KICK_WEBHOOK_PUBLIC_KEY
-  ? process.env.KICK_WEBHOOK_PUBLIC_KEY.replaceAll("\\n", "\n")
+  ? process.env.KICK_WEBHOOK_PUBLIC_KEY.replaceAll(String.raw`\n`, "\n")
   : null;
 
 /**

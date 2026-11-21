@@ -244,38 +244,35 @@ class BotrixMigrationService {
         return { processed: false, reason: "Watchtime migration disabled" };
       }
 
-      // Regex to detect watchtime messages from Kick chat (Spanish format: "@user has spent [X days] [Y hours] [Z min] watching [this channel|the stream]")
-      // Linear pattern: captures everything before "viendo" via a negated class, avoiding nested quantifiers (S5852)
-      const watchtimeRegex =
-        /@(\w+)\s+ha\s+pasado\s+([^\nv]*)viendo\s+(?:este\s+canal|el\s+stream)/i;
-      const match = watchtimeRegex.exec(content);
+      // Detect watchtime messages from Kick chat (Spanish format: "@user has spent [X days] [Y hours] [Z min] watching [this channel|the stream]")
+      // Two linear checks instead of one backtracking-prone pattern (S5852):
+      // prefix "@user ha pasado ", then "viendo <suffix>" starting at the first "v".
+      const prefixMatch = /@(\w+)\s+ha\s+pasado\s+/i.exec(content);
+      if (!prefixMatch) {
+        return { processed: false, reason: "Pattern not matched" };
+      }
+      const [, targetUsername] = prefixMatch;
 
-      if (!match) {
+      const afterPrefix = content.slice(
+        prefixMatch.index + prefixMatch[0].length
+      );
+      const vIndex = afterPrefix.search(/v/i);
+      if (
+        vIndex === -1 ||
+        !/^viendo\s+(?:este\s+canal|el\s+stream)/i.test(
+          afterPrefix.slice(vIndex)
+        )
+      ) {
         return { processed: false, reason: "Pattern not matched" };
       }
 
-      const [, targetUsername, timeStr] = match;
-
-      // Extract time components without regex (avoids backtracking - S5852)
-      let days = 0,
-        hours = 0,
-        minutes = 0;
-      let hasTimeComponent = false;
-      const parts = timeStr.trim().split(" ").filter(Boolean);
-      for (let i = 0; i < parts.length - 1; i++) {
-        const num = Number.parseInt(parts[i], 10);
-        if (Number.isNaN(num)) continue;
-        const unit = parts[i + 1].toLowerCase();
-        if (unit.startsWith("min")) minutes = num;
-        else if (unit.startsWith("h")) hours = num;
-        else if (unit.startsWith("d")) days = num;
-        else continue;
-        hasTimeComponent = true;
-      }
-
-      if (!hasTimeComponent) {
+      const components = this.parseWatchtimeComponents(
+        afterPrefix.slice(0, vIndex)
+      );
+      if (!components) {
         return { processed: false, reason: "Pattern not matched" };
       }
+      const { days, hours, minutes } = components;
 
       // Convert everything to minutes: days * 24 * 60 + hours * 60 + minutes
       const totalWatchtimeMinutes = days * 24 * 60 + hours * 60 + minutes;
@@ -349,6 +346,32 @@ class BotrixMigrationService {
         error: msg,
       };
     }
+  }
+
+  /**
+   * Parse a BotRix watchtime segment ("2 días 5 horas 30 min") into components.
+   * Returns null when no number+unit pair is present.
+   * @param timeStr - Raw text between "ha pasado" and "viendo"
+   */
+  static parseWatchtimeComponents(timeStr: string) {
+    // Extract time components without regex (avoids backtracking - S5852)
+    let days = 0,
+      hours = 0,
+      minutes = 0;
+    let hasTimeComponent = false;
+    const parts = timeStr.trim().split(" ").filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i++) {
+      const num = Number.parseInt(parts[i], 10);
+      if (Number.isNaN(num)) continue;
+      const unit = parts[i + 1].toLowerCase();
+      if (unit.startsWith("min")) minutes = num;
+      else if (unit.startsWith("h")) hours = num;
+      else if (unit.startsWith("d")) days = num;
+      else continue;
+      hasTimeComponent = true;
+    }
+
+    return hasTimeComponent ? { days, hours, minutes } : null;
   }
 
   /**

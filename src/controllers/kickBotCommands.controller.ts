@@ -458,12 +458,10 @@ const duplicateCommand = asyncHandler(async (req: Request, res: Response) => {
 
     // Generate a unique name
     let newCommandName = `${originalCommand.command}_copy`;
-    for (
-      let counter = 1;
-      takenNames.has(newCommandName.toLowerCase());
-      counter++
-    ) {
+    let counter = 1;
+    while (takenNames.has(newCommandName.toLowerCase())) {
       newCommandName = `${originalCommand.command}_copy${counter}`;
+      counter++;
     }
 
     const duplicatedCommand = await KickBotCommand.create({
