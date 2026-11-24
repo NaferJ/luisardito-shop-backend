@@ -85,11 +85,9 @@ const getConfig = asyncHandler(async (_req: Request, res: Response) => {
         },
       ];
 
-      const created = [];
-      for (const configData of defaultConfigs) {
-        const newConfig = await KickPointsConfig.create(configData);
-        created.push(newConfig);
-      }
+      const created = await Promise.all(
+        defaultConfigs.map((configData) => KickPointsConfig.create(configData))
+      );
 
       logger.info(
         "[KICK POINTS DEBUG] Configuration initialized with",
@@ -196,12 +194,12 @@ const updateMultipleConfigs = asyncHandler(
         throw new AppError("configs must be an array", 400);
       }
 
-      const updated: KickPointsConfig[] = [];
-
-      for (const configData of configs) {
-        const config = await updateSingleConfig(configData);
-        if (config) updated.push(config);
-      }
+      const results = await Promise.all(
+        configs.map((configData) => updateSingleConfig(configData))
+      );
+      const updated = results.filter(
+        (config): config is KickPointsConfig => config !== null
+      );
 
       return res.json({
         message: `${updated.length} configurations updated`,
@@ -274,18 +272,18 @@ const initializeConfig = asyncHandler(async (_req: Request, res: Response) => {
       },
     ];
 
-    const created = [];
+    const results = await Promise.all(
+      defaultConfigs.map((configData) =>
+        KickPointsConfig.findOrCreate({
+          where: { config_key: configData.config_key },
+          defaults: configData,
+        })
+      )
+    );
 
-    for (const configData of defaultConfigs) {
-      const [config, isCreated] = await KickPointsConfig.findOrCreate({
-        where: { config_key: configData.config_key },
-        defaults: configData,
-      });
-
-      if (isCreated) {
-        created.push(config);
-      }
-    }
+    const created = results
+      .filter(([, isCreated]) => isCreated)
+      .map(([config]) => config);
 
     return res.json({
       message: `Configuration initialized (${created.length} new, ${defaultConfigs.length - created.length} existing)`,

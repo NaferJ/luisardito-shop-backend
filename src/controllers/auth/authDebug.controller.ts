@@ -4,12 +4,12 @@ import asyncHandler from "../../utils/asyncHandler";
 /**
  * Endpoint to check cookie status (debugging)
  */
-const cookieStatus = asyncHandler(async (req: Request, res: Response) => {
+const cookieStatus = asyncHandler((req: Request, res: Response) => {
   const cookies = req.headers.cookie;
   const authToken = req.cookies?.auth_token;
   const refreshToken = req.cookies?.refresh_token;
 
-  return res.json({
+  res.json({
     hasCookies: !!cookies,
     authToken: authToken ? "present" : "absent",
     refreshToken: refreshToken ? "present" : "absent",

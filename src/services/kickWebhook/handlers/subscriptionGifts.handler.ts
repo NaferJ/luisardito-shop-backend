@@ -205,9 +205,11 @@ async function handleSubscriptionGifts(
 
     // Award points to each giftee
     if (pointsForGiftee > 0) {
-      for (const giftee of giftees) {
-        await awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt);
-      }
+      await Promise.all(
+        giftees.map((giftee) =>
+          awardGifteePoints(giftee, gifter, pointsForGiftee, expiresAt)
+        )
+      );
     }
   } catch (error: unknown) {
     logger.error(

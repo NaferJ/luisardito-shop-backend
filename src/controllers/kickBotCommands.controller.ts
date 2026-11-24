@@ -443,13 +443,23 @@ const duplicateCommand = asyncHandler(async (req: Request, res: Response) => {
       throw new AppError("Command not found", 404);
     }
 
+    // Fetch all existing "_copy" names in a single query, then pick a unique one
+    const escapedPrefix = `${originalCommand.command}_copy`.replace(
+      /[\\%_]/g,
+      (ch) => `\\${ch}`
+    );
+    const existingCopies = await KickBotCommand.findAll({
+      where: { command: { [Op.like]: `${escapedPrefix}%` } },
+      attributes: ["command"],
+    });
+    const takenNames = new Set(
+      existingCopies.map((row) => row.command.toLowerCase())
+    );
+
     // Generate a unique name
     let newCommandName = `${originalCommand.command}_copy`;
     let counter = 1;
-
-    while (
-      await KickBotCommand.findOne({ where: { command: newCommandName } })
-    ) {
+    while (takenNames.has(newCommandName.toLowerCase())) {
       newCommandName = `${originalCommand.command}_copy${counter}`;
       counter++;
     }
@@ -490,7 +500,7 @@ const duplicateCommand = asyncHandler(async (req: Request, res: Response) => {
  * Test a command (without saving it)
  * POST /api/kick-admin/bot-commands/test
  */
-const testCommand = asyncHandler(async (req: Request, res: Response) => {
+const testCommand = asyncHandler((req: Request, res: Response) => {
   try {
     const {
       response_message,

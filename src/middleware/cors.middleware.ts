@@ -4,8 +4,7 @@ import type { RequestHandler } from "express";
 // CORS optimized for production
 const corsHandler: RequestHandler = (req, res, next) => {
   // Detect webhooks to allow full access
-  const isWebhook =
-    req.originalUrl && req.originalUrl.includes("/api/kick-webhook");
+  const isWebhook = req.originalUrl?.includes("/api/kick-webhook");
 
   if (isWebhook) {
     // Webhooks: allow everything

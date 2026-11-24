@@ -22,7 +22,7 @@ interface WebhookMetadata {
 type EventHandler = (
   payload: unknown,
   metadata: WebhookMetadata
-) => Promise<void>;
+) => void | Promise<void>;
 
 /**
  * Process event by type
