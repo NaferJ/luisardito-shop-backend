@@ -12,6 +12,7 @@ services:
       - .env
 
   api:
+    image: ghcr.io/naferj/luisardito-shop-backend:${IMAGE_TAG:-main}
     env_file:
       - .env
     # Permitir acceso al Docker socket como usuario no-root (GID 999 = docker group en host)

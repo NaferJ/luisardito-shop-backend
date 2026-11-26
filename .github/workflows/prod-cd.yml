@@ -3,14 +3,124 @@ name: CD - Production (Backend)
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Existing image tag (commit SHA) to redeploy; leave empty to build the selected ref"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deployment
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/naferj/luisardito-shop-backend
 
 jobs:
-  deploy:
-    runs-on: [self-hosted, linux]
+  build:
+    if: inputs.image_tag == ''
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            platform_pair: linux-amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            platform_pair: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform_pair }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform_pair }}
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digests-${{ matrix.platform_pair }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            docker buildx imagetools create \
+              -t "${{ env.IMAGE }}:${{ github.sha }}" \
+              -t "${{ env.IMAGE }}:main" \
+              $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+          else
+            docker buildx imagetools create \
+              -t "${{ env.IMAGE }}:${{ github.sha }}" \
+              $(printf '${{ env.IMAGE }}@sha256:%s ' *)
+          fi
+          docker buildx imagetools inspect "${{ env.IMAGE }}:${{ github.sha }}"
+
+  deploy:
+    needs: [merge]
+    if: always() && (needs.merge.result == 'success' || (needs.merge.result == 'skipped' && inputs.image_tag != ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+    steps:
       - name: Check PROD secrets presence
         run: |
           echo "HAS_HOST=$HAS_HOST"
@@ -49,14 +159,6 @@ jobs:
             whoami
             pwd
             echo "SSH OK"
-
-      - name: Validate PROD repo read token
-        shell: bash
-        run: |
-          [ "$PROD_GITHUB_TOKEN" != "" ] || { echo "PROD_GITHUB_TOKEN missing (create a PAT with repo read access)"; exit 1; }
-          echo "PROD_GITHUB_TOKEN present."
-        env:
-          PROD_GITHUB_TOKEN: ${{ secrets.PROD_GITHUB_TOKEN }}
 
       - name: Validate R2 secrets
         shell: bash
@@ -166,6 +268,8 @@ jobs:
             # Kick Webhook signature verification
             echo "KICK_WEBHOOK_PUBLIC_KEY=${{ secrets.KICK_WEBHOOK_PUBLIC_KEY }}" >> "$ENV_PATH"
 
+            echo "IMAGE_TAG=${{ env.IMAGE_TAG }}" >> "$ENV_PATH"
+
             chmod 600 "$ENV_PATH"
             echo "Wrote $ENV_PATH"
             sed -e 's/=.*/=***/' "$ENV_PATH"
@@ -182,33 +286,36 @@ jobs:
           script: |
             set -e
             APP_DIR="$HOME/apps/luisardito-shop-backend"
-            REPO_URL="https://x-access-token:${{ secrets.PROD_GITHUB_TOKEN }}@github.com/NaferJ/luisardito-shop-backend.git"
+            REPO_URL="https://github.com/NaferJ/luisardito-shop-backend.git"
             if [ -d "$APP_DIR/.git" ]; then
               cd "$APP_DIR"
               git remote set-url origin "$REPO_URL"
-              git fetch origin main
-              git reset --hard origin/main
             else
               mkdir -p "$HOME/apps"
               cd "$HOME/apps"
-              git clone --depth 1 "$REPO_URL"
+              git clone "$REPO_URL" luisardito-shop-backend
               cd luisardito-shop-backend
-              git checkout main
             fi
+            git fetch --depth 1 origin "${{ env.IMAGE_TAG }}"
+            git reset --hard FETCH_HEAD
 
             # Copy .env to project directory for docker-compose to resolve it
             cp $HOME/.env.backend.production .env
 
             # Remove possible conflicting containers by name to avoid name conflicts
-            for c in luisardito-mysql luisardito-backend luisardito-frontend; do
+            for c in luisardito-mysql luisardito-backend; do
               if docker ps -a --format '{{.Names}}' | grep -q "^${c}$"; then
                 docker rm -f "$c"
               fi
             done
 
-            # Bring stack down and up with production overrides
+            # Pull the prebuilt multi-arch image and bring the stack up without building
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull api
             docker compose -f docker-compose.yml -f docker-compose.prod.yml down
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 180
 
             # Show status
             docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+
+            # Prune dangling images left by previous deploys
+            docker image prune -f

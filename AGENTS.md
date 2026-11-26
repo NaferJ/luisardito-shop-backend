@@ -69,8 +69,8 @@ Development overrides live in `docker-compose.override.yml` (hot reload, publish
 
 ## CI/CD
 
-- **CI (`ci.yml`)** — Triggers on pushes to `dev` and PRs to `dev` or `main`. Runs `npm ci`, `npm test`, and a `docker build`. It does **not** run ESLint or Prettier — run `npm run format:check` and `npm run lint` locally before pushing.
-- **Production CD (`prod-cd.yml`)** — Triggers on pushes to `main`. Writes the production `.env` on the VPS from GitHub secrets and deploys the stack with `docker compose`.
+- **CI (`ci.yml`)** — Triggers on pushes to `dev` and PRs to `dev` or `main`. Runs on GitHub-hosted runners (`ubuntu-latest`).
+- **Production CD (`prod-cd.yml`)** — Triggers on pushes to `main` and `workflow_dispatch`. Builds multi-arch (amd64 + arm64) images on GitHub-hosted runners, publishes them to GHCR, and deploys over SSH. `workflow_dispatch` with `image_tag` redeploys an existing image tag.
 
 ## Project Board
 
