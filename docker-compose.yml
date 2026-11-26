@@ -19,8 +19,6 @@ services:
     image: redis:7-alpine
     container_name: luisardito-redis
     restart: always
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes --save 60 1 --replica-read-only no

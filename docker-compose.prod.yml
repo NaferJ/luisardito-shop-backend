@@ -20,7 +20,7 @@ services:
     command: >
       sh -c "npx sequelize db:migrate --debug && npm run start:prod"
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     restart: unless-stopped
     volumes:
       - ./tokens:/app/tokens
