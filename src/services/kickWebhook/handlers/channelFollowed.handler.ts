@@ -31,7 +31,7 @@ interface WebhookMetadata {
 async function handleChannelFollowed(
   payload: ChannelFollowedPayload,
   _metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const follower = payload.follower;
     const kickUserId = String(follower.user_id);
@@ -146,6 +146,7 @@ async function handleChannelFollowed(
       "[Kick Webhook][Channel Followed] Error:",
       toErrorMessage(error)
     );
+    return false;
   }
 }
 

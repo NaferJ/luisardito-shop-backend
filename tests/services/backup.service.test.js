@@ -58,6 +58,10 @@ jest.mock("node:fs", () => {
   };
 });
 
+jest.mock("../../src/services/healthchecks.service", () => ({
+  pingHealthcheck: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock("../../config", () => ({
   db: {
     host: "db",
@@ -78,6 +82,12 @@ jest.mock("../../config", () => ({
       bucketName: "luisardito-shop-backups",
     },
   },
+  monitoring: {
+    healthchecks: {
+      backupUrl: "https://hc-ping.com/backup-check-uuid",
+      heartbeatUrl: undefined,
+    },
+  },
 }));
 
 jest.mock("../../src/utils/logger", () => ({
@@ -89,6 +99,7 @@ jest.mock("../../src/utils/logger", () => ({
 const backupService = require("../../src/services/backup.service");
 const logger = require("../../src/utils/logger");
 const fs = require("node:fs");
+const { pingHealthcheck } = require("../../src/services/healthchecks.service");
 
 const configuredR2 = () => ({
   endpoint: "https://account-id.r2.cloudflarestorage.com",
@@ -268,6 +279,43 @@ describe("backupService R2 remote tier", () => {
 
     expect(result).toEqual({ success: false, reason: "disabled" });
     expect(mockSend).not.toHaveBeenCalled();
+    expect(pingHealthcheck).not.toHaveBeenCalled();
+  });
+
+  test("createBackup pings the backup healthcheck on success", async () => {
+    backupService.uploadToR2 = jest.fn().mockResolvedValue(true);
+
+    const result = await backupService.createBackup();
+
+    expect(result.success).toBe(true);
+    expect(pingHealthcheck).toHaveBeenCalledWith(
+      "https://hc-ping.com/backup-check-uuid",
+      false
+    );
+  });
+
+  test("createBackup pings the backup failure endpoint when the backup fails", async () => {
+    backupService.dumpDatabase.mockRejectedValue(new Error("dump failed"));
+
+    const result = await backupService.createBackup();
+
+    expect(result.success).toBe(false);
+    expect(pingHealthcheck).toHaveBeenCalledWith(
+      "https://hc-ping.com/backup-check-uuid",
+      true
+    );
+  });
+
+  test("createBackup pings the failure endpoint when the R2 upload fails", async () => {
+    backupService.uploadToR2 = jest.fn().mockResolvedValue(false);
+
+    const result = await backupService.createBackup();
+
+    expect(result.success).toBe(true);
+    expect(pingHealthcheck).toHaveBeenCalledWith(
+      "https://hc-ping.com/backup-check-uuid",
+      true
+    );
   });
 
   test("downloadRemoteBackup writes to a unique partial file and renames it into place", async () => {

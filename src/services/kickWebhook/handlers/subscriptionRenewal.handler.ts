@@ -8,7 +8,7 @@ import type {
  * Handle subscription renewals
  */
 async function handleSubscriptionRenewal(payload: unknown, _metadata: unknown) {
-  await processSubscriptionEvent(
+  return processSubscriptionEvent(
     payload as SubscriptionSharedPayload,
     _metadata as WebhookMetadata,
     {
