@@ -199,7 +199,21 @@ describe("kickWebhook.controller handleWebhook characterization", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ message: "Webhook processed successfully" });
     expect(KickWebhookEvent.create).toHaveBeenCalledTimes(1);
+    expect(KickWebhookEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: { data: "test" },
+        processed: false,
+      })
+    );
     expect(KickWebhookEvent.update).toHaveBeenCalledTimes(1);
+    expect(KickWebhookEvent.update).toHaveBeenCalledWith(
+      {
+        processed: true,
+        processed_at: expect.any(Date),
+        payload: null,
+      },
+      { where: { message_id: "msg-001" } }
+    );
   });
 
   // 7. processWebhookEvent throws
@@ -216,5 +230,6 @@ describe("kickWebhook.controller handleWebhook characterization", () => {
 
     expect(res.statusCode).toBe(500);
     expect(res.body).toEqual({ error: "Internal error processing webhook" });
+    expect(KickWebhookEvent.update).not.toHaveBeenCalled();
   });
 });

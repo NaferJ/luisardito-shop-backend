@@ -93,9 +93,9 @@ const handleWebhook = async (req: Request, res: Response) => {
       timestamp,
     });
 
-    // Mark as processed
+    // Mark as processed and clear the payload once it is no longer needed
     await KickWebhookEvent.update(
-      { processed: true, processed_at: new Date() },
+      { processed: true, processed_at: new Date(), payload: null },
       { where: { message_id: messageId } }
     );
 

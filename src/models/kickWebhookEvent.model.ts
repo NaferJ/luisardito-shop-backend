@@ -17,7 +17,7 @@ class KickWebhookEvent extends Model<
   declare event_type: string;
   declare event_version: string;
   declare message_timestamp: Date;
-  declare payload: Record<string, unknown>;
+  declare payload: Record<string, unknown> | null;
   declare processed: CreationOptional<boolean>;
   declare processed_at: Date | null;
   declare received_at: CreationOptional<Date>;
@@ -59,8 +59,8 @@ KickWebhookEvent.init(
     },
     payload: {
       type: DataTypes.JSON,
-      allowNull: false,
-      comment: "Event content",
+      allowNull: true,
+      comment: "Event content (cleared after successful processing)",
     },
     processed: {
       type: DataTypes.BOOLEAN,
