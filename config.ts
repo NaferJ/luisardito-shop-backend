@@ -75,9 +75,6 @@ interface BackupConfig {
   time: string;
   retentionDays: number;
   remoteRetentionDays: number;
-  dbContainer: string;
-  dbUser: string;
-  dbPassword: string;
   r2: BackupR2Config;
 }
 
@@ -179,9 +176,6 @@ const config: AppConfig = {
     time: process.env.BACKUP_TIME || "03:00",
     retentionDays: Number(process.env.BACKUP_RETENTION_DAYS || 3),
     remoteRetentionDays: Number(process.env.BACKUP_REMOTE_RETENTION_DAYS || 30),
-    dbContainer: process.env.BACKUP_DB_CONTAINER || "luisardito-mysql",
-    dbUser: "root",
-    dbPassword: process.env.MYSQL_ROOT_PASSWORD || "root",
     r2: {
       endpoint: process.env.R2_ENDPOINT,
       accessKeyId: process.env.R2_ACCESS_KEY_ID,

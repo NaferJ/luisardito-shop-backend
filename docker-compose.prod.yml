@@ -15,9 +15,6 @@ services:
     image: ghcr.io/naferj/luisardito-shop-backend:${IMAGE_TAG:-main}
     env_file:
       - .env
-    # Permitir acceso al Docker socket como usuario no-root (GID 999 = docker group en host)
-    group_add:
-      - "999"
     command: >
       sh -c "npx sequelize db:migrate --debug && npm run start:prod"
     ports:
@@ -26,7 +23,6 @@ services:
     volumes:
       - ./tokens:/app/tokens
       - ./backups:/app/backups
-      - /var/run/docker.sock:/var/run/docker.sock
 
 volumes:
   db_data:

@@ -1,6 +1,4 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-import crypto from "node:crypto";
+import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs, createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -17,19 +15,19 @@ import {
 import config from "../../config";
 import logger from "../utils/logger";
 
-const execAsync = promisify(exec);
-
 const BACKUP_FILENAME_PATTERN = /^backup-[\w-]+\.sql\.gz$/;
+const MAX_PROCESS_STDERR_LENGTH = 8192;
 
 interface BackupConfig {
   enabled: boolean;
   retentionDays: number;
   remoteRetentionDays: number;
   localPath: string;
-  dbContainer: string;
+  dbHost: string | undefined;
+  dbPort: number;
   dbName: string;
-  dbUser: string;
-  dbPassword: string;
+  dbUser: string | undefined;
+  dbPassword: string | undefined;
   r2: {
     endpoint: string | undefined;
     accessKeyId: string | undefined;
@@ -69,10 +67,11 @@ class BackupService {
       retentionDays: config.backup.retentionDays,
       remoteRetentionDays: config.backup.remoteRetentionDays,
       localPath: path.join(process.cwd(), "backups", "local"),
-      dbContainer: config.backup.dbContainer,
+      dbHost: config.db.host,
+      dbPort: config.db.port,
       dbName: config.db.database || "luisardito_shop",
-      dbUser: config.backup.dbUser,
-      dbPassword: config.backup.dbPassword,
+      dbUser: config.db.user,
+      dbPassword: config.db.password,
       r2: {
         endpoint: config.backup.r2.endpoint,
         accessKeyId: config.backup.r2.accessKeyId,
@@ -125,8 +124,7 @@ class BackupService {
       .toISOString()
       .replace(/[:.]/g, "-")
       .slice(0, -5);
-    const filename = `backup-${timestamp}.sql`;
-    const gzFilename = `${filename}.gz`;
+    const gzFilename = `backup-${timestamp}.sql.gz`;
 
     try {
       logger.info("Starting database backup...");
@@ -134,24 +132,17 @@ class BackupService {
       // Ensure directories exist
       await this.ensureDirectories();
 
-      // 1. Create backup with mysqldump
-      const localBackupPath = path.join(this.config.localPath, filename);
-      await this.dumpDatabase(localBackupPath);
-
-      // 2. Compress the backup
+      // 1. Create the compressed backup directly from mysqldump
       const localGzPath = path.join(this.config.localPath, gzFilename);
-      await this.compressBackup(localBackupPath, localGzPath);
+      await this.dumpDatabase(localGzPath);
 
-      // 3. Remove uncompressed backup
-      await fs.unlink(localBackupPath);
-
-      // 4. Get backup size
+      // 2. Get backup size
       const stats = await fs.stat(localGzPath);
       const sizeMB = (stats.size / 1024 / 1024).toFixed(2);
 
       logger.info(`Backup created: ${gzFilename} (${sizeMB} MB)`);
 
-      // 5. Upload to R2
+      // 3. Upload to R2
       if (this.r2Configured) {
         const uploaded = await this.uploadToR2(localGzPath, gzFilename);
         if (uploaded) await this.cleanRemoteBackups();
@@ -159,7 +150,7 @@ class BackupService {
         logger.warn("R2 not configured, skipping remote upload");
       }
 
-      // 6. Clean old backups
+      // 4. Clean old backups
       await this.cleanOldBackups();
 
       logger.info("Backup process completed successfully");
@@ -181,95 +172,191 @@ class BackupService {
     }
   }
 
-  /**
-   * Creates the database dump
-   */
-  async dumpDatabase(outputPath: string) {
-    logger.info("Creating MySQL dump...");
+  private getDbConnection() {
+    const { dbHost, dbPort, dbName, dbUser, dbPassword } = this.config;
 
-    // Create the dump directly in a temp file inside the MySQL container
-    // Unique name to avoid collisions and symlink attacks
-    const tempId = `${Date.now()}-${crypto.randomBytes(6).toString("hex")}`;
-    const tempFile = `/tmp/backup-${tempId}.sql`;
-
-    // Step 1: Create the dump inside the MySQL container
-    const dumpCommand =
-      `docker exec ${this.config.dbContainer} sh -c "mysqldump ` +
-      `-u ${this.config.dbUser} ` +
-      `-p${this.config.dbPassword} ` +
-      `--single-transaction ` +
-      `--routines ` +
-      `--triggers ` +
-      `--events ` +
-      `--ignore-table=${this.config.dbName}.kick_webhook_events ` +
-      `${this.config.dbName} > ${tempFile}"`;
-
-    // Step 2: Copy the file from the container to the host
-    const copyCommand = `docker cp ${this.config.dbContainer}:${tempFile} "${outputPath}"`;
-
-    // Step 3: Clean up the temp file
-    const cleanCommand = `docker exec ${this.config.dbContainer} rm -f ${tempFile}`;
-
-    try {
-      logger.info(
-        `[Backup] Running mysqldump in container ${this.config.dbContainer}`
+    if (!dbHost || !dbUser || !dbPassword) {
+      const missing: string[] = [];
+      if (!dbHost) missing.push("DB_HOST");
+      if (!dbUser) missing.push("DB_USER");
+      if (!dbPassword) missing.push("DB_PASSWORD");
+      throw new Error(
+        `Incomplete database backup configuration: missing ${missing.join(", ")}`
       );
+    }
 
-      // Create dump inside the container
-      const { stderr: dumpStderr } = await execAsync(dumpCommand);
+    return {
+      host: dbHost,
+      port: dbPort,
+      database: dbName,
+      user: dbUser,
+      password: dbPassword,
+    };
+  }
 
-      if (
-        dumpStderr &&
-        !dumpStderr.includes("Warning") &&
-        !dumpStderr.includes("Using a password")
-      ) {
-        logger.warn("[Backup] mysqldump warnings:", dumpStderr);
-      }
+  private observeProcess(child: ChildProcess, command: string) {
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      stderr = (stderr + chunk.toString()).slice(-MAX_PROCESS_STDERR_LENGTH);
+    });
 
-      // Copy file to host
-      await execAsync(copyCommand);
-
-      // Clean up temp file
-      await execAsync(cleanCommand);
-
-      // Verify the file is not empty
-      const stats = await fs.stat(outputPath);
-      if (stats.size === 0) {
-        throw new Error("The backup file is empty");
-      }
-
-      logger.info(
-        `MySQL dump completed (${(stats.size / 1024 / 1024).toFixed(2)} MB)`
-      );
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[Backup] Detailed error:", msg);
-      if (error instanceof Error && "stderr" in error) {
-        logger.error("[Backup] stderr:", (error as { stderr: string }).stderr);
-      }
-      throw new Error(`Error creating MySQL dump: ${msg}`, {
-        cause: error,
+    const done = new Promise<void>((resolve, reject) => {
+      child.once("error", (error) => {
+        reject(
+          new Error(`Failed to start ${command}: ${error.message}`, {
+            cause: error,
+          })
+        );
       });
+
+      child.once("close", (code, signal) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+
+        const status = signal ? `signal ${signal}` : `exit code ${code}`;
+        const details = stderr.trim();
+        reject(
+          new Error(
+            `${command} failed with ${status}${details ? `: ${details}` : ""}`
+          )
+        );
+      });
+    });
+
+    return { done, getStderr: () => stderr };
+  }
+
+  private terminateChild(child: ChildProcess) {
+    if (child.exitCode === null && !child.killed) {
+      child.kill("SIGTERM");
+    }
+  }
+
+  private async waitForStreamProcess(
+    streamPromise: Promise<unknown>,
+    processDone: Promise<void>,
+    child: ChildProcess
+  ) {
+    // Stream errors and process exits race each other. Keep the first failure
+    // so a database error is not hidden by a downstream EPIPE, and stop the
+    // child if the local side of the stream fails first.
+    let firstFailure: "stream" | "process" | null = null;
+
+    const observedStream = streamPromise.then(
+      () => undefined,
+      (error) => {
+        if (!firstFailure) firstFailure = "stream";
+        this.terminateChild(child);
+        throw error;
+      }
+    );
+
+    const observedProcess = processDone.then(
+      () => undefined,
+      (error) => {
+        if (!firstFailure) firstFailure = "process";
+        this.terminateChild(child);
+        throw error;
+      }
+    );
+
+    const [streamResult, processResult] = await Promise.allSettled([
+      observedStream,
+      observedProcess,
+    ]);
+
+    if (firstFailure === "process" && processResult.status === "rejected") {
+      throw processResult.reason;
+    }
+    if (streamResult.status === "rejected") {
+      throw streamResult.reason;
+    }
+    if (processResult.status === "rejected") {
+      throw processResult.reason;
     }
   }
 
   /**
-   * Compresses the backup using gzip
+   * Creates the database dump and writes it directly as gzip
    */
-  async compressBackup(inputPath: string, outputPath: string) {
-    logger.info("Compressing backup...");
+  async dumpDatabase(outputPath: string) {
+    logger.info("Creating MySQL dump...");
+
+    const connection = this.getDbConnection();
+    const args = [
+      "-h",
+      connection.host,
+      "-P",
+      String(connection.port),
+      "-u",
+      connection.user,
+      "--single-transaction",
+      "--no-tablespaces",
+      "--triggers",
+      `--ignore-table=${connection.database}.kick_webhook_events`,
+      connection.database,
+    ];
+
+    const child = spawn("mysqldump", args, {
+      env: { ...process.env, MYSQL_PWD: connection.password },
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const { done, getStderr } = this.observeProcess(child, "mysqldump");
+    let dumpBytes = 0;
 
     try {
-      await pipeline(
-        createReadStream(inputPath),
-        zlib.createGzip(),
-        createWriteStream(outputPath)
+      child.stdout.on("data", (chunk: Buffer) => {
+        dumpBytes += chunk.length;
+      });
+
+      await this.waitForStreamProcess(
+        pipeline(
+          child.stdout,
+          zlib.createGzip(),
+          createWriteStream(outputPath)
+        ),
+        done,
+        child
       );
-      logger.info("Backup compressed");
+
+      // A gzip stream of an empty dump still has header/trailer bytes, so use
+      // the uncompressed byte count as well as the output file size.
+      const stats = await fs.stat(outputPath);
+      if (stats.size === 0 || dumpBytes === 0) {
+        throw new Error("The backup file is empty");
+      }
+
+      const stderr = getStderr().trim();
+      if (stderr) {
+        logger.warn("[Backup] mysqldump warnings:", stderr);
+      }
+
+      logger.info(
+        `MySQL dump completed (${(stats.size / 1024 / 1024).toFixed(2)} MB compressed)`
+      );
     } catch (error) {
+      // Do not leave a partial gzip behind; it would look like a valid backup.
+      try {
+        await fs.unlink(outputPath);
+      } catch (unlinkError) {
+        if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") {
+          const unlinkMsg =
+            unlinkError instanceof Error
+              ? unlinkError.message
+              : String(unlinkError);
+          logger.warn(
+            "[Backup] Could not remove incomplete backup:",
+            unlinkMsg
+          );
+        }
+      }
+
       const msg = error instanceof Error ? error.message : String(error);
-      logger.error("[Backup] Error compressing:", msg);
-      throw new Error(`Error compressing backup: ${msg}`, {
+      logger.error("[Backup] Detailed error:", msg);
+      throw new Error(`Error creating MySQL dump: ${msg}`, {
         cause: error,
       });
     }
@@ -550,25 +637,37 @@ class BackupService {
       // Verify the file exists
       await fs.access(backupPath);
 
-      // Decompress if compressed
-      let sqlFile = backupPath;
-      if (filename.endsWith(".gz")) {
-        sqlFile = backupPath.replace(".gz", "");
-        await execAsync(`gunzip -c "${backupPath}" > "${sqlFile}"`);
-      }
+      const connection = this.getDbConnection();
+      const args = [
+        "-h",
+        connection.host,
+        "-P",
+        String(connection.port),
+        "-u",
+        connection.user,
+        connection.database,
+      ];
 
-      // Restore into MySQL using docker exec
-      const command =
-        `docker exec -i ${this.config.dbContainer} mysql ` +
-        `-u ${this.config.dbUser} ` +
-        `-p${this.config.dbPassword} ` +
-        `${this.config.dbName} < "${sqlFile}"`;
+      const child = spawn("mysql", args, {
+        env: { ...process.env, MYSQL_PWD: connection.password },
+        shell: false,
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      const { done, getStderr } = this.observeProcess(child, "mysql");
 
-      await execAsync(command);
+      await this.waitForStreamProcess(
+        pipeline(
+          createReadStream(backupPath),
+          zlib.createGunzip(),
+          child.stdin
+        ),
+        done,
+        child
+      );
 
-      // Clean up the temporary decompressed file
-      if (sqlFile !== backupPath) {
-        await fs.unlink(sqlFile);
+      const stderr = getStderr().trim();
+      if (stderr) {
+        logger.warn("[Backup] mysql restore warnings:", stderr);
       }
 
       logger.info("Backup restored successfully");
