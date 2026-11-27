@@ -22,7 +22,7 @@ interface WebhookMetadata {
 type EventHandler = (
   payload: unknown,
   metadata: WebhookMetadata
-) => void | Promise<void>;
+) => boolean | void | Promise<boolean | void>;
 
 /**
  * Process event by type
@@ -30,13 +30,14 @@ type EventHandler = (
  * @param eventVersion - Event version
  * @param payload - Event data
  * @param metadata - Webhook metadata (messageId, subscriptionId, timestamp)
+ * @returns false when the handler caught and logged a processing failure
  */
 async function processWebhookEvent(
   eventType: string,
   eventVersion: number,
   payload: unknown,
   metadata: WebhookMetadata
-) {
+): Promise<boolean> {
   logger.info(`[Kick Webhook] Processing event ${eventType}`);
 
   const handlers: Record<string, EventHandler> = {
@@ -53,11 +54,13 @@ async function processWebhookEvent(
   };
 
   const handler = handlers[eventType];
-  if (handler) {
-    await handler(payload, metadata);
-  } else {
+  if (!handler) {
     logger.warn(`UNHANDLED EVENT: "${eventType}"`);
+    return true;
   }
+
+  const result = await handler(payload, metadata);
+  return result !== false;
 }
 
 export { processWebhookEvent };

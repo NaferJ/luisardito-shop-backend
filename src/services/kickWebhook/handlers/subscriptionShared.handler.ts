@@ -40,7 +40,7 @@ async function processSubscriptionEvent(
   payload: SubscriptionSharedPayload,
   _metadata: WebhookMetadata,
   opts: SubscriptionEventOptions
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const subscriber = payload.subscriber;
     const kickUserId = String(subscriber.user_id);
@@ -155,6 +155,7 @@ async function processSubscriptionEvent(
       `[Kick Webhook][${opts.logLabel}] Error:`,
       toErrorMessage(error)
     );
+    return false;
   }
 }
 
