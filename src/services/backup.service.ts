@@ -24,6 +24,8 @@ const PARTIAL_BACKUP_SUFFIX = ".partial";
 const PARTIAL_BACKUP_PATTERN =
   /^backup-[\w-]+\.sql\.gz(?:\.[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12})?\.partial$/;
 const MAX_PROCESS_STDERR_LENGTH = 8192;
+const MYSQLDUMP_COMMAND = "/usr/bin/mysqldump";
+const MYSQL_COMMAND = "/usr/bin/mysql";
 
 interface BackupConfig {
   enabled: boolean;
@@ -241,11 +243,8 @@ class BackupService {
 
         const status = signal ? `signal ${signal}` : `exit code ${code}`;
         const details = stderr.trim();
-        reject(
-          new Error(
-            `${command} failed with ${status}${details ? `: ${details}` : ""}`
-          )
-        );
+        const detailsSuffix = details ? `: ${details}` : "";
+        reject(new Error(`${command} failed with ${status}${detailsSuffix}`));
       });
     });
 
@@ -323,8 +322,8 @@ class BackupService {
       connection.database,
     ];
 
-    const child = spawn("mysqldump", args, {
-      env: { ...process.env, MYSQL_PWD: connection.password },
+    const child = spawn(MYSQLDUMP_COMMAND, args, {
+      env: { MYSQL_PWD: connection.password },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -706,8 +705,8 @@ class BackupService {
           })
         );
 
-        const child = spawn("mysql", args, {
-          env: { ...process.env, MYSQL_PWD: connection.password },
+        const child = spawn(MYSQL_COMMAND, args, {
+          env: { MYSQL_PWD: connection.password },
           shell: false,
           stdio: ["pipe", "ignore", "pipe"],
         });

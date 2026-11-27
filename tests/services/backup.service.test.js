@@ -368,7 +368,7 @@ describe("backupService MySQL process execution", () => {
 
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const [command, args, options] = mockSpawn.mock.calls[0];
-    expect(command).toBe("mysqldump");
+    expect(command).toBe("/usr/bin/mysqldump");
     expect(args).toEqual([
       "-h",
       "db",
@@ -386,7 +386,7 @@ describe("backupService MySQL process execution", () => {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    expect(options.env.MYSQL_PWD).toBe(mockDbPassword);
+    expect(options.env).toEqual({ MYSQL_PWD: mockDbPassword });
     expect(args.some((arg) => arg.includes(mockDbPassword))).toBe(false);
 
     expect(fs.createWriteStream).toHaveBeenCalledWith(`${outputPath}.partial`);
@@ -447,7 +447,7 @@ describe("backupService MySQL process execution", () => {
     expect(result).toEqual({ success: true });
     expect(mockSpawn).toHaveBeenCalledTimes(1);
     const [command, args, options] = mockSpawn.mock.calls[0];
-    expect(command).toBe("mysql");
+    expect(command).toBe("/usr/bin/mysql");
     expect(args).toEqual([
       "-h",
       "db",
@@ -461,7 +461,7 @@ describe("backupService MySQL process execution", () => {
       shell: false,
       stdio: ["pipe", "ignore", "pipe"],
     });
-    expect(options.env.MYSQL_PWD).toBe(mockDbPassword);
+    expect(options.env).toEqual({ MYSQL_PWD: mockDbPassword });
     expect(args.some((arg) => arg.includes(mockDbPassword))).toBe(false);
 
     expect(fs.promises.open).toHaveBeenCalledTimes(1);
