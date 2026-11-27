@@ -23,6 +23,7 @@ import discordBotService from "./src/services/discordBot.service";
 import kickBotAutoSendService from "./src/services/kickBotAutoSend.service";
 import dbCleanupTask from "./src/services/dbCleanup.task";
 import kickSubscriptionHealthTask from "./src/services/kickSubscriptionHealth.task";
+import healthchecksHeartbeatTask from "./src/services/healthchecksHeartbeat.task";
 
 // Routes
 import authRoutes from "./src/routes/auth.routes";
@@ -174,6 +175,9 @@ const start = async (): Promise<void> => {
 
     // Start hourly Kick webhook subscription health check
     kickSubscriptionHealthTask.start();
+
+    // Start healthchecks.io database heartbeat
+    healthchecksHeartbeatTask.start();
 
     // Start Discord bot
     await discordBotService.initialize();

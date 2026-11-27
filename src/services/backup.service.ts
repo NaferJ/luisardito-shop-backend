@@ -16,6 +16,7 @@ import {
 } from "@aws-sdk/client-s3";
 import config from "../../config";
 import logger from "../utils/logger";
+import { pingHealthcheck } from "./healthchecks.service";
 
 const execAsync = promisify(exec);
 
@@ -152,9 +153,10 @@ class BackupService {
       logger.info(`Backup created: ${gzFilename} (${sizeMB} MB)`);
 
       // 5. Upload to R2
+      let remoteUploaded = false;
       if (this.r2Configured) {
-        const uploaded = await this.uploadToR2(localGzPath, gzFilename);
-        if (uploaded) await this.cleanRemoteBackups();
+        remoteUploaded = await this.uploadToR2(localGzPath, gzFilename);
+        if (remoteUploaded) await this.cleanRemoteBackups();
       } else {
         logger.warn("R2 not configured, skipping remote upload");
       }
@@ -163,6 +165,18 @@ class BackupService {
       await this.cleanOldBackups();
 
       logger.info("Backup process completed successfully");
+
+      // A backup that never reached remote storage is not safely restorable,
+      // so monitoring treats a failed R2 upload as a failure.
+      const uploadFailed = this.r2Configured && !remoteUploaded;
+      if (uploadFailed) {
+        logger.error("Backup did not reach remote storage, reporting failure");
+      }
+      // Monitoring is fire-and-forget so a slow ping never delays the backup.
+      void pingHealthcheck(
+        config.monitoring?.healthchecks?.backupUrl,
+        uploadFailed
+      );
 
       return {
         success: true,
@@ -173,6 +187,10 @@ class BackupService {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("Error in backup process:", msg);
+
+      // Monitoring is fire-and-forget so a slow ping never delays the result.
+      void pingHealthcheck(config.monitoring?.healthchecks?.backupUrl, true);
+
       return {
         success: false,
         error: msg,

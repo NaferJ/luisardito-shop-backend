@@ -81,6 +81,15 @@ interface BackupConfig {
   r2: BackupR2Config;
 }
 
+interface HealthchecksConfig {
+  backupUrl: string | undefined;
+  heartbeatUrl: string | undefined;
+}
+
+interface MonitoringConfig {
+  healthchecks: HealthchecksConfig;
+}
+
 interface DiscordConfig {
   botToken: string | undefined;
   clientId: string | undefined;
@@ -104,6 +113,7 @@ interface AppConfig {
   port: number;
   discord: DiscordConfig;
   backup: BackupConfig;
+  monitoring: MonitoringConfig;
 }
 
 const config: AppConfig = {
@@ -187,6 +197,12 @@ const config: AppConfig = {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       bucketName: process.env.R2_BUCKET_NAME,
+    },
+  },
+  monitoring: {
+    healthchecks: {
+      backupUrl: process.env.HEALTHCHECKS_BACKUP_URL,
+      heartbeatUrl: process.env.HEALTHCHECKS_HEARTBEAT_URL,
     },
   },
 };
