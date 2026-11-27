@@ -24,8 +24,8 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Install docker-cli so the backup job can run mysqldump inside the db container
-RUN apk add --no-cache docker-cli
+# Install the MariaDB client plus the caching_sha2_password plugin needed by MySQL 8.4
+RUN apk add --no-cache mysql-client mariadb-connector-c
 
 # Install production dependencies only
 # npm ci strictly uses package-lock.json (no version drift).
