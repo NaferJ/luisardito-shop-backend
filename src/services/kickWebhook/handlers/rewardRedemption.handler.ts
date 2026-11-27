@@ -102,7 +102,7 @@ async function shouldSkipRedemptionByStatus(
 async function handleRewardRedemption(
   payload: RewardRedemptionPayload,
   _metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const { id: redemptionId, reward, redeemer, status, user_input } = payload;
     const kickRewardId = reward.id;
@@ -233,6 +233,7 @@ async function handleRewardRedemption(
     }
   } catch (error: unknown) {
     logger.error("[Reward Redemption] Error:", toErrorMessage(error));
+    return false;
   }
 }
 

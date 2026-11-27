@@ -216,6 +216,26 @@ describe("kickWebhook.controller handleWebhook characterization", () => {
     );
   });
 
+  // 6b. Handler catches and logs a failure
+  test("Handler failure is acknowledged but the payload is kept", async () => {
+    // "kicks.gifted" handler catches the TypeError from an empty payload
+    const req = createReq(
+      { ...FULL_HEADERS, "kick-event-type": "kicks.gifted" },
+      {}
+    );
+    const res = createRes();
+
+    await controller.handleWebhook(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ message: "Webhook processed successfully" });
+    expect(KickWebhookEvent.update).toHaveBeenCalledTimes(1);
+    expect(KickWebhookEvent.update).toHaveBeenCalledWith(
+      { processed: true, processed_at: expect.any(Date) },
+      { where: { message_id: "msg-001" } }
+    );
+  });
+
   // 7. processWebhookEvent throws
   test('processWebhookEvent throws -> 500 { error: "Internal error processing webhook" }', async () => {
     // "moderation.banned" handler has no try/catch and accesses

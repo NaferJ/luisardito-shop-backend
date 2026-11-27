@@ -38,7 +38,7 @@ function warnIfStaleTimestamp(timestamp: string | undefined): void {
 async function handleLivestreamStatusUpdated(
   payload: LivestreamStatusPayload,
   metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const isLive = payload.is_live;
     const redis = getRedisClient();
@@ -121,6 +121,7 @@ async function handleLivestreamStatusUpdated(
     if (error instanceof Error) {
       logger.error("[Kick Webhook][Livestream Status] Stack:", error.stack);
     }
+    return false;
   }
 }
 
