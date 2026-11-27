@@ -51,6 +51,7 @@ jest.mock("node:fs", () => {
       readdir: jest.fn().mockResolvedValue([]),
       access: jest.fn().mockResolvedValue(undefined),
       rename: jest.fn().mockResolvedValue(undefined),
+      open: jest.fn(),
     },
     createReadStream: mockCreateReadStream,
     createWriteStream: mockCreateWriteStream,
@@ -97,6 +98,7 @@ const configuredR2 = () => ({
 });
 
 const spawnedChildren = [];
+const openedHandles = [];
 let spawnBehavior = {
   exitCode: 0,
   stderr: "",
@@ -142,6 +144,20 @@ function resetProcessMocks() {
     return child;
   });
   mockPipeline.mockResolvedValue(undefined);
+  openedHandles.length = 0;
+  fs.promises.open.mockImplementation(async (filePath) => {
+    const handle = {
+      filePath,
+      createReadStream: jest.fn((options) => ({
+        fake: "handle-read-stream",
+        filePath,
+        options,
+      })),
+      close: jest.fn().mockResolvedValue(undefined),
+    };
+    openedHandles.push(handle);
+    return handle;
+  });
   mockCreateReadStream.mockImplementation((filePath) => ({
     fake: "read-stream",
     filePath,
@@ -252,6 +268,33 @@ describe("backupService R2 remote tier", () => {
 
     expect(result).toEqual({ success: false, reason: "disabled" });
     expect(mockSend).not.toHaveBeenCalled();
+  });
+
+  test("downloadRemoteBackup writes to a unique partial file and renames it into place", async () => {
+    const filename = "backup-2026-11-21.sql.gz";
+    const destPath = path.join(backupService.config.localPath, filename);
+    mockSend.mockResolvedValue({ Body: Readable.from([Buffer.from("gz")]) });
+
+    const result = await backupService.downloadRemoteBackup(filename);
+
+    expect(result).toBe(destPath);
+    const [partialPath] = mockCreateWriteStream.mock.calls[0];
+    expect(partialPath.startsWith(`${destPath}.`)).toBe(true);
+    expect(partialPath).toMatch(/\.[0-9a-f-]{36}\.partial$/);
+    expect(fs.promises.rename).toHaveBeenCalledWith(partialPath, destPath);
+  });
+
+  test("downloadRemoteBackup removes the partial file when the download fails", async () => {
+    mockSend.mockResolvedValue({ Body: Readable.from([Buffer.from("gz")]) });
+    mockPipeline.mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(
+      backupService.downloadRemoteBackup("backup-2026-11-21.sql.gz")
+    ).rejects.toThrow("connection reset");
+
+    const [partialPath] = mockCreateWriteStream.mock.calls[0];
+    expect(fs.promises.unlink).toHaveBeenCalledWith(partialPath);
+    expect(fs.promises.rename).not.toHaveBeenCalled();
   });
 
   test("downloadRemoteBackup rejects path traversal filenames", async () => {
@@ -368,21 +411,84 @@ describe("backupService MySQL process execution", () => {
     expect(options.env.MYSQL_PWD).toBe(mockDbPassword);
     expect(args.some((arg) => arg.includes(mockDbPassword))).toBe(false);
 
-    expect(mockPipeline).toHaveBeenCalledTimes(2);
-    expect(fs.createReadStream).toHaveBeenCalledTimes(2);
-    expect(fs.createReadStream).toHaveBeenNthCalledWith(1, backupPath);
-    expect(fs.createReadStream).toHaveBeenNthCalledWith(2, backupPath);
-    expect(fs.createWriteStream).not.toHaveBeenCalled();
+    expect(fs.promises.open).toHaveBeenCalledTimes(1);
+    expect(fs.promises.open).toHaveBeenCalledWith(backupPath, "r");
+    expect(fs.createReadStream).not.toHaveBeenCalled();
+    const [handle] = openedHandles;
+    expect(handle.createReadStream).toHaveBeenCalledTimes(2);
+    for (const call of handle.createReadStream.mock.calls) {
+      expect(call[0]).toEqual({ start: 0, autoClose: false });
+    }
 
+    expect(mockPipeline).toHaveBeenCalledTimes(2);
     const [verifySource, verifyGunzip, sink] = mockPipeline.mock.calls[0];
-    expect(verifySource).toBe(mockCreateReadStream.mock.results[0].value);
+    expect(verifySource).toBe(handle.createReadStream.mock.results[0].value);
     expect(verifyGunzip).toBeInstanceOf(zlib.Gunzip);
     expect(sink).toBeInstanceOf(Writable);
 
     const [source, gunzipStream, destination] = mockPipeline.mock.calls[1];
-    expect(source).toBe(mockCreateReadStream.mock.results[1].value);
+    expect(source).toBe(handle.createReadStream.mock.results[1].value);
     expect(gunzipStream).toBeInstanceOf(zlib.Gunzip);
     expect(destination).toBe(spawnedChildren[0].stdin);
+    expect(handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  test("restoreBackup imports the verified file even if the path is replaced after verification", async () => {
+    const realFs = jest.requireActual("node:fs");
+    const { pipeline: realPipeline } = jest.requireActual(
+      "node:stream/promises"
+    );
+    const os = require("node:os");
+    const dir = realFs.mkdtempSync(path.join(os.tmpdir(), "restore-test-"));
+    const filename = "backup-2026-11-21.sql.gz";
+    const backupPath = path.join(dir, filename);
+    const verifiedSql = "INSERT INTO usuarios VALUES (1);\n".repeat(100);
+    realFs.writeFileSync(backupPath, zlib.gzipSync(verifiedSql));
+    const originalLocalPath = backupService.config.localPath;
+    backupService.config.localPath = dir;
+
+    fs.promises.open.mockImplementation((...args) =>
+      realFs.promises.open(...args)
+    );
+    let pipelineCalls = 0;
+    mockPipeline.mockImplementation(async (...streams) => {
+      await realPipeline(...streams);
+      pipelineCalls += 1;
+      if (pipelineCalls === 1) {
+        // Simulate retention or a download swapping the file mid-restore.
+        realFs.unlinkSync(backupPath);
+        realFs.writeFileSync(backupPath, Buffer.from("not gzip"));
+      }
+    });
+    const received = [];
+    mockSpawn.mockImplementation(() => {
+      const child = new EventEmitter();
+      child.stderr = new EventEmitter();
+      child.killed = false;
+      child.exitCode = null;
+      child.kill = jest.fn();
+      child.stdin = new Writable({
+        write(chunk, _encoding, callback) {
+          received.push(chunk);
+          callback();
+        },
+      });
+      child.stdin.on("finish", () => {
+        child.exitCode = 0;
+        child.emit("close", 0, null);
+      });
+      return child;
+    });
+
+    try {
+      const result = await backupService.restoreBackup(filename);
+
+      expect(result).toEqual({ success: true });
+      expect(Buffer.concat(received).toString()).toBe(verifiedSql);
+    } finally {
+      backupService.config.localPath = originalLocalPath;
+      realFs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("restoreBackup never starts mysql when the archive is truncated", async () => {
@@ -394,7 +500,11 @@ describe("backupService MySQL process execution", () => {
     const gzipped = zlib.gzipSync(Buffer.from(sql.repeat(200)));
     const truncated = gzipped.subarray(0, gzipped.length - 8);
 
-    mockCreateReadStream.mockImplementation(() => Readable.from([truncated]));
+    const close = jest.fn().mockResolvedValue(undefined);
+    fs.promises.open.mockResolvedValueOnce({
+      createReadStream: () => Readable.from([truncated]),
+      close,
+    });
     mockPipeline.mockImplementation(realPipeline);
 
     const result = await backupService.restoreBackup(
@@ -404,5 +514,6 @@ describe("backupService MySQL process execution", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/unexpected end of file/i);
     expect(mockSpawn).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
   });
 });

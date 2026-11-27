@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { promises as fs, createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
 import { Readable, Writable } from "node:stream";
@@ -515,7 +516,16 @@ class BackupService {
       throw new TypeError("Unexpected response body from R2");
     }
 
-    await pipeline(response.Body, createWriteStream(destPath));
+    // Download under a unique name and rename over the final one, so a
+    // concurrent restore holding the previous file never sees partial bytes.
+    const partialPath = `${destPath}.${randomUUID()}${PARTIAL_BACKUP_SUFFIX}`;
+    try {
+      await pipeline(response.Body, createWriteStream(partialPath));
+      await fs.rename(partialPath, destPath);
+    } catch (error) {
+      await fs.unlink(partialPath).catch(() => undefined);
+      throw error;
+    }
 
     logger.info(`Downloaded remote backup: ${filename}`);
     return destPath;
@@ -561,8 +571,7 @@ class BackupService {
       const candidates = files.filter(
         (file) =>
           file.startsWith("backup-") &&
-          (file.endsWith(".sql.gz") ||
-            file.endsWith(`.sql.gz${PARTIAL_BACKUP_SUFFIX}`))
+          (file.endsWith(".sql.gz") || file.endsWith(PARTIAL_BACKUP_SUFFIX))
       );
 
       const expired = (
@@ -644,9 +653,6 @@ class BackupService {
 
       const backupPath = path.join(this.config.localPath, filename);
 
-      // Verify the file exists
-      await fs.access(backupPath);
-
       const connection = this.getDbConnection();
       const args = [
         "-h",
@@ -660,37 +666,46 @@ class BackupService {
 
       // Verify the whole archive before starting mysql: gunzip only detects
       // a truncated or corrupt archive at the end, and statements such as
-      // DROP TABLE that already reached mysql cannot be rolled back.
-      await pipeline(
-        createReadStream(backupPath),
-        zlib.createGunzip(),
-        new Writable({
-          write(_chunk, _encoding, callback) {
-            callback();
-          },
-        })
-      );
+      // DROP TABLE that already reached mysql cannot be rolled back. Both
+      // passes read the same open handle, so the import gets the verified
+      // bytes even if retention unlinks the path or a download replaces it.
+      const handle = await fs.open(backupPath, "r");
+      const readArchive = () =>
+        handle.createReadStream({ start: 0, autoClose: false });
 
-      const child = spawn("mysql", args, {
-        env: { ...process.env, MYSQL_PWD: connection.password },
-        shell: false,
-        stdio: ["pipe", "ignore", "pipe"],
-      });
-      const { done, getStderr } = this.observeProcess(child, "mysql");
-
-      await this.waitForStreamProcess(
-        pipeline(
-          createReadStream(backupPath),
+      try {
+        await pipeline(
+          readArchive(),
           zlib.createGunzip(),
-          child.stdin
-        ),
-        done,
-        child
-      );
+          new Writable({
+            write(_chunk, _encoding, callback) {
+              callback();
+            },
+          })
+        );
 
-      const stderr = getStderr().trim();
-      if (stderr) {
-        logger.warn("[Backup] mysql restore warnings:", stderr);
+        const child = spawn("mysql", args, {
+          env: { ...process.env, MYSQL_PWD: connection.password },
+          shell: false,
+          stdio: ["pipe", "ignore", "pipe"],
+        });
+        const { done, getStderr } = this.observeProcess(child, "mysql");
+
+        await this.waitForStreamProcess(
+          pipeline(readArchive(), zlib.createGunzip(), child.stdin),
+          done,
+          child
+        );
+
+        const stderr = getStderr().trim();
+        if (stderr) {
+          logger.warn("[Backup] mysql restore warnings:", stderr);
+        }
+      } finally {
+        await handle.close().catch((error: unknown) => {
+          const msg = error instanceof Error ? error.message : String(error);
+          logger.warn("[Backup] Could not close the backup file:", msg);
+        });
       }
 
       logger.info("Backup restored successfully");
