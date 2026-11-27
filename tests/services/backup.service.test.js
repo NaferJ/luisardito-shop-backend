@@ -51,8 +51,6 @@ jest.mock("node:fs", () => {
       readdir: jest.fn().mockResolvedValue([]),
       access: jest.fn().mockResolvedValue(undefined),
       rename: jest.fn().mockResolvedValue(undefined),
-      mkdtemp: jest.fn().mockResolvedValue("/tmp/restore-test"),
-      rm: jest.fn().mockResolvedValue(undefined),
     },
     createReadStream: mockCreateReadStream,
     createWriteStream: mockCreateWriteStream,
@@ -370,27 +368,21 @@ describe("backupService MySQL process execution", () => {
     expect(options.env.MYSQL_PWD).toBe(mockDbPassword);
     expect(args.some((arg) => arg.includes(mockDbPassword))).toBe(false);
 
-    const sqlPath = path.join("/tmp/restore-test", "restore.sql");
     expect(mockPipeline).toHaveBeenCalledTimes(2);
-
-    const [archive, gunzipStream, sqlFile] = mockPipeline.mock.calls[0];
+    expect(fs.createReadStream).toHaveBeenCalledTimes(2);
     expect(fs.createReadStream).toHaveBeenNthCalledWith(1, backupPath);
-    expect(archive).toBe(mockCreateReadStream.mock.results[0].value);
+    expect(fs.createReadStream).toHaveBeenNthCalledWith(2, backupPath);
+    expect(fs.createWriteStream).not.toHaveBeenCalled();
+
+    const [verifySource, verifyGunzip, sink] = mockPipeline.mock.calls[0];
+    expect(verifySource).toBe(mockCreateReadStream.mock.results[0].value);
+    expect(verifyGunzip).toBeInstanceOf(zlib.Gunzip);
+    expect(sink).toBeInstanceOf(Writable);
+
+    const [source, gunzipStream, destination] = mockPipeline.mock.calls[1];
+    expect(source).toBe(mockCreateReadStream.mock.results[1].value);
     expect(gunzipStream).toBeInstanceOf(zlib.Gunzip);
-    expect(fs.createWriteStream).toHaveBeenCalledWith(sqlPath, {
-      mode: 0o600,
-    });
-    expect(sqlFile).toBe(mockCreateWriteStream.mock.results[0].value);
-
-    const [sqlSource, destination] = mockPipeline.mock.calls[1];
-    expect(fs.createReadStream).toHaveBeenNthCalledWith(2, sqlPath);
-    expect(sqlSource).toBe(mockCreateReadStream.mock.results[1].value);
     expect(destination).toBe(spawnedChildren[0].stdin);
-
-    expect(fs.promises.rm).toHaveBeenCalledWith("/tmp/restore-test", {
-      recursive: true,
-      force: true,
-    });
   });
 
   test("restoreBackup never starts mysql when the archive is truncated", async () => {
@@ -403,14 +395,6 @@ describe("backupService MySQL process execution", () => {
     const truncated = gzipped.subarray(0, gzipped.length - 8);
 
     mockCreateReadStream.mockImplementation(() => Readable.from([truncated]));
-    mockCreateWriteStream.mockImplementation(
-      () =>
-        new Writable({
-          write(_chunk, _encoding, callback) {
-            callback();
-          },
-        })
-    );
     mockPipeline.mockImplementation(realPipeline);
 
     const result = await backupService.restoreBackup(
@@ -420,9 +404,5 @@ describe("backupService MySQL process execution", () => {
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/unexpected end of file/i);
     expect(mockSpawn).not.toHaveBeenCalled();
-    expect(fs.promises.rm).toHaveBeenCalledWith("/tmp/restore-test", {
-      recursive: true,
-      force: true,
-    });
   });
 });

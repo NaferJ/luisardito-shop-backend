@@ -1,8 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs, createReadStream, createWriteStream } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import zlib from "node:zlib";
 import {
@@ -659,38 +658,39 @@ class BackupService {
         connection.database,
       ];
 
-      // Fully decompress before starting mysql: gunzip only detects a
-      // truncated or corrupt archive at the end, and statements such as
+      // Verify the whole archive before starting mysql: gunzip only detects
+      // a truncated or corrupt archive at the end, and statements such as
       // DROP TABLE that already reached mysql cannot be rolled back.
-      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "restore-"));
-      const sqlPath = path.join(tempDir, "restore.sql");
+      await pipeline(
+        createReadStream(backupPath),
+        zlib.createGunzip(),
+        new Writable({
+          write(_chunk, _encoding, callback) {
+            callback();
+          },
+        })
+      );
 
-      try {
-        await pipeline(
+      const child = spawn("mysql", args, {
+        env: { ...process.env, MYSQL_PWD: connection.password },
+        shell: false,
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      const { done, getStderr } = this.observeProcess(child, "mysql");
+
+      await this.waitForStreamProcess(
+        pipeline(
           createReadStream(backupPath),
           zlib.createGunzip(),
-          createWriteStream(sqlPath, { mode: 0o600 })
-        );
+          child.stdin
+        ),
+        done,
+        child
+      );
 
-        const child = spawn("mysql", args, {
-          env: { ...process.env, MYSQL_PWD: connection.password },
-          shell: false,
-          stdio: ["pipe", "ignore", "pipe"],
-        });
-        const { done, getStderr } = this.observeProcess(child, "mysql");
-
-        await this.waitForStreamProcess(
-          pipeline(createReadStream(sqlPath), child.stdin),
-          done,
-          child
-        );
-
-        const stderr = getStderr().trim();
-        if (stderr) {
-          logger.warn("[Backup] mysql restore warnings:", stderr);
-        }
-      } finally {
-        await fs.rm(tempDir, { recursive: true, force: true });
+      const stderr = getStderr().trim();
+      if (stderr) {
+        logger.warn("[Backup] mysql restore warnings:", stderr);
       }
 
       logger.info("Backup restored successfully");
