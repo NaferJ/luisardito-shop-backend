@@ -21,7 +21,7 @@ interface LivestreamMetadataPayload {
 async function handleLivestreamMetadataUpdated(
   payload: LivestreamMetadataPayload,
   _metadata: unknown
-) {
+): Promise<boolean | void> {
   try {
     const redis = getRedisClient();
 
@@ -54,6 +54,7 @@ async function handleLivestreamMetadataUpdated(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     logger.error("[Kick Webhook][Livestream Metadata] Error:", msg);
+    return false;
   }
 }
 

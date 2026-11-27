@@ -42,7 +42,7 @@ interface WebhookMetadata {
 async function handleKicksGifted(
   payload: KicksGiftedPayload,
   _metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -170,6 +170,7 @@ async function handleKicksGifted(
     }
   } catch (error: unknown) {
     logger.error("[Kick Webhook][Kicks Gifted] Error:", toErrorMessage(error));
+    return false;
   }
 }
 

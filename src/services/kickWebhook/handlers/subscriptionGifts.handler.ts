@@ -169,7 +169,7 @@ async function awardGifteePoints(
 async function handleSubscriptionGifts(
   payload: SubscriptionGiftsPayload,
   _metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const gifter = payload.gifter;
     const giftees = payload.giftees || [];
@@ -216,6 +216,7 @@ async function handleSubscriptionGifts(
       "[Kick Webhook][Subscription Gifts] Error:",
       toErrorMessage(error)
     );
+    return false;
   }
 }
 

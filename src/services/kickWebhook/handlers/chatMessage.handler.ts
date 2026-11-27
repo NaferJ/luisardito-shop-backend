@@ -403,7 +403,7 @@ async function awardChatPoints(
 async function handleChatMessage(
   payload: ChatMessagePayload,
   _metadata: WebhookMetadata
-): Promise<void> {
+): Promise<boolean | void> {
   try {
     const sender = payload.sender;
     const kickUserId = String(sender.user_id);
@@ -510,6 +510,7 @@ async function handleChatMessage(
     });
   } catch (error: unknown) {
     logger.error("[Chat Message] Error:", toErrorMessage(error));
+    return false;
   }
 }
 

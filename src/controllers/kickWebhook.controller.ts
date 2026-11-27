@@ -87,15 +87,18 @@ const handleWebhook = async (req: Request, res: Response) => {
     });
 
     // Process event by type
-    await processWebhookEvent(eventType, Number(eventVersion), req.body, {
-      messageId,
-      subscriptionId,
-      timestamp,
-    });
+    const succeeded = await processWebhookEvent(
+      eventType,
+      Number(eventVersion),
+      req.body,
+      { messageId, subscriptionId, timestamp }
+    );
 
-    // Mark as processed
+    // Mark as processed; keep the payload of failed events for debugging
     await KickWebhookEvent.update(
-      { processed: true, processed_at: new Date() },
+      succeeded
+        ? { processed: true, processed_at: new Date(), payload: null }
+        : { processed: true, processed_at: new Date() },
       { where: { message_id: messageId } }
     );
 
