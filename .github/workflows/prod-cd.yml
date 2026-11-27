@@ -256,6 +256,10 @@ jobs:
             echo "R2_SECRET_ACCESS_KEY=${{ secrets.R2_SECRET_ACCESS_KEY }}" >> "$ENV_PATH"
             echo "R2_BUCKET_NAME=${{ secrets.R2_BUCKET_NAME }}" >> "$ENV_PATH"
 
+            # Healthchecks.io monitoring (optional)
+            echo "HEALTHCHECKS_BACKUP_URL=${{ secrets.HEALTHCHECKS_BACKUP_URL }}" >> "$ENV_PATH"
+            echo "HEALTHCHECKS_HEARTBEAT_URL=${{ secrets.HEALTHCHECKS_HEARTBEAT_URL }}" >> "$ENV_PATH"
+
             # Discord Bot Configuration
             echo "DISCORD_BOT_TOKEN=${{ secrets.DISCORD_BOT_TOKEN }}" >> "$ENV_PATH"
             echo "DISCORD_CLIENT_ID=${{ secrets.DISCORD_CLIENT_ID }}" >> "$ENV_PATH"
