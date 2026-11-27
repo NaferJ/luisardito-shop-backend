@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { promises as fs, createReadStream, createWriteStream } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -16,6 +17,7 @@ import config from "../../config";
 import logger from "../utils/logger";
 
 const BACKUP_FILENAME_PATTERN = /^backup-[\w-]+\.sql\.gz$/;
+const PARTIAL_BACKUP_SUFFIX = ".partial";
 const MAX_PROCESS_STDERR_LENGTH = 8192;
 
 interface BackupConfig {
@@ -305,6 +307,9 @@ class BackupService {
       stdio: ["ignore", "pipe", "pipe"],
     });
     const { done, getStderr } = this.observeProcess(child, "mysqldump");
+    // Write under a name listBackups ignores and rename only once the dump is
+    // complete, so an interrupted run never leaves a restorable-looking file.
+    const partialPath = `${outputPath}${PARTIAL_BACKUP_SUFFIX}`;
     let dumpBytes = 0;
 
     try {
@@ -316,7 +321,7 @@ class BackupService {
         pipeline(
           child.stdout,
           zlib.createGzip(),
-          createWriteStream(outputPath)
+          createWriteStream(partialPath)
         ),
         done,
         child
@@ -324,10 +329,12 @@ class BackupService {
 
       // A gzip stream of an empty dump still has header/trailer bytes, so use
       // the uncompressed byte count as well as the output file size.
-      const stats = await fs.stat(outputPath);
+      const stats = await fs.stat(partialPath);
       if (stats.size === 0 || dumpBytes === 0) {
         throw new Error("The backup file is empty");
       }
+
+      await fs.rename(partialPath, outputPath);
 
       const stderr = getStderr().trim();
       if (stderr) {
@@ -338,9 +345,8 @@ class BackupService {
         `MySQL dump completed (${(stats.size / 1024 / 1024).toFixed(2)} MB compressed)`
       );
     } catch (error) {
-      // Do not leave a partial gzip behind; it would look like a valid backup.
       try {
-        await fs.unlink(outputPath);
+        await fs.unlink(partialPath);
       } catch (unlinkError) {
         if ((unlinkError as NodeJS.ErrnoException).code !== "ENOENT") {
           const unlinkMsg =
@@ -551,8 +557,13 @@ class BackupService {
 
     try {
       const files = await fs.readdir(this.config.localPath);
+      // Also expire partial files left behind by a dump that was killed
+      // before it could clean up.
       const candidates = files.filter(
-        (file) => file.startsWith("backup-") && file.endsWith(".sql.gz")
+        (file) =>
+          file.startsWith("backup-") &&
+          (file.endsWith(".sql.gz") ||
+            file.endsWith(`.sql.gz${PARTIAL_BACKUP_SUFFIX}`))
       );
 
       const expired = (
@@ -648,26 +659,38 @@ class BackupService {
         connection.database,
       ];
 
-      const child = spawn("mysql", args, {
-        env: { ...process.env, MYSQL_PWD: connection.password },
-        shell: false,
-        stdio: ["pipe", "ignore", "pipe"],
-      });
-      const { done, getStderr } = this.observeProcess(child, "mysql");
+      // Fully decompress before starting mysql: gunzip only detects a
+      // truncated or corrupt archive at the end, and statements such as
+      // DROP TABLE that already reached mysql cannot be rolled back.
+      const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "restore-"));
+      const sqlPath = path.join(tempDir, "restore.sql");
 
-      await this.waitForStreamProcess(
-        pipeline(
+      try {
+        await pipeline(
           createReadStream(backupPath),
           zlib.createGunzip(),
-          child.stdin
-        ),
-        done,
-        child
-      );
+          createWriteStream(sqlPath, { mode: 0o600 })
+        );
 
-      const stderr = getStderr().trim();
-      if (stderr) {
-        logger.warn("[Backup] mysql restore warnings:", stderr);
+        const child = spawn("mysql", args, {
+          env: { ...process.env, MYSQL_PWD: connection.password },
+          shell: false,
+          stdio: ["pipe", "ignore", "pipe"],
+        });
+        const { done, getStderr } = this.observeProcess(child, "mysql");
+
+        await this.waitForStreamProcess(
+          pipeline(createReadStream(sqlPath), child.stdin),
+          done,
+          child
+        );
+
+        const stderr = getStderr().trim();
+        if (stderr) {
+          logger.warn("[Backup] mysql restore warnings:", stderr);
+        }
+      } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
       }
 
       logger.info("Backup restored successfully");
