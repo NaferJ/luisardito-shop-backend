@@ -369,19 +369,24 @@ describe("backupService MySQL process execution", () => {
     expect(fs.promises.rename).not.toHaveBeenCalled();
   });
 
-  test("cleanOldBackups also expires partial files left by an interrupted dump", async () => {
+  test("cleanOldBackups expires only the staging files left by an interrupted dump or download", async () => {
     const oldMtime = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-    fs.promises.readdir.mockResolvedValueOnce([
+    const staging = [
       "backup-old.sql.gz.partial",
+      "backup-old.sql.gz.0b6a3c1e-2f4d-4e8a-9c7b-5d1e2f3a4b5c.partial",
+    ];
+    fs.promises.readdir.mockResolvedValueOnce([
+      ...staging,
+      "backup-notes.partial",
+      "backup-old.sql.gz.copy.partial",
       "unrelated.partial",
     ]);
-    fs.promises.stat.mockResolvedValueOnce({ size: 10, mtime: oldMtime });
+    fs.promises.stat.mockResolvedValue({ size: 10, mtime: oldMtime });
 
     await backupService.cleanOldBackups();
 
-    expect(fs.promises.unlink).toHaveBeenCalledTimes(1);
-    expect(fs.promises.unlink).toHaveBeenCalledWith(
-      path.join(backupService.config.localPath, "backup-old.sql.gz.partial")
+    expect(fs.promises.unlink.mock.calls).toEqual(
+      staging.map((file) => [path.join(backupService.config.localPath, file)])
     );
   });
 
@@ -492,28 +497,47 @@ describe("backupService MySQL process execution", () => {
   });
 
   test("restoreBackup never starts mysql when the archive is truncated", async () => {
+    const realFs = jest.requireActual("node:fs");
     const { pipeline: realPipeline } = jest.requireActual(
       "node:stream/promises"
     );
+    const os = require("node:os");
+    const dir = realFs.mkdtempSync(path.join(os.tmpdir(), "restore-test-"));
+    const filename = "backup-2026-11-21.sql.gz";
     const sql =
       "DROP TABLE IF EXISTS usuarios;\nCREATE TABLE usuarios (id INT);\n";
     const gzipped = zlib.gzipSync(Buffer.from(sql.repeat(200)));
-    const truncated = gzipped.subarray(0, gzipped.length - 8);
+    realFs.writeFileSync(
+      path.join(dir, filename),
+      gzipped.subarray(0, gzipped.length - 8)
+    );
+    const originalLocalPath = backupService.config.localPath;
+    backupService.config.localPath = dir;
 
-    const close = jest.fn().mockResolvedValue(undefined);
-    fs.promises.open.mockResolvedValueOnce({
-      createReadStream: () => Readable.from([truncated]),
-      close,
+    let handle;
+    fs.promises.open.mockImplementation(async (...args) => {
+      handle = await realFs.promises.open(...args);
+      jest.spyOn(handle, "close");
+      return handle;
     });
     mockPipeline.mockImplementation(realPipeline);
 
-    const result = await backupService.restoreBackup(
-      "backup-2026-11-21.sql.gz"
-    );
+    try {
+      const result = await backupService.restoreBackup(filename);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/unexpected end of file/i);
-    expect(mockSpawn).not.toHaveBeenCalled();
-    expect(close).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/unexpected end of file/i);
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(handle.close).toHaveBeenCalled();
+      // A closed FileHandle reports fd -1.
+      expect(handle.fd).toBe(-1);
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        "[Backup] Could not close the backup file:",
+        expect.anything()
+      );
+    } finally {
+      backupService.config.localPath = originalLocalPath;
+      realFs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

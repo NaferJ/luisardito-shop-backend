@@ -18,6 +18,10 @@ import logger from "../utils/logger";
 
 const BACKUP_FILENAME_PATTERN = /^backup-[\w-]+\.sql\.gz$/;
 const PARTIAL_BACKUP_SUFFIX = ".partial";
+// Staging names from dumpDatabase (<name>.partial) and downloadRemoteBackup
+// (<name>.<uuid>.partial).
+const PARTIAL_BACKUP_PATTERN =
+  /^backup-[\w-]+\.sql\.gz(?:\.[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12})?\.partial$/;
 const MAX_PROCESS_STDERR_LENGTH = 8192;
 
 interface BackupConfig {
@@ -566,12 +570,12 @@ class BackupService {
 
     try {
       const files = await fs.readdir(this.config.localPath);
-      // Also expire partial files left behind by a dump that was killed
-      // before it could clean up.
+      // Also expire partial files left behind by a dump or download that was
+      // killed before it could clean up.
       const candidates = files.filter(
         (file) =>
-          file.startsWith("backup-") &&
-          (file.endsWith(".sql.gz") || file.endsWith(PARTIAL_BACKUP_SUFFIX))
+          (file.startsWith("backup-") && file.endsWith(".sql.gz")) ||
+          PARTIAL_BACKUP_PATTERN.test(file)
       );
 
       const expired = (
